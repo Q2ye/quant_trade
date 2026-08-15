@@ -36,6 +36,32 @@ from shared.database.repositories import strategy
 
 logger = logging.getLogger(__name__)
 
+# ==================== 修复 2026-08（B6）：策略 exec 沙箱 import 白名单 ====================
+# 原沙箱仅移除 eval/exec/open 等，保留全量 __import__——策略代码可通过
+# __import__('os').system(...) 实现 RCE。改为白名单包装：仅放行策略依赖库。
+# 白名单依据：DB 审计确认现有策略实例均未使用受限导入（strpos=0）。
+_ALLOWED_STRATEGY_MODULES = frozenset({
+    # 标准库
+    "abc", "asyncio", "collections", "dataclasses", "datetime", "decimal",
+    "functools", "itertools", "json", "logging", "math", "pathlib", "random",
+    "re", "statistics", "time", "typing", "uuid", "warnings",
+    # __future__：exec 前自动注入 from __future__ import annotations 会触发导入（修复 2026-08 B6b）
+    "__future__",
+    # 第三方（策略依赖）
+    "numpy", "pandas", "joblib", "lightgbm", "sklearn", "psycopg2", "sqlalchemy",
+    # 项目内部
+    "core", "modules", "shared", "utils",
+})
+
+
+def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    """策略沙箱安全 import：仅放行白名单模块（修复 2026-08 B6）"""
+    import builtins as _b
+    root = name.split(".", 1)[0]
+    if root not in _ALLOWED_STRATEGY_MODULES:
+        raise ImportError(f"策略沙箱禁止导入模块: {name}")
+    return _b.__import__(name, globals, locals, fromlist, level)
+
 
 class StrategyManager(EngineBase):
     """
@@ -186,6 +212,8 @@ class StrategyManager(EngineBase):
             # 移除可执行任意代码的危险函数
             for _danger in ("eval", "exec", "compile", "open", "input", "breakpoint"):
                 safe_builtins.pop(_danger, None)
+            # 修复 2026-08（B6）：__import__ 白名单化（定义见模块级 _safe_import）
+            safe_builtins["__import__"] = _safe_import
             # v2.6: 使用正确的模块路径作为 __name__，确保策略中
             # logging.getLogger(__name__) 的日志能沿标准层级传播到 root handler（含文件日志）
             safe_builtins["__name__"] = "modules.strategy.strategies.custom"

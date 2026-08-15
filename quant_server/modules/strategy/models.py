@@ -96,7 +96,10 @@ class TradingSignal:
     price_limit_high: Optional[float] = None      # 可接受最高成交价
     max_slippage_pct: float = 0.02                # 最大可接受滑点（默认 2%）
     order_type: str = "limit_range"               # limit / limit_range / market
-    weight: float = 1.0                           # 仓位权重 [0, 1]，策略层→交易层仓位映射
+    weight: Optional[float] = None                # 仓位权重 [0, 1]，策略层→交易层仓位映射
+    # 修复 2026-08（C10）：默认 1.0 会让未显式设权重的裸信号按 100% 资金买入；
+    # 改为 None（select_sizer 对 None 走 quantity/amount 兜底，不再意外满仓）。
+    # 现有 4 个策略的入场信号均显式设置 weight，不受影响。
     target_price: Optional[float] = None          # 目标价格
     stop_loss_price: Optional[float] = None       # 止损价格
     # v6.11: 执行模式

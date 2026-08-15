@@ -417,7 +417,13 @@ class BacktestEngine(EngineBase):
 			commission_rate=commission_rate,
 			slippage=slippage,
 		)
-		broker = self.broker or BacktestBroker(config=broker_config)
+		# 修复 2026-08（C5）：已注入 broker 时任务级佣金/滑点此前被忽略（复用旧配置）
+		if self.broker is not None:
+			self.broker.config.commission_rate = commission_rate
+			self.broker.config.slippage = slippage
+			broker = self.broker
+		else:
+			broker = BacktestBroker(config=broker_config)
 		broker.reset(initial_capital)
 		self._data_cache.clear()  # v2.4: 多次回测间释放积压数据，防止内存泄漏
 
@@ -503,6 +509,7 @@ class BacktestEngine(EngineBase):
 
 			# ---- 4b. 推送 BarData 给策略 → 生成信号 ----
 			day_signals = 0
+			signals = []  # 修复 2026-08（C11）：manager 为 None 时未定义，后续遍历 UnboundLocalError
 			if manager:
 				signals = await manager.handle_bar_batch(trade_date, bars)
 
@@ -737,7 +744,13 @@ class BacktestEngine(EngineBase):
 			commission_rate=commission_rate,
 			slippage=slippage,
 		)
-		broker = self.broker or BacktestBroker(config=broker_config)
+		# 修复 2026-08（C5）：已注入 broker 时任务级佣金/滑点此前被忽略（复用旧配置）
+		if self.broker is not None:
+			self.broker.config.commission_rate = commission_rate
+			self.broker.config.slippage = slippage
+			broker = self.broker
+		else:
+			broker = BacktestBroker(config=broker_config)
 		broker.reset(initial_capital)
 		self._data_cache.clear()
 

@@ -327,9 +327,13 @@ class BacktestBroker(EngineBase):
                 raise ValueError(f"[{ts_code}] 资金不足: 需{estimated:.0f}, 可用{self.cash:.0f}")
         if direction in ("SHORT", "CLOSE_LONG"):
             pos = self.positions.get(ts_code)
-            total = pos.quantity if pos else 0  # 验证用总持仓（T+1 由 match_orders 次日执行时自然满足）
-            if not pos or total < quantity:
-                raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用{total}")
+            # 修复 2026-08（C7）：T+1 可卖校验——用可卖数量而非总持仓，
+            # 此前当日买入部分也可卖出（违反 T+1）
+            if not pos:
+                raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用0")
+            avail = pos.available_quantity if self.config.t_plus_1 else pos.quantity
+            if avail < quantity:
+                raise ValueError(f"[{ts_code}] 可卖数量不足(T+1): 需{quantity}, 可卖{avail}")
 
     async def submit_order(
         self,
@@ -1264,17 +1268,22 @@ class BacktestBroker(EngineBase):
                 )
 
         elif order.direction == "SHORT":
-            if ts_code in self.positions:
-                pos = self.positions[ts_code]
-                pos.quantity -= order.quantity
-                if pos.quantity <= 0:
-                    # 全部平仓 → 删除持仓
-                    del self.positions[ts_code]
-                else:
-                    # available_quantity 不能超过剩余总持仓
-                    pos.available_quantity = min(
-                        pos.available_quantity, pos.quantity
-                    )
+            # 修复 2026-08（C6）：成交路径超卖校验——同日两笔卖出时第二笔此前无校验，
+            # 持仓被减为负后直接删除致现金虚增
+            if ts_code not in self.positions:
+                raise ValueError(f"[{ts_code}] 无持仓可卖，成交拒绝")
+            pos = self.positions[ts_code]
+            if pos.quantity < order.quantity:
+                raise ValueError(f"[{ts_code}] 卖出数量超过持仓: 持仓{pos.quantity}, 卖出{order.quantity}")
+            pos.quantity -= order.quantity
+            if pos.quantity <= 0:
+                # 全部平仓 → 删除持仓
+                del self.positions[ts_code]
+            else:
+                # available_quantity 不能超过剩余总持仓
+                pos.available_quantity = min(
+                    pos.available_quantity, pos.quantity
+                )
 
     def _can_trade(
         self,
