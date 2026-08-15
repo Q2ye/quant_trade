@@ -23,7 +23,6 @@ __author__ = "Quant System Team"
 
 from .engines import (
     BacktestEngine,
-    SimulationEngine,
     OptimizationEngine,
     ReportEngine,
 )
@@ -43,17 +42,8 @@ from .optimizers import (
     BayesianOptimization,
 )
 from .simulators import (
-    MarketSimulator,
     CostSimulator,
     SlippageSimulator,
-)
-from .managers import (
-    TaskManager,
-    ResourceManager,
-)
-from .tasks import (
-    BacktestTask,
-    OptimizationTask,
 )
 from .events import *
 from . import schemas
@@ -154,7 +144,6 @@ async def shutdown(main_engine=None) -> None:
 __all__ = [
     # 引擎
     "BacktestEngine",
-    "SimulationEngine",
     "OptimizationEngine",
     "ReportEngine",
     
@@ -174,17 +163,12 @@ __all__ = [
     "BayesianOptimization",
     
     # 模拟器
-    "MarketSimulator",
     "CostSimulator",
     "SlippageSimulator",
     
     # 管理器
-    "TaskManager",
-    "ResourceManager",
     
     # 任务
-    "BacktestTask",
-    "OptimizationTask",
     
     # 其他
     "schemas",

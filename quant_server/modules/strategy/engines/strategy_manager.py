@@ -1844,7 +1844,6 @@ class StrategyManager(EngineBase):
                 strategy.clear_signals()
 
             # 6. 信号验证
-            valid = [s for s in day_signals if strategy.validate_signal(s) if not isinstance(strategy.validate_signal(s), Exception)]
 
             valid_day = []
             for sig in day_signals:

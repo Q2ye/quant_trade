@@ -201,7 +201,6 @@ async def _initialize_strategy_module(session, main_engine, event_engine, config
 
         # 3. 创建 Eager Manager — StrategyManager（常驻运行，订阅数据事件）
         from modules.strategy.engines.strategy_manager import StrategyManager
-        from modules.strategy.engines.engine_factory import EngineFactory
         from modules.strategy.engines.performance_tracker import PerformanceTrackerEngine
 
         # v2.0: 传入 session_factory 使 StrategyManager 能加载策略详情
@@ -212,7 +211,6 @@ async def _initialize_strategy_module(session, main_engine, event_engine, config
             event_engine=event_engine,
             session_factory=session_factory,
         )
-        engine_factory = EngineFactory(event_engine=event_engine)
 
         # v3.3: 绩效追踪引擎 — 订阅日终事件，自动计算每日绩效
         performance_tracker = PerformanceTrackerEngine(
@@ -224,7 +222,6 @@ async def _initialize_strategy_module(session, main_engine, event_engine, config
         # 注册到主引擎（供其他模块通过 main_engine 获取）
         if main_engine:
             main_engine.register_engine("strategy_manager", strategy_manager)
-            main_engine.register_engine("engine_factory", engine_factory)
             main_engine.register_engine("performance_tracker", performance_tracker)
 
         # 启动 StrategyManager（触发 _on_start → 订阅 DataSyncCompletedEvent 等）

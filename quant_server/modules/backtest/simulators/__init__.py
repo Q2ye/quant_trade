@@ -9,12 +9,10 @@
 3. SlippageSimulator：滑点模拟器，模拟交易滑点
 """
 
-from .market_simulator import MarketSimulator
 from .cost_simulator import CostSimulator
 from .slippage_simulator import SlippageSimulator
 
 __all__ = [
-    "MarketSimulator",
     "CostSimulator",
     "SlippageSimulator"
 ]

@@ -587,35 +587,6 @@ class DataFeedEngine(EngineBase):
 
         return all_signals
 
-    async def get_available_symbols(
-        self,
-        start_date: str,
-        end_date: str,
-        min_days: int = 200,
-    ) -> List[str]:
-        """
-        获取指定日期范围内有足够数据的股票列表
-
-        Args:
-            start_date: 开始日期
-            end_date: 结束日期
-            min_days: 最少需要的交易日数
-
-        Returns:
-            股票代码列表
-        """
-        # 使用 StockBasicRepository 获取活跃股票
-        from shared.database.repositories.market.basic.stock_repo import (
-            StockBasicRepository,
-        )
-        stock_repo = StockBasicRepository(self.db)
-
-        try:
-            active_stocks = await stock_repo.get_active_stocks()
-            return [s.ts_code for s in active_stocks if s.ts_code]
-        except Exception as e:
-            logger.error(f"获取可用股票列表失败: {e}")
-            return []
 
     # ---- 私有方法 ----
 

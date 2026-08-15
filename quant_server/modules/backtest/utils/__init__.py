@@ -9,9 +9,7 @@
 """
 
 from .chart_generator import ChartGenerator
-from .data_loader import DataLoader
 
 __all__ = [
     "ChartGenerator",
-    "DataLoader"
 ]

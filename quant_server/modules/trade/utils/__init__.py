@@ -1,9 +1,3 @@
-# utils/__init__.py
-
-from .cost_calculator import CostCalculator
-from .order_validator import OrderValidator
-
-__all__ = [
-	"CostCalculator",
-	"OrderValidator"
-]
+# -*- coding: utf-8 -*-
+"""交易工具模块（2026-08 D 批清理：OrderValidator 零引用已删）"""
+__all__ = []

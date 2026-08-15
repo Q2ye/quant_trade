@@ -49,7 +49,6 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 	]
 
 	# 美股配对标的（仅纳指一只，保留结构）
-	US_PAIR: List[str] = []
 
 	# 防御资产（仅止损后临时落脚，不参与动量排名）
 	CASH_ANCHOR: str = "511990.SH"   # 货基
@@ -448,16 +447,7 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 	# 动量计算（核心修复+改造）
 	# =========================================================================
 	def _calc_momentum_rankings(self) -> List[Tuple[str, float]]:
-		# 美股双标处理（当前池内仅一只，保留结构）
-		us_code = self._pick_us_etf()
-		effective_pool = []
-		for code in self.ASSET_POOL:
-			if code in self.US_PAIR:
-				if code == us_code:
-					effective_pool.append(code)
-			else:
-				effective_pool.append(code)
-
+		effective_pool = [code for code in self.ASSET_POOL]
 		results = []
 		for code in effective_pool:
 			score = self._calc_log_regression_momentum(code)
@@ -530,19 +520,6 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 			logger.debug(f"动量计算异常 {code}: {e}")
 			return None
 
-	def _pick_us_etf(self) -> Optional[str]:
-		best_code = None
-		best_avg = -1.0
-		for code in self.US_PAIR:
-			df = self._data_cache.get(code)
-			if df is None or len(df) < 20:
-				continue
-			col = "amount" if "amount" in df.columns else "volume"
-			avg_val = float(np.mean(df[col].values.astype(np.float64)[-20:]))
-			if avg_val > best_avg:
-				best_avg = avg_val
-				best_code = code
-		return best_code
 
 	def _get_defense_asset(self, cash_score: float) -> str:
 		defense_score = self._calc_log_regression_momentum(self.DEFENSE_ASSET)

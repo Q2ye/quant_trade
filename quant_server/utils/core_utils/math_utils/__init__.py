@@ -23,16 +23,6 @@ from .financial_calculator import (
 	FinancialCalculator
 )
 
-from .optimization_tools import (
-	portfolio_optimization, markowitz_optimization,
-	black_litterman_optimization,
-	risk_parity_optimization,
-	mean_var_optimization,
-	minimize_risk_given_return,
-	maximize_return_given_risk,
-	efficient_frontier,
-	PortfolioOptimizer
-)
 
 __all__ = [
 	# 统计计算
@@ -54,15 +44,6 @@ __all__ = [
 	'jensen_alpha', 'treynor_ratio',
 	'FinancialCalculator',
 
-	# 优化工具
-	'portfolio_optimization', 'markowitz_optimization',
-	'black_litterman_optimization',
-	'risk_parity_optimization',
-	'mean_var_optimization',
-	'minimize_risk_given_return',
-	'maximize_return_given_risk',
-	'efficient_frontier',
-	'PortfolioOptimizer'
 ]
 
 __version__ = "1.0.0"

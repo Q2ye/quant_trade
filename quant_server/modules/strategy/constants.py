@@ -205,8 +205,6 @@ class TimeFrame(str, Enum):
     MONTHLY = "monthly"
 
 
-# ==================== 订单类型 ====================
-class OrderType(str, Enum):
     """订单类型"""
     # 市价单
     MARKET = "market"

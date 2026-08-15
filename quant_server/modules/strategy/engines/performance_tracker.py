@@ -50,9 +50,7 @@ class PerformanceTrackerEngine(EngineBase):
             from datetime import date as _date
             trade_date = _date.today()
 
-        if hasattr(trade_date, "strftime"):
-            pass
-        elif isinstance(trade_date, str):
+        if isinstance(trade_date, str):
             from datetime import datetime as _dt
             trade_date = _dt.fromisoformat(trade_date).date()
 

@@ -83,7 +83,6 @@ from modules.backtest.engines.backtest_broker import BacktestBroker, BacktestBro
 from modules.backtest.engines.backtest_engine import BacktestEngine, BacktestResult
 from modules.backtest.engines.optimization_engine import OptimizationEngine
 from modules.backtest.engines.report_engine import ReportEngine
-from modules.backtest.engines.simulation_engine import SimulationEngine
 # ---------------------------------------------------------------------------
 # 共享基础设施导入
 # ---------------------------------------------------------------------------
@@ -217,7 +216,6 @@ class BacktestService:
 		self.strategy_manager: Optional[StrategyManager] = None
 		self.broker: Optional[BacktestBroker] = None
 		self.backtest_engine: Optional[BacktestEngine] = None
-		self.simulation_engine: Optional[SimulationEngine] = None
 		self.optimization_engine: Optional[OptimizationEngine] = None
 		self.report_engine: Optional[ReportEngine] = None
 		self.market_service: Optional[MarketDataService] = None
@@ -228,7 +226,6 @@ class BacktestService:
 
 		初始化以下引擎并建立依赖关系：
 		DataFeedEngine → StrategyManager → BacktestBroker → BacktestEngine
-		                          → SimulationEngine（备用）
 		                          → OptimizationEngine
 		                          → ReportEngine
 
@@ -286,9 +283,6 @@ class BacktestService:
 		)
 
 		# ---- 辅助引擎 ----
-		self.simulation_engine = SimulationEngine(
-			EngineConfigEntity(name="SimulationEngine", engine_type="simulation")
-		)
 		self.optimization_engine = OptimizationEngine(
 			EngineConfigEntity(name="OptimizationEngine", engine_type="optimization"),
 			event_engine=self.event_engine,

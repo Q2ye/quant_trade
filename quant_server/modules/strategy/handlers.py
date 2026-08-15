@@ -512,7 +512,6 @@ class StrategyHandler:
 		except Exception as e:
 			logger.error(f"验证策略代码失败: {e}")
 			return {"success": False, "error": str(e)}
-			return {"success": False, "error": str(e)}
 	async def pause_strategy(
 			self,
 			strategy_id: str,
