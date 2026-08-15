@@ -10,7 +10,6 @@ from .backtest.scenario_repo import BacktestScenarioRepository
 from .backtest.task_repo import BacktestTaskRepository
 from .backtest.trade_repo import BacktestTradeRepository
 
-from .management.portfolio_strategy_repo import PortfolioStrategyRepository
 from .management.strategy_parameter_repo import StrategyParameterRepository
 from .management.strategy_repo import StrategyRepository
 from .management.strategy_template_repo import StrategyTemplateRepository
@@ -27,7 +26,6 @@ __all__ = [
 	'BacktestTaskRepository',
 	'BacktestTradeRepository',
 
-	'PortfolioStrategyRepository',
 	'StrategyParameterRepository',
 	'StrategyRepository',
 	'StrategyTemplateRepository',

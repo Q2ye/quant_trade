@@ -32,10 +32,6 @@ from modules.strategy.handlers import (
 	pause_strategy,
 	resume_strategy,
 	check_strategy_module_health,
-	create_portfolio,
-	get_portfolio_detail,
-	get_portfolio_performance,
-	update_portfolio_weights,
 	trigger_strategy,
 	get_builtin_strategies,
 	find_or_create_builtin,
@@ -741,75 +737,6 @@ async def get_strategy_status_api (
 
 
 
-# ==================== 策略组合接口 ====================
-
-@router.post("/portfolio", response_model=StrategyResponse, status_code=201)
-async def create_portfolio_api(
-		request: StrategyCreateRequest,
-		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
-) -> StrategyResponse:
-	"""创建策略组合"""
-	try:
-		result = await create_portfolio(
-			session=db_session,
-			request=request,
-			user_id=current_user.get("id")
-		)
-		return result
-	except Exception as e:
-		logger.error(f"创建组合失败: {'服务器内部错误'}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
-
-
-@router.get("/portfolio/{portfolio_id}", response_model=StrategyResponse)
-async def get_portfolio_detail_api(
-		portfolio_id: str,
-		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
-) -> StrategyResponse:
-	"""获取策略组合详情"""
-	try:
-		result = await get_portfolio_detail(session=db_session, portfolio_id=portfolio_id)
-		return result
-	except Exception as e:
-		logger.error(f"获取组合详情失败: {'服务器内部错误'}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
-
-
-@router.get("/portfolio/{portfolio_id}/performance", response_model=StrategyPerformanceResponse)
-async def get_portfolio_performance_api(
-		portfolio_id: str,
-		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
-) -> StrategyPerformanceResponse:
-	"""获取策略组合绩效"""
-	try:
-		result = await get_portfolio_performance(session=db_session, portfolio_id=portfolio_id)
-		return result
-	except Exception as e:
-		logger.error(f"获取组合绩效失败: {'服务器内部错误'}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
-
-
-@router.put("/portfolio/{portfolio_id}/weights", response_model=StrategyResponse)
-async def update_portfolio_weights_api(
-		portfolio_id: str,
-		request: StrategyUpdateRequest,
-		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
-) -> StrategyResponse:
-	"""更新策略组合权重"""
-	try:
-		result = await update_portfolio_weights(
-			session=db_session,
-			portfolio_id=portfolio_id,
-			request=request,
-		)
-		return result
-	except Exception as e:
-		logger.error(f"更新权重失败: {'服务器内部错误'}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 # 策略代码验证接口

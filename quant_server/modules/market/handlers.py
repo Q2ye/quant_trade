@@ -59,9 +59,9 @@ async def do_industry_trend(session: AsyncSession, days: int = 60) -> dict:
     return await get_industry_trend(session, days)
 
 
-async def do_financial_compare(session: AsyncSession, codes: list, metrics=None, end_date=None) -> list:
+async def do_financial_compare(session: AsyncSession, codes: list, end_date=None) -> list:
     from modules.market.services.financial_service import get_indicators_compare
-    return await get_indicators_compare(session, codes, metrics, end_date)
+    return await get_indicators_compare(session, codes, end_date)
 
 
 async def do_financial_statements(session: AsyncSession, code: str, stmt_type: str, limit: int = 20) -> list:

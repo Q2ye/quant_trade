@@ -134,7 +134,7 @@ async def industry_detail_api(industry_code: str, current_user=Depends(get_curre
 async def financial_compare_api(body: Dict = Body(...), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
     try:
         codes = body.get("codes", [])
-        r = await do_financial_compare(db_session, codes, body.get("metrics"), body.get("end_date"))
+        r = await do_financial_compare(db_session, codes, body.get("end_date"))
         return {"success": True, "data": r}
     except Exception as e:
         raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")

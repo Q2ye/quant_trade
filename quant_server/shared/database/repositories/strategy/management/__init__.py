@@ -14,7 +14,6 @@ from .strategy_repo import StrategyRepository
 from .strategy_version_repo import StrategyVersionRepository
 from .strategy_template_repo import StrategyTemplateRepository
 from .strategy_parameter_repo import StrategyParameterRepository
-from .portfolio_strategy_repo import PortfolioStrategyRepository
 from .strategy_run_repo import StrategyRunRepository
 
 # 公共导出列表
@@ -23,6 +22,5 @@ __all__ = [
     'StrategyVersionRepository',
     'StrategyTemplateRepository',
     'StrategyParameterRepository',
-    'PortfolioStrategyRepository',
     'StrategyRunRepository',
 ]

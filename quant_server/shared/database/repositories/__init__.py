@@ -547,7 +547,6 @@ try:
         BacktestScenarioRepository,
         BacktestTaskRepository,
         BacktestTradeRepository,
-        PortfolioStrategyRepository,
         StrategyParameterRepository,
         StrategyRepository,
         StrategyTemplateRepository,
@@ -563,7 +562,6 @@ try:
         'backtest_scenario_repo': BacktestScenarioRepository,
         'backtest_task_repo': BacktestTaskRepository,
         'backtest_trade_repo': BacktestTradeRepository,
-        'portfolio_strategy_repo': PortfolioStrategyRepository,
         'strategy_parameter_repo': StrategyParameterRepository,
         'strategy_repo': StrategyRepository,
         'strategy_template_repo': StrategyTemplateRepository,
@@ -578,7 +576,6 @@ try:
         'BacktestScenarioRepository',
         'BacktestTaskRepository',
         'BacktestTradeRepository',
-        'PortfolioStrategyRepository',
         'StrategyParameterRepository',
         'StrategyRepository',
         'StrategyTemplateRepository',
@@ -596,7 +593,6 @@ except ImportError as e:
     BacktestScenarioRepository = None
     BacktestTaskRepository = None
     BacktestTradeRepository = None
-    PortfolioStrategyRepository = None
     StrategyParameterRepository = None
     StrategyRepository = None
     StrategyTemplateRepository = None

@@ -238,11 +238,9 @@ class StockLowHighStrategy(BaseStrategy):
         self._bar_dates: Dict[str, str] = {}       # {ts_code: 最后一根实时 bar 的日期}（新鲜度守卫）
         self._st_stocks: Set[str] = set()         # ST 股票代码集合
         self._listing_dates: Dict[str, str] = {}   # {ts_code: 上市日期}
-        self._stock_pool: List[str] = []           # 当前 A 股代码列表
         self._bar_count: int = 0
         self._last_rebalance_date: str = ""
         self._last_trade_date: str = ""
-        self._first_screen_done: bool = False
 
         # 手动持仓跟踪（回测引擎不将 Broker 持仓同步回策略，必须自己管理）
         # {ts_code: {"entry_price": float, "weight": float, "shares": int, "locked": bool}}
@@ -424,7 +422,6 @@ class StockLowHighStrategy(BaseStrategy):
         self._etf_width_cache.clear()
         self._bar_count = 0
         self._last_rebalance_date = ""
-        self._first_screen_done = False
         self._st_stocks = set()
         # v6.12: 候选池持久化 — 实盘重启后从 signals 表恢复 pending_confirm 候选
         self._buy_pending.clear()
@@ -608,7 +605,6 @@ class StockLowHighStrategy(BaseStrategy):
             if self._bar_count % freq == 0 and len(self._data_cache) >= 10:
                 signals = self._run_rebalance()
                 self._last_rebalance_date = td
-                self._first_screen_done = True
 
         except Exception as e:
             logger.error(f"低吸轮动 on_bar_batch_end 异常: {trade_date}: {e}", exc_info=True)
@@ -1722,12 +1718,6 @@ class StockLowHighStrategy(BaseStrategy):
             return False
         return True
 
-    @classmethod
-    def _is_st_by_prefix(cls, code: str) -> bool:
-        """通过前缀判断 ST"""
-        stock_code = code.split(".")[0]
-        st_prefixes = ("ST", "*ST", "SST", "S*ST")
-        return any(stock_code.startswith(p) for p in st_prefixes)
 
     def _is_trading_day(self, d: Any) -> bool:
         """
@@ -1809,10 +1799,6 @@ class StockLowHighStrategy(BaseStrategy):
     #   1 信号 → 边缘情况，放行但 verbose 日志记录
     #   2+ 信号 → 拉高出货确认，拦截
     #
-    # 与旧版 _count_recent_limit_ups 的区别:
-    #   旧版: count(涨幅>=9.5%) >= 2 → 拦截（单维度，一刀切）
-    #   新版: 4 维度 × 独立阈值 → 需多数信号交叉确认才拦截
-    #   效果: 不会误杀"2 个涨停 + 健康回调"的强势股，但精准拦截出货股
     # =============================================================================
 
     def _detect_pump_and_dump(self, code: str):

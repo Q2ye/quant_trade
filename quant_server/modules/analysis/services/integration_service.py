@@ -124,7 +124,7 @@ class AnalysisIntegrationService:
 
             # 发布分析完成事件
             if self.event_engine:
-                self.event_engine.put(PerformanceAnalysisCompletedEvent(
+                await self.event_engine.put(PerformanceAnalysisCompletedEvent(
                     strategy_id=strategy_id,
                     start_date=start_date,
                     end_date=end_date,
@@ -202,7 +202,7 @@ class AnalysisIntegrationService:
 
             # 发布风险分析完成事件
             if self.event_engine:
-                self.event_engine.put(RiskAnalysisCompletedEvent(
+                await self.event_engine.put(RiskAnalysisCompletedEvent(
                     strategy_id=strategy_id,
                     start_date=start_date,
                     end_date=end_date,

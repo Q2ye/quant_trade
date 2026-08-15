@@ -540,46 +540,6 @@ class StrategyHandler:
 		except Exception as e:
 			logger.error(f"恢复策略失败: {e}")
 			return {"success": False, "error": str(e)}
-	async def create_portfolio_handler(self, request, user_id: str) -> Dict[str, Any]:
-		try:
-			from modules.strategy.services.portfolio_service import PortfolioService
-			svc = PortfolioService(self.db)
-			return await svc.create_portfolio(
-				name=request.name,
-				description=getattr(request, 'description', '') or '',
-				strategy_weights=request.strategy_weights,
-				user_id=user_id,
-			)
-		except Exception as e:
-			logger.error(f"创建策略组合失败: {e}")
-			return {"success": False, "error": str(e)}
-	async def get_portfolio_detail_handler(self, portfolio_id: str) -> Dict[str, Any]:
-		try:
-			from modules.strategy.services.portfolio_service import PortfolioService
-			svc = PortfolioService(self.db)
-			return await svc.get_portfolio_detail(portfolio_id=portfolio_id)
-		except Exception as e:
-			logger.error(f"获取组合详情失败: {e}")
-			return {"success": False, "error": str(e)}
-	async def get_portfolio_performance_handler(self, portfolio_id: str) -> Dict[str, Any]:
-		try:
-			from modules.strategy.services.portfolio_service import PortfolioService
-			svc = PortfolioService(self.db)
-			return await svc.get_portfolio_performance(portfolio_id=portfolio_id)
-		except Exception as e:
-			logger.error(f"获取组合绩效失败: {e}")
-			return {"success": False, "error": str(e)}
-	async def update_portfolio_weights_handler(self, portfolio_id: str, request) -> Dict[str, Any]:
-		try:
-			from modules.strategy.services.portfolio_service import PortfolioService
-			svc = PortfolioService(self.db)
-			return await svc.update_portfolio_weights(
-				portfolio_id=portfolio_id,
-				strategy_weights=request.strategy_weights,
-			)
-		except Exception as e:
-			logger.error(f"更新组合权重失败: {e}")
-			return {"success": False, "error": str(e)}
 	async def _fetch_real_performance(self, strategy_id: str) -> Dict[str, Any]:
 		"""从回测结果表查询最近完成的绩效数据"""
 		try:
@@ -666,25 +626,6 @@ async def create_strategy_from_template(session: AsyncSession, template_id: str,
 	return await handler.create_strategy_from_template(template_id, request, user_id)
 
 
-
-async def create_portfolio(session: AsyncSession, request, user_id: str):
-	handler = StrategyHandler(session)
-	return await handler.create_portfolio_handler(request, user_id)
-
-
-async def get_portfolio_detail(session: AsyncSession, portfolio_id: str):
-	handler = StrategyHandler(session)
-	return await handler.get_portfolio_detail_handler(portfolio_id)
-
-
-async def get_portfolio_performance(session: AsyncSession, portfolio_id: str):
-	handler = StrategyHandler(session)
-	return await handler.get_portfolio_performance_handler(portfolio_id)
-
-
-async def update_portfolio_weights(session: AsyncSession, portfolio_id: str, request):
-	handler = StrategyHandler(session)
-	return await handler.update_portfolio_weights_handler(portfolio_id, request)
 
 
 

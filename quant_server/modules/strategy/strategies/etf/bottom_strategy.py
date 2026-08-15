@@ -386,9 +386,17 @@ class LightGBMBottomStrategy(BaseStrategy):
             if nmask.any(): features[0, nmask] = 0.0
             if self.scaler_mu and self.scaler_sigma:
                 features[0] = (features[0] - np.array(self.scaler_mu)) / (np.array(self.scaler_sigma) + 1e-8)
+            # 2026-08 修复：旧模型工件按 DataFrame（带特征名）拟合，numpy 输入触发
+            # "X does not have valid feature names" 告警且无法按名对齐列序——
+            # 用拟合时的特征名重建 DataFrame，兼容新旧两种工件。
+            proba_input = features
+            _fin = getattr(self.model, "feature_names_in_", None)
+            if _fin is not None:
+                import pandas as pd
+                proba_input = pd.DataFrame(features, columns=_fin)
             if hasattr(self.model, 'predict_proba'):
-                return float(self.model.predict_proba(features)[0, 1])
-            return float(self.model.predict(features)[0])
+                return float(self.model.predict_proba(proba_input)[0, 1])
+            return float(self.model.predict(proba_input)[0])
         except Exception as e:
             logger.error("[%s] 预测失败: %s", self.name, str(e)[:200])
             return None
@@ -662,10 +670,6 @@ class LightGBMBottomStrategy(BaseStrategy):
             logger.error("[%s] on_bar error: %s", self.name, str(e)[:100])
         return signals
 
-    def _on_bar_trace(self, ts_code: str, signals: list) -> list:
-        if signals:
-            logger.info('[BAR/OUT] %s → %d 个信号', ts_code, len(signals))
-        return signals
 
     def _make_entry(self, ts_code, bar, proba, weight, regime, parent_id=None):
         self._position_entry[ts_code] = (bar.trade_date, bar.close)

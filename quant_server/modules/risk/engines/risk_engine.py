@@ -557,7 +557,7 @@ class RiskEngine(EngineBase):
                     self._risk_events.append(violation)
                     if self.event_engine:
                         from modules.risk.events.risk_events import RiskViolationEvent
-                        self.event_engine.put(RiskViolationEvent(
+                        await self.event_engine.put(RiskViolationEvent(
                             rule_name=rule.get_name(),
                             message=message,
                             signal_data=signal_data,
@@ -692,7 +692,7 @@ class RiskEngine(EngineBase):
         # 发布指标更新事件
         if self.event_engine:
             from modules.risk.events.risk_events import RiskMetricsUpdatedEvent
-            self.event_engine.put(RiskMetricsUpdatedEvent(metrics=metrics))
+            await self.event_engine.put(RiskMetricsUpdatedEvent(metrics=metrics))
 
         # 发布阈值突破事件
         for breach in evaluation.get("breaches", []):
@@ -701,7 +701,7 @@ class RiskEngine(EngineBase):
                     RiskThresholdBreachedEvent,
                     RiskAlertTriggeredEvent,
                 )
-                self.event_engine.put(RiskThresholdBreachedEvent(
+                await self.event_engine.put(RiskThresholdBreachedEvent(
                     metric_name=breach.get("metric", ""),
                     current_value=breach.get("value", 0),
                     warning_threshold=breach.get("warning_threshold", 0),
@@ -710,7 +710,7 @@ class RiskEngine(EngineBase):
                 ))
 
                 if breach.get("level") == "critical":
-                    self.event_engine.put(RiskAlertTriggeredEvent(
+                    await self.event_engine.put(RiskAlertTriggeredEvent(
                         risk_type=breach.get("metric", ""),
                         message=(
                             f"风险阈值严重突破: {breach.get('metric')} = "

@@ -244,42 +244,6 @@ export default {
       .then((data: StrategyDetailResponse) => data.data);
   },
 
-  // ---- 策略组合 API ----
-
-  async createPortfolio(data: {
-    name: string; description: string; strategy_weights: Record<string, number>;
-  }): Promise<any> {
-    return request
-      .post("/quantTrade/strategy/portfolio", data)
-      .then(handleResponse)
-      .then((res: any) => res.data);
-  },
-
-  async getPortfolio(portfolioId: string): Promise<any> {
-    return request
-      .get(`/quantTrade/strategy/portfolio/${portfolioId}`)
-      .then(handleResponse)
-      .then((res: any) => res.data);
-  },
-
-  async getPortfolioPerformance(portfolioId: string): Promise<any> {
-    return request
-      .get(`/quantTrade/strategy/portfolio/${portfolioId}/performance`)
-      .then(handleResponse)
-      .then((res: any) => res.data);
-  },
-
-  async updatePortfolioWeights(
-    portfolioId: string,
-    strategyWeights: Record<string, number>,
-  ): Promise<any> {
-    return request
-      .put(`/quantTrade/strategy/portfolio/${portfolioId}/weights`, {
-        strategy_weights: strategyWeights,
-      })
-      .then(handleResponse)
-      .then((res: any) => res.data);
-  },
 
   // --- 信号确认 ---
 

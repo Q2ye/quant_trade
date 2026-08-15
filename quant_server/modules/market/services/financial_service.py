@@ -12,7 +12,7 @@ async def _all(session: AsyncSession, sql: str, params: dict) -> list:
     return [dict(row._mapping) for row in r.fetchall()]
 
 
-async def get_indicators_compare(session: AsyncSession, codes: List[str], metrics=None, end_date=None) -> List[Dict]:
+async def get_indicators_compare(session: AsyncSession, codes: List[str], end_date=None) -> List[Dict]:
     if not codes: return []
     in_codes = ",".join(f":c{i}" for i in range(len(codes)))
     params = {f"c{i}": c for i, c in enumerate(codes)}

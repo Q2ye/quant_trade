@@ -6,12 +6,10 @@
 
 from .strategy_service import StrategyService
 from .execution_service import ExecutionService
-from .portfolio_service import PortfolioService
 from .template_service import TemplateService
 
 __all__ = [
     "StrategyService",
     "ExecutionService",
-    "PortfolioService",
     "TemplateService",
 ]

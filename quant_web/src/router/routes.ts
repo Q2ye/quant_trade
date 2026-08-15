@@ -250,10 +250,6 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "strategies", layout: "main", title: "模型训练" },
   },
   {
-    path: "/strategies/portfolio",
-    redirect: "/strategies",
-  },
-  {
     path: "/strategies/risk/:id?",
     name: "StrategyRisk",
     component: () => import("@/views/StrategyCenter/Build/RiskManagement.vue"),
