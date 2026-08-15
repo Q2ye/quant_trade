@@ -1293,8 +1293,8 @@ class BacktestEngine(EngineBase):
 			bm_annual = (1 + bm_total) ** (252 / trading_days) - 1 if bm_total > -1 else -1.0
 
 			# ---- Alpha = strategy_annual - beta × benchmark_annual ----
-			rf_daily = RISK_FREE_RATE / 252
-			alpha = (annual_return - rf_daily) - beta * (bm_annual - rf_daily)
+			# Alpha 用年化 rf（CAPM 完整式），sharpe 的 rf_daily 在各自作用域
+			alpha = (annual_return - RISK_FREE_RATE) - beta * (bm_annual - RISK_FREE_RATE)
 
 			# ---- 超额收益日序列 → 跟踪误差 / 信息比率 ----
 			excess = s_arr - b_arr

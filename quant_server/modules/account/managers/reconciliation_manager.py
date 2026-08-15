@@ -19,7 +19,6 @@ from shared.database.repositories.analysis.performance.analysis_report_repo impo
 from shared.database.repositories.trading.order.order_repo import OrderRepository
 from shared.database.repositories.trading.order.trade_repo import TradeRepository
 from shared.database.repositories.trading.position.position_repo import PositionRepository
-from shared.messaging.producer import MessageProducer
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class ReconciliationManager:
 			self,
 			db: AsyncSession,
 			cache: Optional[CacheBase] = None,
-			message_producer: Optional[MessageProducer] = None
+			message_producer=None
 	):
 		self.db = db
 		self.cache = cache

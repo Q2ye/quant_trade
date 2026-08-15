@@ -465,23 +465,6 @@ class MainEngine(EngineBase):
             # 注册系统事件处理器
             # 注意：这里我们直接调用event_engine的方法，而不是EngineBase的方法
             event_engine = cast(EventEngine, self.event_engine)
-            system_health_handler = event_engine.register(
-                "system_health_check",
-                self._handle_system_health_check
-            )
-            engine_status_handler = event_engine.register(
-                "engine_status_changed",
-                self._handle_engine_status_changed
-            )
-            system_alert_handler = event_engine.register(
-                "system_alert",
-                self._handle_system_alert
-            )
-
-            # 保存处理器ID
-            self._event_handlers["system_health_check"] = [system_health_handler]
-            self._event_handlers["engine_status_changed"] = [engine_status_handler]
-            self._event_handlers["system_alert"] = [system_alert_handler]
 
             logger.debug("主引擎事件处理器注册完成")
 
@@ -716,44 +699,6 @@ class MainEngine(EngineBase):
             except Exception as e:
                 logger.error(f"发布系统事件失败: {e}")
 
-    async def _handle_system_health_check(self) -> None:
-        """处理系统健康检查事件
-
-        Args:
-        """
-        # 更新系统状态
-        await self._update_system_status()
-
-        # 发布系统状态事件
-        await self._publish_system_event(EventType.SYSTEM_STARTED, self._system_status)
-
-    async def _handle_engine_status_changed(self, event: EngineLifecycleEvent) -> None:
-        """处理引擎状态变化事件
-
-        Args:
-            event: 事件对象
-        """
-        # 更新系统状态中的引擎信息
-        await self._update_system_status()
-
-        # 通过WebSocket广播引擎状态变化
-        if self._web_socket_manager:
-            await self._web_socket_manager.broadcast_event(event)
-
-    async def _handle_system_alert(self, event: EngineLifecycleEvent) -> None:
-        """处理系统警报事件
-
-        Args:
-            event: 事件对象
-        """
-        alert_data = event.data
-
-        # 记录警报
-        logger.warning(f"系统警报: {alert_data.get('message', 'Unknown alert')}")
-
-        # 通过WebSocket广播警报
-        if self._web_socket_manager:
-            await self._web_socket_manager.broadcast_event(event)
 
     async def _update_system_status(self) -> None:
         """更新系统状态"""
@@ -943,115 +888,6 @@ class MainEngine(EngineBase):
                 "data": data
             })
 
-    async def execute_command(self,
-                             command: str,
-                             params: Dict[str, Any]) -> Dict[str, Any]:
-        """执行命令
-
-        Args:
-            command: 命令名称
-            params: 命令参数
-
-        Returns:
-            Dict[str, Any]: 命令执行结果
-        """
-        logger.info(f"执行命令: {command}, 参数: {params}")
-
-        try:
-            if command == "system_status":
-                return await self.get_system_status()
-
-            elif command == "engine_status":
-                engine_name = params.get("engine_name")
-                if engine_name:
-                    engine = await self.get_engine(engine_name)
-                    if engine:
-                        return engine.get_status_info()
-                    else:
-                        return {"error": f"引擎不存在: {engine_name}"}
-                else:
-                    if self._engine_factory:
-                        return await self._engine_factory.get_all_engine_status()
-                    else:
-                        return {"error": "引擎工厂未初始化"}
-
-            elif command == "start_engine":
-                engine_type_str = params.get("engine_type")
-                if not engine_type_str:
-                    return {"error": "缺少参数: engine_type"}
-
-                try:
-                    engine_type = EngineType(engine_type_str)
-
-                    if self._engine_factory:
-                        engine_config = params.get("config", {})
-                        instance_name = params.get("instance_name")
-
-                        engine = await self._engine_factory.create_engine(
-                            engine_type,
-                            config=engine_config,
-                            instance_name=instance_name
-                        )
-
-                        return {
-                            "success": True,
-                            "engine_name": engine.config.name,
-                            "status": engine.record.status.value
-                        }
-                    else:
-                        return {"error": "引擎工厂未初始化"}
-
-                except ValueError:
-                    return {"error": f"无效的引擎类型: {engine_type_str}"}
-
-            elif command == "stop_engine":
-                engine_name = params.get("engine_name")
-                if not engine_name:
-                    return {"error": "缺少参数: engine_name"}
-
-                force = params.get("force", False)
-
-                if self._engine_factory:
-                    success = await self._engine_factory.destroy_engine(engine_name, force)
-
-                    return {
-                        "success": success,
-                        "engine_name": engine_name
-                    }
-                else:
-                    return {"error": "引擎工厂未初始化"}
-
-            elif command == "restart_engine":
-                engine_name = params.get("engine_name")
-                if not engine_name:
-                    return {"error": "缺少参数: engine_name"}
-
-                if self._engine_factory:
-                    success = await self._engine_factory.restart_engine(engine_name)
-
-                    return {
-                        "success": success,
-                        "engine_name": engine_name
-                    }
-                else:
-                    return {"error": "引擎工厂未初始化"}
-
-            elif command == "system_health_check":
-                # 触发系统健康检查
-                await self._update_system_status()
-
-                return {
-                    "success": True,
-                    "system_health": self._system_status.get("system_health", "unknown"),
-                    "timestamp": datetime.now().isoformat()
-                }
-
-            else:
-                return {"error": f"未知命令: {command}"}
-
-        except Exception as e:
-            logger.error(f"执行命令失败: {command}, 错误: {e}")
-            return {"error": f"命令执行失败: {str(e)}"}
 
     def get_status_info(self) -> Dict[str, Any]:
         """获取状态信息（扩展基类方法）
@@ -1073,51 +909,3 @@ class MainEngine(EngineBase):
         })
 
         return base_info
-
-
-async def get_main_engine() -> Optional['MainEngine']:
-    """获取全局主引擎实例
-
-    Returns:
-        MainEngine: 主引擎实例
-    """
-    from ..utils.engine_factory import get_engine_factory
-    factory = await get_engine_factory()
-    if factory:
-        engine = await factory.get_engine("main_engine")
-        if isinstance(engine, MainEngine):
-            return engine
-    return None
-
-
-async def initialize_system(config: Dict[str, Any] = None) -> MainEngine:
-    """初始化系统
-
-    Args:
-        config: 系统配置
-
-    Returns:
-        MainEngine: 主引擎实例
-    """
-    # 创建引擎配置实体
-    engine_config = EngineConfigEntity(
-        name="main_engine",
-        engine_type=EngineType.MAIN,
-        auto_start=True,
-        config=config or {}
-    )
-
-    # 获取主引擎实例
-    main_engine = MainEngine(engine_config)
-
-    # 启动主引擎
-    await main_engine.start()
-
-    return main_engine
-
-
-async def shutdown_system() -> None:
-    """关闭系统"""
-    main_engine = await get_main_engine()
-    if main_engine:
-        await main_engine.stop()

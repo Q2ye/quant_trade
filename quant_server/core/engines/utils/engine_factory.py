@@ -127,14 +127,6 @@ def _prepare_engine_config(descriptor: EngineDescriptor,
     return merged_config
 
 
-async def _do_pause() -> bool:
-    """暂停引擎"""
-    return True
-
-
-async def _do_resume() -> bool:
-    """恢复引擎"""
-    return True
 
 
 class EngineFactory:

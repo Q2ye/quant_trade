@@ -141,17 +141,6 @@ class EventStatistics:
 	handler_counts: Dict[str, int] = field(default_factory=dict)  # 处理器统计
 	last_reset_time: datetime = field(default_factory=datetime.now)  # 上次重置时间
 
-	def reset (self) -> None:
-		"""重置统计"""
-		self.total_events = 0
-		self.processed_events = 0
-		self.failed_events = 0
-		self.avg_processing_time_ms = 0.0
-		self.max_queue_size = 0
-		self.current_queue_size = 0
-		self.event_type_counts.clear()
-		self.handler_counts.clear()
-		self.last_reset_time = datetime.now()
 
 
 class EventEngine(EngineBase):
@@ -668,70 +657,6 @@ class EventEngine(EngineBase):
 
 		return True
 
-	def register_general (self,
-	                      handler: Callable,
-	                      priority: int = PriorityLevel.NORMAL.value,
-	                      handler_id: Optional[str] = None) -> str:
-		"""注册通用处理器
-
-		Args:
-			handler: 处理器函数
-			priority: 处理器优先级
-			handler_id: 处理器ID（可选）
-
-		Returns:
-			str: 处理器ID
-		"""
-		if not handler_id:
-			handler_id = f"general_{uuid.uuid4().hex[:8]}"
-
-		# 检查是否为异步函数
-		is_async = asyncio.iscoroutinefunction(handler)
-
-		# 创建处理器包装
-		handler_wrapper = EventHandler(
-			handler_id=handler_id,
-			event_type="*",  # 通用处理器
-			handler=handler,
-			is_async=is_async,
-			priority=priority
-		)
-
-		async def _register () -> None:
-			async with self._handler_lock:
-				self._general_handlers.append(handler_wrapper)
-
-		# 异步注册
-		asyncio.create_task(_register())
-
-		logger.debug(f"注册通用处理器: {handler_id} (priority={priority})")
-
-		return handler_id
-
-	def unregister_general (self, handler_id: str) -> bool:
-		"""注销通用处理器
-
-		Args:
-			handler_id: 处理器ID
-
-		Returns:
-			bool: 注销是否成功
-		"""
-
-		async def _unregister () -> bool:
-			async with self._handler_lock:
-				for i, handler in enumerate(self._general_handlers):
-					if handler.handler_id == handler_id:
-						self._general_handlers.pop(i)
-						logger.debug(f"注销通用处理器: {handler_id}")
-						return True
-
-			return False
-
-		# 异步注销
-		asyncio.create_task(_unregister())
-
-		return True
 
 	def _create_timer (self,
 	                   interval: float,
@@ -848,76 +773,6 @@ class EventEngine(EngineBase):
 			)
 		}
 
-	def reset_statistics (self) -> None:
-		"""重置统计"""
-		self._event_statistics.reset()
-		logger.debug("事件统计已重置")
-
-	def get_event_history (self, limit: int = 100) -> List[Any]:
-		"""获取事件历史
-
-		Args:
-			limit: 限制返回数量
-
-		Returns:
-			List[Any]: 事件历史列表
-		"""
-		return list(self._event_history)[-limit:] if self._event_history else []
-
-	def get_handler_info (self, event_type: Optional[str] = None) -> Dict[str, Any]:
-		"""获取处理器信息
-
-		Args:
-			event_type: 事件类型（可选）
-
-		Returns:
-			Dict[str, Any]: 处理器信息
-		"""
-		handlers_info = []
-
-		if event_type:
-			# 获取特定事件类型的处理器
-			handlers = self._event_handlers.get(event_type, [])
-			for handler in handlers:
-				handlers_info.append({
-					"handler_id": handler.handler_id,
-					"event_type": handler.event_type,
-					"priority": handler.priority,
-					"enabled": handler.enabled,
-					"call_count": handler.call_count,
-					"last_called": handler.last_called.isoformat() if handler.last_called else None,
-					"created_at": handler.created_at.isoformat()
-				})
-		else:
-			# 获取所有处理器
-			for event_type_key, handlers in self._event_handlers.items():
-				for handler in handlers:
-					handlers_info.append({
-						"handler_id": handler.handler_id,
-						"event_type": handler.event_type,
-						"priority": handler.priority,
-						"enabled": handler.enabled,
-						"call_count": handler.call_count,
-						"last_called": handler.last_called.isoformat() if handler.last_called else None,
-						"created_at": handler.created_at.isoformat()
-					})
-
-			# 添加通用处理器
-			for handler in self._general_handlers:
-				handlers_info.append({
-					"handler_id": handler.handler_id,
-					"event_type": handler.event_type,
-					"priority": handler.priority,
-					"enabled": handler.enabled,
-					"call_count": handler.call_count,
-					"last_called": handler.last_called.isoformat() if handler.last_called else None,
-					"created_at": handler.created_at.isoformat()
-				})
-
-		return {
-			"handler_count": len(handlers_info),
-			"handlers": handlers_info
-		}
 
 	def get_status_info (self) -> Dict[str, Any]:
 		"""获取状态信息（扩展基类方法）

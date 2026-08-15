@@ -88,7 +88,6 @@ from modules.data.services import (
 	DataQualityService,
 	FactorResearchService,
 	MarketDataService,
-	DataCleanService
 )
 
 
@@ -311,7 +310,7 @@ __all__ = [
 	"check_data_module_health",
 
 	# Services
-	"DataSyncService", "DataQualityService", "FactorResearchService", "MarketDataService", "DataCleanService",
+"DataSyncService", "DataQualityService", "FactorResearchService", "MarketDataService",
 
 	# 引擎访问器
 	"get_sync_engine",

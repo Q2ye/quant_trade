@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """涨跌停分析服务"""
 import logging
 from datetime import date
@@ -137,28 +137,3 @@ async def get_limit_stocks(
         "up_stocks": up_stocks,
         "down_stocks": down_stocks,
     }
-
-
-async def _count_consecutive(
-    session: AsyncSession, ts_code: str, from_date: str, direction: str,
-) -> int:
-    """统计连续涨停/跌停天数"""
-    op = ">=" if direction == "up" else "<="
-    rows = await _all(session, f"""
-        SELECT d.trade_date, d.close, dl.up_limit, dl.down_limit
-        FROM stock_daily d
-        JOIN stock_daily_limit dl ON d.ts_code = dl.ts_code AND d.trade_date = dl.trade_date
-        WHERE d.ts_code = :ts AND d.trade_date <= :from_date
-        ORDER BY d.trade_date DESC
-        LIMIT 20
-    """, {"ts": ts_code, "from_date": from_date})
-
-    count = 0
-    for r in rows:
-        if direction == "up" and r["close"] >= (r["up_limit"] or 0):
-            count += 1
-        elif direction == "down" and r["close"] <= (r["down_limit"] or 999999):
-            count += 1
-        else:
-            break
-    return count

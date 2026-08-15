@@ -169,7 +169,6 @@ async def classify_and_populate():
         slope20 = _calc_slope(ma20, 5)
         vol = _calc_volatility(closes, 20)
         mom = _calc_momentum(closes, 20)
-        vol_ratio = _calc_volume_ratio(closes, 20)
 
         # 4. 加载成交量用于 volume_ratio
         vol_rows = await conn.fetch(

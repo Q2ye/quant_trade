@@ -1,4 +1,4 @@
-"""
+﻿"""
 数据模块事件定义
 负责数据同步、质量检查、因子研究、市场数据处理、数据清洗等相关事件
 
@@ -56,12 +56,6 @@ from .market_events import (
     MarketDataValidatedEvent,
 )
 
-from .factor_calculation_events import (
-    FactorMetadata,
-    FactorCalculationStartedEvent,
-    FactorCalculationProgressEvent,
-    FactorCalculationCompletedEvent,
-)
 
 
 # 导入清洗事件类（新增）
@@ -108,7 +102,6 @@ __all__ = [
 
     # 数据模型
     "MarketDataMetadata",
-    "FactorMetadata",
 
     # 同步事件
     "DataSyncStartedEvent",
@@ -133,9 +126,6 @@ __all__ = [
     "MarketDataValidatedEvent",
 
     # 因子计算事件
-    "FactorCalculationStartedEvent",
-    "FactorCalculationProgressEvent",
-    "FactorCalculationCompletedEvent",
 
     # 清洗事件（新增）
     "DataCleanStartedEvent",
@@ -181,11 +171,6 @@ EVENT_CATEGORIES = {
         "MarketDataProcessedEvent",
         "MarketDataValidatedEvent",
     ],
-    "factor": [
-        "FactorCalculationStartedEvent",
-        "FactorCalculationProgressEvent",
-        "FactorCalculationCompletedEvent",
-    ],
     "clean": [  # 新增清洗事件分类
         "DataCleanStartedEvent",
         "DataCleanProgressEvent",
@@ -194,12 +179,6 @@ EVENT_CATEGORIES = {
         "DataCleanAppliedEvent",
         "DataCleanValidatedEvent",
         "DataCleanEvent",
-    ],
-    "request": [  # 新增请求事件分类
-        "DataSyncRequestEvent",
-        "DataCleanRequestEvent",
-        "DataQualityCheckRequestEvent",
-        "DataResearchRequestEvent",
     ],
 }
 

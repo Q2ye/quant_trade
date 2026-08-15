@@ -13,14 +13,12 @@ from modules.data.services.sync_service import DataSyncService
 from modules.data.services.quality_service import DataQualityService
 from modules.data.services.research_service import FactorResearchService
 from modules.data.services.market_service import MarketDataService
-from modules.data.services.clean_service import DataCleanService
 
 __all__ = [
     "DataSyncService",      # 数据同步服务
     "DataQualityService",   # 数据质量服务
     "FactorResearchService", # 因子研究服务
     "MarketDataService",    # 市场数据服务
-    "DataCleanService",     # 数据清洗服务
 ]
 
 __version__ = "1.0.0"

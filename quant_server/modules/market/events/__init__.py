@@ -1,13 +1,2 @@
-from .market_events import (
-    MarketOpenedEvent,
-    MarketClosedEvent,
-    IndexUpdatedEvent,
-    MarketStatusChangedEvent,
-)
-
-__all__ = [
-    "MarketOpenedEvent",
-    "MarketClosedEvent",
-    "IndexUpdatedEvent",
-    "MarketStatusChangedEvent",
-]
+# 2026-08 D 批清理：market_events 4 事件类无发布者/订阅者，已删除。
+__all__ = []

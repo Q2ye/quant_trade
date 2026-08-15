@@ -786,20 +786,6 @@ class ResourceType(str, Enum):
         return display_map.get(resource_type, resource_type.value)
 
 
-# ==================== 事件优先级枚举 ====================
-
-class EventPriority(str, Enum):
-    """
-    事件优先级枚举
-
-    定义事件的优先级，用于事件队列处理顺序。
-    """
-
-    HIGHEST = "highest"              # 最高优先级
-    HIGH = "high"                    # 高优先级
-    NORMAL = "normal"                # 正常优先级
-    LOW = "low"                      # 低优先级
-    LOWEST = "lowest"                # 最低优先级
 
 
 class EventType(str, Enum):
@@ -813,45 +799,6 @@ class EventType(str, Enum):
     # 系统事件
     SYSTEM_STARTED = "system_started"
     SYSTEM_STOPPED = "system_stopped"
-    SYSTEM_ERROR = "system_error"
-
-    # 引擎事件
-    ENGINE_INITIALIZED = "engine_initialized"
-    ENGINE_STARTED = "engine_started"
-    ENGINE_STOPPED = "engine_stopped"
-    ENGINE_ERROR = "engine_error"
-    ENGINE_HEALTH_CHECK = "engine_health_check"
-    ENGINE_CONFIG_UPDATED = "engine_config_updated"
-
-    # 监控事件
-    METRIC_UPDATED = "metric_updated"
-    ALERT_TRIGGERED = "alert_triggered"
-    HEALTH_STATUS_CHANGED = "health_status_changed"
-
-    # 数据事件
-    DATA_SYNC_STARTED = "data_sync_started"
-    DATA_SYNC_COMPLETED = "data_sync_completed"
-    DATA_SYNC_FAILED = "data_sync_failed"
-
-    # 策略事件
-    STRATEGY_STARTED = "strategy_started"
-    STRATEGY_STOPPED = "strategy_stopped"
-    STRATEGY_SIGNAL_GENERATED = "strategy_signal_generated"
-
-    # 交易事件
-    ORDER_SUBMITTED = "order_submitted"
-    ORDER_FILLED = "order_filled"
-    ORDER_CANCELLED = "order_cancelled"
-    TRADE_EXECUTED = "trade_executed"
-
-    # 风险事件
-    RISK_RULE_TRIGGERED = "risk_rule_triggered"
-    RISK_ALERT_RAISED = "risk_alert_raised"
-
-    # 账户事件
-    ACCOUNT_UPDATED = "account_updated"
-    POSITION_UPDATED = "position_updated"
-    BALANCE_UPDATED = "balance_updated"
 
 
 class TaskStatus(str, Enum):
@@ -920,42 +867,8 @@ class LogLevel(str, Enum):
         return level_map.get(log_level, logging.INFO)
 
 
-class DatabaseType(str, Enum):
-    """
-    数据库类型枚举
-
-    定义支持的数据库类型。
-    """
-
-    POSTGRESQL = "postgresql"
-    MYSQL = "mysql"
-    SQLITE = "sqlite"
-    REDIS = "redis"
-    MONGODB = "mongodb"
-    INFLUXDB = "influxdb"
-    ELASTICSEARCH = "elasticsearch"
 
 
-# ==================== 市场类型枚举 ====================
-
-class MarketType(str, Enum):
-    """
-    市场类型枚举
-
-    定义交易市场类型。
-    """
-
-    STOCK = "stock"            # 股票市场
-    FUTURES = "futures"        # 期货市场
-    OPTIONS = "options"        # 期权市场
-    FOREX = "forex"            # 外汇市场
-    CRYPTO = "crypto"          # 加密货币市场
-    BOND = "bond"              # 债券市场
-    COMMODITY = "commodity"    # 商品市场
-    INDEX = "index"            # 指数市场
-
-
-# ==================== 订单类型枚举 ====================
 
 class OrderType(str, Enum):
     """
@@ -1008,36 +921,7 @@ class OrderStatus(str, Enum):
     ERROR = "error"                  # 错误状态
 
 
-# ==================== 订单方向枚举（兼容旧版本） ====================
 
-class OrderSide(str, Enum):
-    """
-    订单方向枚举
-
-    定义交易订单方向。
-    """
-
-    BUY = "buy"                # 买入
-    SELL = "sell"              # 卖出
-    SHORT = "short"            # 卖空
-    COVER = "cover"            # 平仓
-
-
-# ==================== 交易方向枚举 ====================
-
-class TradeSide(str, Enum):
-    """
-    交易方向枚举
-
-    定义成交的交易方向。
-    """
-
-    BUY = "buy"                      # 买入
-    SELL = "sell"                    # 卖出
-    BUY_OPEN = "buy_open"            # 买入开仓（期货）
-    SELL_OPEN = "sell_open"          # 卖出开仓（期货）
-    BUY_CLOSE = "buy_close"          # 买入平仓（期货）
-    SELL_CLOSE = "sell_close"        # 卖出平仓（期货）
 
 
 class TimeInForce(str, Enum):
@@ -1054,173 +938,16 @@ class TimeInForce(str, Enum):
     GTD = "gtd"                # 指定日期前有效
 
 
-# ==================== 策略类型枚举 ====================
-
-class StrategyType(str, Enum):
-    """
-    策略类型枚举
-
-    定义量化策略的类型。
-    """
-
-    ALPHA = "alpha"                  # Alpha策略
-    BETA = "beta"                    # Beta策略
-    CTA = "cta"                      # 商品交易顾问策略
-    ARBITRAGE = "arbitrage"          # 套利策略
-    MARKET_MAKING = "market_making"  # 做市策略
-    HEDGING = "hedging"              # 对冲策略
-    FACTOR = "factor"                # 因子策略
-    MACHINE_LEARNING = "machine_learning"  # 机器学习策略
-    DEEP_LEARNING = "deep_learning"  # 深度学习策略
-    REINFORCEMENT_LEARNING = "reinforcement_learning"  # 强化学习策略
-    QUANTITATIVE = "quantitative"    # 量化策略
-    DISCRETIONARY = "discretionary"  # 主观交易策略
-    HYBRID = "hybrid"                # 混合策略
 
 
-# ==================== 策略状态枚举 ====================
-
-class StrategyRuntimeStatus(str, Enum):
-    """
-    策略运行状态枚举
-
-    定义策略的运行状态。
-    """
-
-    STOPPED = "stopped"              # 已停止
-    STARTING = "starting"            # 启动中
-    RUNNING = "running"              # 运行中
-    PAUSED = "paused"                # 已暂停
-    STOPPING = "stopping"            # 停止中
-    ERROR = "error"                  # 错误状态
-    BACKTESTING = "backtesting"      # 回测中
-    OPTIMIZING = "optimizing"        # 优化中
 
 
-# ==================== 信号类型枚举 ====================
-
-class SignalType(str, Enum):
-    """
-    信号类型枚举
-
-    定义交易信号的类型。
-    """
-
-    BUY = "buy"                      # 买入信号
-    SELL = "sell"                    # 卖出信号
-    HOLD = "hold"                    # 持有信号
-    STOP_LOSS = "stop_loss"          # 止损信号
-    TAKE_PROFIT = "take_profit"      # 止盈信号
-    ENTRY = "entry"                  # 入场信号
-    EXIT = "exit"                    # 出场信号
-    REBALANCE = "rebalance"          # 再平衡信号
-    HEDGE = "hedge"                  # 对冲信号
-
-# ==================== 信号方向枚举 v2.4 ====================
-
-class SignalDirection(str, Enum):
-    """
-    信号方向枚举 — 策略层使用，需映射到 OrderDirection 才能写入 DB
-
-    适用场景：策略产生信号时使用的方向语义（做多/做空/平仓）
-    DB 持久化前须通过 SIGNAL_TO_TRADE_DIRECTION 映射为 OrderDirection。
-    """
-
-    LONG = "long"              # 做多/买入 → OrderDirection.BUY
-    SHORT = "short"            # 做空/卖出 → OrderDirection.SHORT
-    CLOSE_LONG = "close_long"  # 平多仓 → OrderDirection.SELL
-    CLOSE_SHORT = "close_short" # 平空仓 → OrderDirection.COVER
-
-# 信号方向 → 交易方向映射（唯一权威映射表）
-SIGNAL_TO_TRADE_DIRECTION = {
-    SignalDirection.LONG: OrderDirection.BUY,
-    SignalDirection.SHORT: OrderDirection.SHORT,
-    SignalDirection.CLOSE_LONG: OrderDirection.SELL,
-    SignalDirection.CLOSE_SHORT: OrderDirection.COVER,
-}
-
-# 反向映射：交易方向 → 信号方向
-TRADE_TO_SIGNAL_DIRECTION = {v: k for k, v in SIGNAL_TO_TRADE_DIRECTION.items()}
-
-def signal_to_order_direction(signal_dir: str) -> str:
-    """v2.4: 将策略信号方向转换为 DB 订单方向
-
-    Args:
-        signal_dir: 信号方向字符串 (long/short/close_long/close_short)
-
-    Returns:
-        DB 订单方向字符串 (buy/sell/short/cover)，无效输入返回 "buy"
-    """
-    mapping = {
-        "long": "buy",
-        "short": "short",
-        "close_long": "sell",
-        "close_short": "cover",
-    }
-    return mapping.get(signal_dir, "buy")
 
 
-# ==================== 数据频率枚举 ====================
-
-class DataFrequency(str, Enum):
-    """
-    数据频率枚举
-
-    定义市场数据的频率。
-    """
-
-    TICK = "tick"                    # Tick级数据
-    SECOND = "1s"                    # 1秒数据
-    MINUTE_1 = "1m"                  # 1分钟数据
-    MINUTE_5 = "5m"                  # 5分钟数据
-    MINUTE_15 = "15m"                # 15分钟数据
-    MINUTE_30 = "30m"                # 30分钟数据
-    HOUR = "1h"                      # 1小时数据
-    DAY = "1d"                       # 日数据
-    WEEK = "1w"                      # 周数据
-    MONTH = "1M"                     # 月数据
-    QUARTER = "1Q"                   # 季度数据
-    YEAR = "1Y"                      # 年数据
 
 
-# ==================== 数据源枚举 ====================
-
-class DataSource(str, Enum):
-    """
-    数据源枚举
-
-    定义市场数据的来源。
-    """
-
-    LOCAL = "local"                  # 本地数据源
-    TUSHARE = "tushare"              # TuShare数据源
-    AKSHARE = "akshare"              # AKShare数据源
-    BAOSTOCK = "baostock"            # 聚宽数据源
-    RICEQUANT = "ricequant"          # RiceQuant数据源
-    JOINQUANT = "joinquant"          # JoinQuant数据源
-    WIND = "wind"                    # Wind数据源
-    BLOOMBERG = "bloomberg"          # 彭博数据源
-    REUTERS = "reuters"              # 路透数据源
-    CUSTOM = "custom"                # 自定义数据源
-    EXCHANGE = "exchange"            # 交易所数据源
-    BROKER = "broker"                # 券商数据源
 
 
-# ==================== 数据质量枚举 ====================
-
-class DataQuality(str, Enum):
-    """
-    数据质量枚举
-
-    定义数据的质量等级。
-    """
-
-    EXCELLENT = "excellent"          # 优秀：数据完整、准确
-    GOOD = "good"                    # 良好：少量缺失或错误
-    FAIR = "fair"                    # 一般：部分数据缺失
-    POOR = "poor"                    # 较差：大量数据缺失
-    UNUSABLE = "unusable"            # 不可用：数据严重错误
-    UNKNOWN = "unknown"              # 未知质量
 
 
 # ==================== 风险等级枚举 ====================
@@ -1239,97 +966,14 @@ class RiskLevel(str, Enum):
     CRITICAL = "critical"            # 致命风险
 
 
-# ==================== 风险操作枚举 ====================
-
-class RiskAction(str, Enum):
-    """
-    风险操作枚举
-
-    定义风险触发后的操作。
-    """
-
-    WARN = "warn"                    # 警告
-    REJECT = "reject"                # 拒绝
-    STOP = "stop"                    # 停止
-    LIQUIDATE = "liquidate"          # 强制平仓
-    REDUCE = "reduce"                # 减仓
-    NOTIFY = "notify"                # 通知
-    LOG = "log"                      # 记录日志
-    IGNORE = "ignore"                # 忽略
 
 
-# ==================== 风险类型枚举 ====================
-
-class RiskType(str, Enum):
-    """
-    风险类型枚举
-
-    定义风险的类型。
-    """
-
-    MARKET = "market"                # 市场风险
-    CREDIT = "credit"                # 信用风险
-    LIQUIDITY = "liquidity"          # 流动性风险
-    OPERATIONAL = "operational"      # 操作风险
-    SYSTEMATIC = "systematic"        # 系统性风险
-    MODEL = "model"                  # 模型风险
-    CONCENTRATION = "concentration"  # 集中度风险
-    LEVERAGE = "leverage"            # 杠杆风险
-    COUNTERPARTY = "counterparty"    # 交易对手风险
-    SETTLEMENT = "settlement"        # 结算风险
 
 
-# ==================== 账户类型枚举 ====================
-
-class AccountType(str, Enum):
-    """
-    账户类型枚举
-
-    定义账户的类型。
-    """
-
-    STOCK = "stock"                  # 股票账户
-    FUTURES = "futures"              # 期货账户
-    OPTIONS = "options"              # 期权账户
-    FOREX = "forex"                  # 外汇账户
-    CRYPTO = "crypto"                # 加密货币账户
-    MARGIN = "margin"                # 保证金账户
-    CASH = "cash"                    # 现金账户
-    SIMULATION = "simulation"        # 模拟账户
-    PAPER = "paper"                  # 纸上交易账户
-    INSTITUTIONAL = "institutional"  # 机构账户
-    RETAIL = "retail"                # 零售账户
 
 
-# ==================== 持仓方向枚举 ====================
-
-class PositionDirection(str, Enum):
-    """
-    持仓方向枚举
-
-    定义持仓的方向。
-    """
-
-    LONG = "long"                    # 多头持仓
-    SHORT = "short"                  # 空头持仓
-    NET = "net"                      # 净持仓
-    BOTH = "both"                    # 双向持仓
 
 
-# ==================== 结算状态枚举 ====================
-
-class SettlementStatus(str, Enum):
-    """
-    结算状态枚举
-
-    定义交易的结算状态。
-    """
-
-    PENDING = "pending"              # 待结算
-    SETTLED = "settled"              # 已结算
-    FAILED = "failed"                # 结算失败
-    CANCELLED = "cancelled"          # 已取消
-    REVERSED = "reversed"            # 已冲正
 
 
 # ==================== 警报级别枚举 ====================
@@ -1369,147 +1013,10 @@ class MetricType(str, Enum):
     PERFORMANCE = "performance"      # 性能
 
 
-# ==================== 检查类型枚举 ====================
-
-class CheckType(str, Enum):
-    """
-    检查类型枚举
-
-    定义健康检查的类型。
-    """
-
-    PING = "ping"                    # Ping检查
-    HTTP = "http"                    # HTTP检查
-    TCP = "tcp"                      # TCP检查
-    DATABASE = "database"            # 数据库检查
-    API = "api"                      # API检查
-    DISK = "disk"                    # 磁盘检查
-    MEMORY = "memory"                # 内存检查
-    CPU = "cpu"                      # CPU检查
-    CUSTOM = "custom"                # 自定义检查
 
 
-# ==================== 枚举辅助类 ====================
-
-class EnumHelper:
-    """
-    枚举辅助类
-
-    提供枚举操作的辅助方法。
-    """
-
-    @staticmethod
-    def get_display_name(enum_class: Type[Enum], value: str) -> str:
-        """
-        获取枚举值的显示名称
-
-        Args:
-            enum_class: 枚举类
-            value: 枚举值
-
-        Returns:
-            str: 显示名称
-        """
-        try:
-            member = getattr(enum_class, value.upper())
-            return member.value
-        except AttributeError:
-            return value
-
-    @staticmethod
-    def get_choices(enum_class: Type[Enum]) -> list:
-        """
-        获取枚举的选择列表（用于Django等框架）
-
-        Args:
-            enum_class: 枚举类
-
-        Returns:
-            list: [(value, display_name), ...]
-        """
-        return [(member.value, member.value) for member in enum_class]
-
-    @staticmethod
-    def is_valid(enum_class: Type[Enum], value: str) -> bool:
-        """
-        检查值是否为有效的枚举值
-
-        Args:
-            enum_class: 枚举类
-            value: 待检查的值
-
-        Returns:
-            bool: 是否为有效的枚举值
-        """
-        return any(member.value == value for member in enum_class)
-
-    @staticmethod
-    def get_all_values(enum_class: Type[Enum]) -> list:
-        """
-        获取枚举的所有值
-
-        Args:
-            enum_class: 枚举类
-
-        Returns:
-            list: 所有枚举值的列表
-        """
-        return [member.value for member in enum_class]
-
-    @staticmethod
-    def get_by_value(enum_class: Type[Enum], value: str) -> Enum:
-        """
-        根据值获取枚举成员
-
-        Args:
-            enum_class: 枚举类
-            value: 枚举值
-
-        Returns:
-            Enum: 枚举成员
-
-        Raises:
-            ValueError: 如果值无效
-        """
-        for member in enum_class:
-            if member.value == value:
-                return member
-        raise ValueError(f"Invalid value '{value}' for enum {enum_class.__name__}")
 
 
-# ==================== 辅助函数 ====================
-
-def get_enum_values(enum_class: Type[Enum]) -> list:
-    """
-    获取枚举类的所有值
-
-    Args:
-        enum_class: 枚举类
-
-    Returns:
-        list: 枚举值列表
-    """
-    return [member.value for member in enum_class]
-
-
-def get_enum_from_value(enum_class: Type[Enum], value: str) -> Enum:
-    """
-    根据值获取枚举成员
-
-    Args:
-        enum_class: 枚举类
-        value: 枚举值
-
-    Returns:
-        Enum: 枚举成员
-
-    Raises:
-        ValueError: 当值无效时
-    """
-    for member in enum_class:
-        if member.value == value:
-            return member
-    raise ValueError(f"Invalid value '{value}' for enum {enum_class.__name__}")
 
 
 # ==================== 导出所有枚举 ====================
@@ -1532,7 +1039,6 @@ __all__ = [
     "ResourceType",
 
     # 事件相关枚举
-    "EventPriority",
     "EventType",
 
     # 任务相关枚举
@@ -1542,55 +1048,33 @@ __all__ = [
     "LogLevel",
 
     # 数据库相关枚举
-    "DatabaseType",
 
     # 市场相关枚举
-    "MarketType",
 
     # 交易相关枚举
     "OrderType",
     "OrderDirection",
     "OrderStatus",
-    "OrderSide",
-    "TradeSide",
     "TimeInForce",
 
     # 策略相关枚举
-    "StrategyType",
-    "StrategyRuntimeStatus",
 
     # 信号相关枚举
-    "SignalType",
-    "SignalDirection",
-    "SIGNAL_TO_TRADE_DIRECTION",
-    "signal_to_order_direction",
 
     # 数据相关枚举
-    "DataFrequency",
-    "DataSource",
-    "DataQuality",
 
     # 风险相关枚举
     "RiskLevel",
-    "RiskAction",
-    "RiskType",
 
     # 账户相关枚举
-    "AccountType",
-    "PositionDirection",
 
     # 结算相关枚举
-    "SettlementStatus",
 
     # 监控相关枚举
     "AlertLevel",
     "MetricType",
-    "CheckType",
 
     # 枚举辅助类
-    "EnumHelper",
 
     # 辅助函数
-    "get_enum_values",
-    "get_enum_from_value"
 ]

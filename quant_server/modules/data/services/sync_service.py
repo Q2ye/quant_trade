@@ -1333,61 +1333,6 @@ class DataSyncService:
 				"message": f"取消失败: {str(e)}",
 			}
 
-	async def retry_failed_sync(self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
-		"""重试失败的同步任务。
-
-		从 data_sync_tasks 表查询原始任务参数，重新执行同步。
-
-		Args:
-			task_id: 原始任务 ID
-			user_id: 用户标识
-
-		Returns:
-			Dict: 重试结果，含 records_added, records_updated, records_failed, message
-		"""
-		try:
-			# 查询原始任务
-			from sqlalchemy import select as sa_select
-
-			query = sa_select(DataSyncTask).where(DataSyncTask.task_id == task_id)
-			result = await self.session.execute(query)
-			task = result.scalar_one_or_none()
-			if not task:
-				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
-				        "total_items": 0, "message": f"任务 {task_id} 不存在"}
-
-			task_type = task.task_type
-			if task_type not in self._sync_method_map:
-				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
-				        "total_items": 0, "message": f"不支持重试的任务类型: {task_type}"}
-
-			# 从原始参数恢复
-			params = task.parameters or {}
-			start_date = params.get("start_date")
-			end_date = params.get("end_date")
-			ts_codes = params.get("ts_codes")
-
-			logger.info(f"重试失败任务: task_id={task_id}, type={task_type}")
-
-			# 重新执行同步（通过 _sync_by_data_type 路由到具体方法）
-			sync_result = await self._sync_by_data_type(
-				data_type=task_type,
-				start_date=start_date,
-				end_date=end_date,
-				ts_codes=ts_codes,
-				task_id=task_id,
-				user_id=user_id or task.user_id,
-			)
-			sync_result["message"] = f"重试任务 {task_id} 完成: {sync_result.get('message', '')}"
-			return sync_result
-
-		except Exception as e:
-			logger.error(f"重试失败任务 {task_id} 失败: {_fmt_err(e, 150)}")
-			return {"records_added": 0, "records_updated": 0, "records_failed": 1,
-			        "total_items": 0, "message": f"重试失败: {str(e)}"}
-
-	# ==================== 私有辅助方法 ====================
-	# 以下方法为服务内部使用，不对外暴露。
 
 	async def _run_in_executor(self, fn, *args, **kwargs):
 		"""
@@ -3564,23 +3509,7 @@ class DataSyncService:
 			return result
 
 
-	# [DEAD] async def async_sync_stock_quotes(
-	# [DEAD] self,
-	# [DEAD] stock_codes: List[str],
-	# [DEAD] start_date: str,
-	# [DEAD] end_date: str,
-	# [DEAD] sync_type: str = 'daily'
-	# [DEAD] ) -> Dict[str, Any]:
-	# [DEAD] """异步同步股票行情数据"""
-	# [DEAD] return await self.sync_stock_quote(
-	# [DEAD] stock_codes=stock_codes,
-	# [DEAD] start_date=start_date,
-	# [DEAD] end_date=end_date,
-	# [DEAD] _sync_type=sync_type,
-	# [DEAD] force_update=False
-	# [DEAD] )
 
-	# [DEAD] # ==================== 具体同步方法 ====================
 
 	async def _sync_etf_minute(
 			self,

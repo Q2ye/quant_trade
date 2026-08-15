@@ -23,7 +23,6 @@ from modules.account.services.cash_service import CashService
 from modules.account.services.fee_service import FeeService
 from modules.account.services.position_service import PositionService
 from shared.cache.base import CacheBase
-from shared.messaging.producer import MessageProducer
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class AccountManager:
 			self,
 			db: AsyncSession,
 			cache: Optional[CacheBase] = None,
-			message_producer: Optional[MessageProducer] = None
+			message_producer=None
 	):
 		self.db = db
 		self.cache = cache
