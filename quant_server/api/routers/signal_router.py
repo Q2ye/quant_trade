@@ -8,15 +8,24 @@ GET  /quantTrade/signals/pending               — 列出待确认信号
 """
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from api.dependencies.event_engine import get_event_engine
+from api.dependencies.auth import get_current_user
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/quantTrade/signals", tags=["signals"])
+
+
+# 修复 2026-08（B1）：信号确认/取消为资金级操作，加认证与交易权限
+def _has_trade_permission(user: Dict) -> bool:
+    role = user.get("role", user.get("user_role", ""))
+    if role in ("superadmin", "admin"):
+        return True
+    return user.get("can_trade", False)
 
 
 class ConfirmSignalRequest(BaseModel):
@@ -35,13 +44,20 @@ class CancelSignalRequest(BaseModel):
 
 
 @router.post("/{signal_id}/confirm")
-async def confirm_signal(signal_id: str, body: ConfirmSignalRequest, event_engine=Depends(get_event_engine)):
+async def confirm_signal(
+    signal_id: str,
+    body: ConfirmSignalRequest,
+    current_user: Dict = Depends(get_current_user),
+    event_engine=Depends(get_event_engine),
+):
     """
     人工确认成交。
 
     用户在收到微信通知后，通过同花顺手动下单，成交后回系统标记。
     系统自动更新策略持仓。
     """
+    if not _has_trade_permission(current_user):
+        raise HTTPException(403, "用户没有交易权限")
     from shared.database.session.session_manager import get_session_manager
     from shared.database.repositories.strategy.signal.signal_repo_v2 import update_signal_status
     from sqlalchemy import text
@@ -87,12 +103,18 @@ async def confirm_signal(signal_id: str, body: ConfirmSignalRequest, event_engin
 
 
 @router.post("/{signal_id}/cancel")
-async def cancel_signal(signal_id: str, body: CancelSignalRequest):
+async def cancel_signal(
+    signal_id: str,
+    body: CancelSignalRequest,
+    current_user: Dict = Depends(get_current_user),
+):
     """
     人工取消信号。
 
     用户在收到微信通知后，判断不执行该信号（如开盘价超出范围），回系统标记取消。
     """
+    if not _has_trade_permission(current_user):
+        raise HTTPException(403, "用户没有交易权限")
     from shared.database.session.session_manager import get_session_manager
     from shared.database.repositories.strategy.signal.signal_repo_v2 import update_signal_status
 
@@ -114,6 +136,7 @@ async def cancel_signal(signal_id: str, body: CancelSignalRequest):
 async def list_pending_signals(
     strategy_id: Optional[str] = Query(None),
     limit: int = Query(50, le=200),
+    current_user: Dict = Depends(get_current_user),  # 修复 2026-08（B1）
 ):
     """
     列出所有待人工确认的信号（signal_status = pending_manual）。
@@ -154,7 +177,10 @@ async def list_pending_signals(
 
 
 @router.get("/{signal_id}/trace")
-async def get_signal_trace(signal_id: str):
+async def get_signal_trace(
+    signal_id: str,
+    current_user: Dict = Depends(get_current_user),  # 修复 2026-08（B1）
+):
     """
     信号链路追溯：聚合 候选(parent) → 信号 → 订单 → 成交 完整链路。
 

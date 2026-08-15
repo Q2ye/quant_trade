@@ -111,6 +111,8 @@ class APISettings(BaseSettings):
 	CORS_ALLOW_HEADERS: List[str] = ["*"]
 
 	# 安全配置
+	# 修复 2026-08（B4）：pydantic-settings 自动读取环境变量 SECRET_KEY 覆盖此默认值；
+	# 生产环境必须通过 .env 注入随机密钥（validate_config 强制校验）
 	SECRET_KEY: str = "your-secret-key-here-change-in-production"
 	ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 	AUTH_ENABLED: bool = True  # 是否启用令牌校验，关闭后跳过 JWT 验证（仅开发/测试用）
@@ -860,6 +862,14 @@ def validate_config () -> bool:
 		# 验证必要配置
 		if config_instance.settings.DATA_SOURCE.TUSHARE_ENABLED and not config_instance.settings.DATA_SOURCE.TUSHARE_TOKEN:
 			print("警告: Tushare已启用但未配置TOKEN")
+
+		# 修复 2026-08（B4）：JWT 密钥校验——生产环境禁止使用公开占位符
+		_secret = getattr(config_instance.settings.API, "SECRET_KEY", "")
+		if not _secret or _secret == "your-secret-key-here-change-in-production":
+			if detect_environment() == "production":
+				print("错误: 生产环境必须通过环境变量 SECRET_KEY 注入随机密钥")
+				return False
+			print("警告: 使用默认 JWT 密钥（仅限开发环境）")
 
 		if not config_instance.settings.DATABASE.HOST or not config_instance.settings.DATABASE.NAME:
 			print("错误: 数据库配置不完整")

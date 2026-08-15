@@ -99,11 +99,19 @@ class AuthDependencies:
 					}
 
 				# No user exists — create a seed dev user
+				# 修复 2026-08（B5）：明文密码 → 随机 bcrypt 哈希
 				dev_id = str(uuid.uuid4())
+				try:
+					from modules.system.auth.password_manager import get_password_manager
+					_seed_pwd = get_password_manager().encrypt_password(
+						"dev-seed-" + uuid.uuid4().hex[:16]
+					)
+				except Exception:
+					_seed_pwd = "dev-seed-" + uuid.uuid4().hex[:16]
 				dev_user = SysUser(
 					id=dev_id,
 					username="superadmin",
-					password="dev-no-auth-mode",
+					password=_seed_pwd,
 					email="dev@quant-trade.local",
 					real_name="开发者",
 					phone="",
@@ -129,20 +137,12 @@ class AuthDependencies:
 					"can_sync_data": True,
 				}
 			except Exception as e:
-				logger.warning(f"Auth disabled but DB user lookup/creation failed: {e}")
-				return {
-					"id": "cd2f4a88-2139-4708-aee5-23dbfd953b20",
-					"username": "developer",
-					"email": "dev@quant-trade.local",
-					"real_name": "开发者",
-					"phone": "",
-					"role": "super_admin",
-					"is_active": True,
-					"last_login": datetime.now(timezone.utc),
-					"created_at": datetime.now(timezone.utc),
-					"permissions": ["*:*"],
-					"can_sync_data": True,
-				}
+				# 修复 2026-08（B5）：DB 故障时 fail-open → fail-closed 503
+				logger.error(f"Auth disabled but DB user lookup/creation failed: {e}")
+				raise HTTPException(
+					status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+					detail="认证服务不可用，请稍后重试",
+				)
 
 		# 检查是否有认证凭证
 		if not credentials:

@@ -31,7 +31,7 @@ async def dashboard_overview(current_user=Depends(get_current_user), db_session=
         r = await get_dashboard(db_session)
         return {"success": True, "data": r.model_dump()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/stocks/{ts_code}/full")
 async def stock_full(ts_code: str, current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -41,7 +41,7 @@ async def stock_full(ts_code: str, current_user=Depends(get_current_user), db_se
             return {"success": True, "data": None, "message": "Not found"}
         return {"success": True, "data": r.model_dump()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/stocks/{ts_code}/kline")
@@ -60,7 +60,7 @@ async def stock_kline_range(
         )
         return {"success": True, "data": rows}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ---- Phase 2 ----
@@ -70,7 +70,7 @@ async def screener_api(body: Dict = Body(...), current_user=Depends(get_current_
         r = await do_screener(db_session, body)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/industries")
 async def industry_tree_api(current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -78,7 +78,7 @@ async def industry_tree_api(current_user=Depends(get_current_user), db_session=D
         r = await do_industry_tree(db_session)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/industries/{industry_code}/history")
 async def industry_history_api(industry_code: str, limit: int = Query(90), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -86,7 +86,7 @@ async def industry_history_api(industry_code: str, limit: int = Query(90), curre
         r = await do_industry_history(db_session, industry_code, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/industries/heatmap")
@@ -103,7 +103,7 @@ async def industry_heatmap_api(
             r = await do_industry_heatmap(db_session)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/industries/trend")
 async def industry_trend_api(
@@ -116,7 +116,7 @@ async def industry_trend_api(
         r = await do_industry_trend(db_session, days)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/industries/{industry_code}")
@@ -126,7 +126,7 @@ async def industry_detail_api(industry_code: str, current_user=Depends(get_curre
         if not r: raise HTTPException(status_code=404, detail="Not found")
         return {"success": True, "data": r}
     except HTTPException: raise
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ---- Phase 3: Financial ----
@@ -137,7 +137,7 @@ async def financial_compare_api(body: Dict = Body(...), current_user=Depends(get
         r = await do_financial_compare(db_session, codes, body.get("metrics"), body.get("end_date"))
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/stocks/{ts_code}/financial/statements")
 async def financial_statements_api(ts_code: str, type: str = Query("income"), limit: int = Query(20), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -145,7 +145,7 @@ async def financial_statements_api(ts_code: str, type: str = Query("income"), li
         r = await do_financial_statements(db_session, ts_code.upper(), type, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/stocks/{ts_code}/financial/events")
 async def financial_events_api(ts_code: str, type: str = Query("forecast"), limit: int = Query(10), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -153,7 +153,7 @@ async def financial_events_api(ts_code: str, type: str = Query("forecast"), limi
         r = await do_financial_events(db_session, ts_code.upper(), type, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ---- Phase 3: MoneyFlow ----
@@ -163,7 +163,7 @@ async def top_moneyflow_api(direction: str = Query("net_inflow"), limit: int = Q
         r = await do_top_moneyflow(db_session, direction, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/moneyflow/hsgt")
 async def hsgt_history_api(days: int = Query(60), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -171,7 +171,7 @@ async def hsgt_history_api(days: int = Query(60), current_user=Depends(get_curre
         r = await do_hsgt_history(db_session, days)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/stocks/{ts_code}/moneyflow")
 async def stock_moneyflow_api(ts_code: str, days: int = Query(60), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -179,7 +179,7 @@ async def stock_moneyflow_api(ts_code: str, days: int = Query(60), current_user=
         r = await do_stock_moneyflow_detail(db_session, ts_code.upper(), days)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 # ---- Phase 4: Macro + Index/ETF ----
 @router.get("/macro/{indicator}")
@@ -188,7 +188,7 @@ async def macro_api(indicator: str, limit: int = Query(24), current_user=Depends
         r = await do_macro(db_session, indicator, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/indexes/{code}/weights")
 async def index_weights_api(code: str, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200),
@@ -197,7 +197,7 @@ async def index_weights_api(code: str, offset: int = Query(0, ge=0), limit: int 
         r = await do_index_weights(db_session, code, offset, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/indexes/{code}/valuation")
 async def index_valuation_api(code: str, limit: int = Query(60), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -205,7 +205,7 @@ async def index_valuation_api(code: str, limit: int = Query(60), current_user=De
         r = await do_index_valuation(db_session, code, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/etfs/{code}/shares")
 async def etf_shares_api(code: str, limit: int = Query(120), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -213,7 +213,7 @@ async def etf_shares_api(code: str, limit: int = Query(120), current_user=Depend
         r = await do_etf_shares(db_session, code, limit)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/etfs/{code}/benchmark")
 async def etf_benchmark_api(code: str, current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
@@ -221,14 +221,14 @@ async def etf_benchmark_api(code: str, current_user=Depends(get_current_user), d
         r = await do_etf_benchmark(db_session, code)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 @router.get("/indexes/{code}/history")
 async def index_history_api(code: str, limit: int = Query(60), current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
     try:
         result = await do_index_history(db_session, code, limit)
         return {"success": True, "data": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/indexes/{code}/sector-exposure")
@@ -237,7 +237,7 @@ async def index_sector_exposure_api(code: str, current_user=Depends(get_current_
         r = await do_index_sector_exposure(db_session, code)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/moneyflow/sector")
@@ -246,7 +246,7 @@ async def sector_moneyflow_api(current_user=Depends(get_current_user), db_sessio
         r = await do_sector_moneyflow(db_session)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ---- Phase 6: Signals + Factor Scores ----
@@ -261,7 +261,7 @@ async def stock_signals_api(
         r = await do_stock_signals(db_session, ts_code.upper(), recent)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/stocks/{ts_code}/factor-scores")
@@ -274,7 +274,7 @@ async def stock_factor_scores_api(
         r = await do_stock_factor_scores(db_session, ts_code.upper())
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/limit-analysis")
@@ -289,7 +289,7 @@ async def limit_analysis_api(
         r = await do_limit_analysis(db_session, trade_date, exchange, board)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/dashboard/style-factors")
@@ -298,7 +298,7 @@ async def style_factors_api(current_user=Depends(get_current_user), db_session=D
         r = await do_style_factors(db_session)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/dashboard/sector-turnover")
@@ -307,7 +307,7 @@ async def sector_turnover_api(current_user=Depends(get_current_user), db_session
         r = await do_sector_turnover(db_session)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/dashboard/state")
@@ -319,7 +319,7 @@ async def market_state_api(days: int = Query(default=60, ge=5, le=250),
         r = await do_market_state(db_session, days)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/dashboard/style")
@@ -331,7 +331,7 @@ async def style_rotation_api(days: int = Query(default=60, ge=5, le=250),
         r = await do_style_rotation(db_session, days)
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/user/watchlist")
@@ -340,7 +340,7 @@ async def get_watchlist_api(current_user=Depends(get_current_user), db_session=D
         r = await do_get_watchlist(db_session, current_user.get("id", ""))  # A26: user_id->id
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.put("/user/watchlist")
@@ -354,5 +354,5 @@ async def save_watchlist_api(
         r = await do_save_watchlist(db_session, current_user.get("id", ""), codes)  # A26: user_id->id
         return {"success": True, "data": r}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 

@@ -236,7 +236,6 @@ ALTER TABLE data_sync_tasks DROP CONSTRAINT IF EXISTS data_sync_tasks_status_che
 
 
 
-
 ALTER TABLE data_sync_tasks ADD CONSTRAINT data_sync_tasks_status_check
 CHECK (status = ANY (ARRAY['pending', 'running', 'completed', 'failed', 'cancelled']));
 

@@ -59,7 +59,7 @@ async def get_baskets(
         raise
     except Exception as e:
         logger.error(f"获取篮子列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -84,7 +84,7 @@ async def create_basket(
         return success_response(message=result["message"], data=result.get("data"))
     except Exception as e:
         logger.error(f"创建篮子失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -103,7 +103,7 @@ async def get_basket(
         raise
     except Exception as e:
         logger.error(f"获取篮子详情失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -132,7 +132,7 @@ async def update_basket(
         raise
     except Exception as e:
         logger.error(f"更新篮子失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # DELETE /basket/batch   — 批量删除篮子
@@ -152,7 +152,7 @@ async def delete_basket(
         raise
     except Exception as e:
         logger.error(f"删除篮子失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -177,7 +177,7 @@ async def add_item(
         raise
     except Exception as e:
         logger.error(f"添加成分股失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -203,7 +203,7 @@ async def adjust_weight(
         raise
     except Exception as e:
         logger.error(f"调整权重失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -225,7 +225,7 @@ async def remove_item(
         return success_response(message=result["message"], data=result.get("data"))
     except Exception as e:
         logger.error(f"移除成分股失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -253,7 +253,7 @@ async def get_performance(
         raise
     except Exception as e:
         logger.error(f"获取绩效失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -283,7 +283,7 @@ async def delete_baskets_batch(
         raise
     except Exception as e:
         logger.error(f"批量删除失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -314,7 +314,7 @@ async def duplicate_basket(
         raise
     except Exception as e:
         logger.error(f"复制篮子失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -343,7 +343,7 @@ async def export_basket(
         raise
     except Exception as e:
         logger.error(f"导出篮子失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ============================================================
@@ -379,4 +379,4 @@ async def get_basket_realtime(
         raise
     except Exception as e:
         logger.error(f"获取实时估值失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)

@@ -490,7 +490,7 @@ async def get_backtest_result_api(
 
 @router.post("/tasks/results/batch", response_model=BacktestResultResponse)
 async def get_batch_task_results_api(
-    task_ids: List[str] = Body(..., embed=True),
+    task_ids: List[str] = Body(..., embed=True, max_length=50),  # 修复 2026-08（B10）：上限防循环查询风暴
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
 ) -> BacktestResultResponse:
@@ -554,7 +554,7 @@ async def quick_backtest_api(
 		return result
 	except Exception as e:
 		logger.error(f"快速回测失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=str(e))
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ==================== 报告导出接口 ====================
@@ -585,7 +585,7 @@ async def export_report_api(
 		raise HTTPException(status_code=404, detail=str(e))
 	except Exception as e:
 		logger.error(f"导出报告失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=str(e))
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # ==================== 参数优化接口 ====================
@@ -668,6 +668,9 @@ async def backtest_module_health_check(
 # v3.3: 独立场景回测 + 晋升
 # =============================================================================
 
+# 修复 2026-08（B7）：单用户活跃场景计数（进程内存，重启重置；保守近似防滥用）
+_scenario_active_count: dict = {}
+
 @router.post("/run-scenario", response_model=BacktestCreateResponse, status_code=201)
 async def run_scenario_backtest(
 		request: ScenarioRunRequest,
@@ -687,6 +690,22 @@ async def run_scenario_backtest(
 		{"scenario_id": str, "task_id": str}
 	"""
 	try:
+		# 修复 2026-08（B7）：任意代码执行防护——代码长度上限 + 单用户并发限制
+		MAX_CODE_LEN = 50000
+		if not request.code or len(request.code) > MAX_CODE_LEN:
+			raise HTTPException(
+				status_code=status.HTTP_400_BAD_REQUEST,
+				detail=f"场景代码为空或超过长度上限 {MAX_CODE_LEN}",
+			)
+		_uid = current_user.get("id", "")
+		_active = _scenario_active_count.get(_uid, 0)
+		if _active >= 2:
+			raise HTTPException(
+				status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+				detail="场景回测并发数已达上限（每用户 2 个），请等待完成后再提交",
+			)
+		_scenario_active_count[_uid] = _active + 1
+
 		from modules.backtest.services.backtest_service import BacktestService
 
 		service = BacktestService(db)

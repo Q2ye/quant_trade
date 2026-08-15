@@ -492,57 +492,61 @@ class EngineFactory:
             # 标记引擎正在创建中（避免死锁）
             self._creating_engines.add(instance_name)
 
+        # ===== 修复 2026-08（A19）：依赖解析/实例化/启动移出锁外 =====
+        # asyncio.Lock 不可重入：_resolve_dependencies -> get_or_create_engine ->
+        # create_engine 会再次获取 self._lock 导致死锁。锁内仅保留无副作用检查。
+
+        # 创建引擎实例
+        try:
+            logger.info(f"创建引擎实例: {instance_name} ({engine_type.value})")
+
+            # 获取共享事件引擎
+            event_engine = await self._get_shared_event_engine()
+
             # 创建引擎实例
-            try:
-                logger.info(f"创建引擎实例: {instance_name} ({engine_type.value})")
+            engine_instance = descriptor.engine_class(engine_config_entity, event_engine)
 
-                # 获取共享事件引擎
-                event_engine = await self._get_shared_event_engine()
+            # 设置引擎类型
+            engine_instance.record.engine_type = engine_type
 
-                # 创建引擎实例
-                engine_instance = descriptor.engine_class(engine_config_entity, event_engine)
+            # 保存到缓存
+            self._engine_instances[instance_name] = engine_instance
 
-                # 设置引擎类型
-                engine_instance.record.engine_type = engine_type
+            # 初始化引擎依赖
+            await self._resolve_dependencies(engine_instance, descriptor)
 
-                # 保存到缓存
-                self._engine_instances[instance_name] = engine_instance
+            # 如果不是延迟初始化，启动引擎
+            if not lazy_init:
+                await engine_instance.start()
 
-                # 初始化引擎依赖
-                await self._resolve_dependencies(engine_instance, descriptor)
+            # 注册到引擎注册表（传递正确的category参数）
+            if self._engine_registry:
+                # 获取引擎描述符以获取category信息
+                descriptor = self._engine_descriptors.get(engine_type)
+                if descriptor:
+                    await self._engine_registry.register_engine(
+                        engine_instance,
+                        descriptor.category
+                    )
+                else:
+                    logger.warning(f"无法获取引擎描述符: {engine_type}, 使用默认分类")
+                    await self._engine_registry.register_engine(
+                        engine_instance,
+                        EngineCategory.SYSTEM
+                    )
 
-                # 如果不是延迟初始化，启动引擎
-                if not lazy_init:
-                    await engine_instance.start()
+            logger.info(f"引擎实例创建成功: {instance_name}")
+            return engine_instance
 
-                # 注册到引擎注册表（传递正确的category参数）
-                if self._engine_registry:
-                    # 获取引擎描述符以获取category信息
-                    descriptor = self._engine_descriptors.get(engine_type)
-                    if descriptor:
-                        await self._engine_registry.register_engine(
-                            engine_instance,
-                            descriptor.category
-                        )
-                    else:
-                        logger.warning(f"无法获取引擎描述符: {engine_type}, 使用默认分类")
-                        await self._engine_registry.register_engine(
-                            engine_instance,
-                            EngineCategory.SYSTEM
-                        )
-
-                logger.info(f"引擎实例创建成功: {instance_name}")
-                return engine_instance
-
-            except Exception as e:
-                logger.error(f"创建引擎实例失败: {instance_name}, 错误: {e}")
-                # 清理失败的实例
-                if instance_name in self._engine_instances:
-                    del self._engine_instances[instance_name]
-                raise
-            finally:
-                # 清除创建标记
-                self._creating_engines.discard(instance_name)
+        except Exception as e:
+            logger.error(f"创建引擎实例失败: {instance_name}, 错误: {e}")
+            # 清理失败的实例
+            if instance_name in self._engine_instances:
+                del self._engine_instances[instance_name]
+            raise
+        finally:
+            # 清除创建标记
+            self._creating_engines.discard(instance_name)
 
     async def get_engine(self, instance_name: str) -> Optional[EngineBase]:
         """获取引擎实例

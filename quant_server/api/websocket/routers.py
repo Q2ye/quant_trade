@@ -5,7 +5,7 @@ WebSocket 路由端点
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
 
 from .manager import get_ws_manager
 
@@ -18,6 +18,7 @@ websocket_router = APIRouter()
 async def websocket_endpoint(
     websocket: WebSocket,
     channel: Optional[str] = Query(None, description="订阅频道，逗号分隔可订阅多个"),
+    token: Optional[str] = Query(None, description="JWT 认证令牌"),
 ):
     """WebSocket 主端点
 
@@ -25,6 +26,21 @@ async def websocket_endpoint(
     - {"action": "subscribe", "channel": "trade.order"}  订阅频道
     - {"action": "unsubscribe", "channel": "trade.order"}  取消订阅
     """
+    # 修复 2026-08（B2）：连接鉴权——token 缺失或无效时拒绝连接
+    if not token:
+        await websocket.close(code=4401, reason="未提供认证令牌")
+        return
+    try:
+        from modules.system.auth.jwt_handler import verify_access_token
+        verify_access_token(token=token)
+    except HTTPException:
+        await websocket.close(code=4401, reason="认证令牌无效或已过期")
+        return
+    except Exception as e:
+        logger.warning(f"WebSocket 鉴权异常: {e}")
+        await websocket.close(code=4401, reason="认证失败")
+        return
+
     ws_manager = get_ws_manager()
     await ws_manager.connect(websocket)
 

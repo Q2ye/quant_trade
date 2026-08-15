@@ -88,7 +88,7 @@ async def builtin_strategies_api():
 		return error_response(message="获取内置策略失败")
 	except Exception as e:
 		logger.error(f"获取内置策略失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.post("/builtin/find-or-create")
@@ -109,7 +109,7 @@ async def find_or_create_builtin_api(
 	except Exception as e:
 		logger.error(f"find_or_create 失败: {str(e)}", exc_info=True)
 		raise HTTPException(
-			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志,
 		)
 
 
@@ -140,7 +140,7 @@ async def create_instance_from_template_api(
         return error_response(message=result.get("error", "创建失败"))
     except Exception as e:
         logger.error(f"从模板创建实例失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.post("/templates/{template_id}/fork")
 async def fork_template_api(
@@ -159,7 +159,7 @@ async def fork_template_api(
         return error_response(message=result.get("error", "Fork 失败"))
     except Exception as e:
         logger.error(f"Fork 模板失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 @router.get("/templates")
 async def list_templates_api(
@@ -184,7 +184,7 @@ async def list_templates_api(
         return success_response(data=data)
     except Exception as e:
         logger.error(f"获取模板列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/templates/{template_id}")
@@ -204,7 +204,7 @@ async def get_template_detail_api(
         raise
     except Exception as e:
         logger.error(f"获取模板详情失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 
@@ -668,7 +668,7 @@ async def create_portfolio_api(
 		return result
 	except Exception as e:
 		logger.error(f"创建组合失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=str(e))
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/portfolio/{portfolio_id}", response_model=StrategyResponse)
@@ -683,7 +683,7 @@ async def get_portfolio_detail_api(
 		return result
 	except Exception as e:
 		logger.error(f"获取组合详情失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=str(e))
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.get("/portfolio/{portfolio_id}/performance", response_model=StrategyPerformanceResponse)
@@ -698,7 +698,7 @@ async def get_portfolio_performance_api(
 		return result
 	except Exception as e:
 		logger.error(f"获取组合绩效失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=str(e))
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 @router.put("/portfolio/{portfolio_id}/weights", response_model=StrategyResponse)
@@ -718,7 +718,7 @@ async def update_portfolio_weights_api(
 		return result
 	except Exception as e:
 		logger.error(f"更新权重失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=str(e))
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
 
 
 # 策略代码验证接口

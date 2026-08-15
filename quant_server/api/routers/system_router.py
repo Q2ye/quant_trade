@@ -6,6 +6,7 @@
 系统模块路由
 """
 import logging
+from datetime import datetime
 from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -97,6 +98,9 @@ from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)
+
+# 修复 2026-08（B8）：登录失败历史（进程内存，重启重置）
+_login_fail_history: dict = {}
 
 # 创建路由器实例
 router = APIRouter(
@@ -427,6 +431,16 @@ async def login_api (
 	无需认证，使用用户名和密码换取 token 对。
 	"""
 	try:
+		# 修复 2026-08（B8）：登录限流——同用户名 5 分钟窗口内最多 5 次失败
+		_now = datetime.now().timestamp()
+		_hist = _login_fail_history.get(request.username, [])
+		_hist = [t for t in _hist if _now - t < 300]
+		if len(_hist) >= 5:
+			raise HTTPException(
+				status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+				detail="登录失败次数过多，请 5 分钟后再试",
+			)
+
 		ip = getattr(request, "_ip", "")
 		logger.info(f"用户 {request.username} 从 {ip} 登录")
 		result = await login(
@@ -434,8 +448,11 @@ async def login_api (
 			username=request.username,
 			password=request.password,
 		)
+		_login_fail_history.pop(request.username, None)
 		return result
 	except ValueError as e:
+		_hist = _login_fail_history.setdefault(request.username, [])
+		_hist.append(datetime.now().timestamp())
 		raise HTTPException(status_code=401, detail=str(e))
 	except Exception as e:
 		logger.error(f"登录失败: {str(e)}", exc_info=True)
