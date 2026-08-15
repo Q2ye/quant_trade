@@ -15,6 +15,10 @@ quant_server/modules/data/__init__.py
 3. 事件驱动：模块间通过事件引擎通信
 4. 统一异常处理：模块内错误不泄漏到外部
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
 from typing import Dict
 
 # 导出常量
@@ -93,6 +97,9 @@ _sync_engine = None
 
 # 模块级取消令牌注册表: task_id → asyncio.Event
 import asyncio as _asyncio
+
+logger = logging.getLogger(__name__)
+
 _cancel_tokens: Dict[str, "_asyncio.Event"] = {}
 
 
@@ -212,6 +219,66 @@ async def initialize (
 		print(f"❌ 数据模块初始化失败: {str(e)}")
 		return False
 
+
+	# ===== 2026-08 C15：注册日终任务（依赖反转，替代 main_engine 内联）=====
+	if main_engine and hasattr(main_engine, "register_daily_task"):
+		async def _task_sync_daily(today):
+			from shared.database.session import get_session_manager
+			from modules.data.services.sync_service import DataSyncService
+			from modules.data.constants import DataType
+			sm = get_session_manager()
+			sync_ok = True
+			async with sm.get_session() as session:
+				svc = DataSyncService(session=session)
+				_daily_types = (
+					DataType.DAILY_QUOTES, DataType.DAILY_BASIC, DataType.ADJ_FACTOR,
+					DataType.ETF_DAILY, DataType.FUND_ADJ_FACTOR,
+					DataType.INDEX_DAILY, DataType.INDEX_DAILYBASIC,
+					DataType.DAILY_LIMIT, DataType.SUSPEND,
+				)
+				import asyncio as _asyncio
+				_sem = _asyncio.Semaphore(3)
+				async def _sync_one(dt):
+					async with _sem:
+						try:
+							result = await svc.sync_market_data(dt, start_date=None, end_date=today)
+							logger.info("日终同步 %s 完成: records=%s",
+								dt.value,
+								result.get("records_processed", 0) if isinstance(result, dict) else "?",
+							)
+							return True
+						except Exception as sync_err:
+							logger.error("日终同步 %s 失败: %s", dt.value, sync_err)
+							return False
+				_sync_results = await _asyncio.gather(
+					*[_sync_one(dt) for dt in _daily_types], return_exceptions=True,
+				)
+				sync_ok = all(r is True for r in _sync_results)
+			if not sync_ok:
+				logger.warning("日终数据同步部分失败，仍尝试驱动策略")
+
+		async def _task_market_state(today):
+			try:
+				from modules.data.services.market_state_classifier import (
+					classify_and_populate,
+				)
+				await classify_and_populate()
+			except Exception as msc_err:
+				logger.warning("market_state_daily 更新失败（非致命）: %s", msc_err)
+
+		async def _task_etf_factor(today):
+			try:
+				from modules.data.services.etf_factor_daily import (
+					compute_etf_factors_daily,
+				)
+				factor_result = await compute_etf_factors_daily(trade_date=today)
+				logger.info("日终 ETF 因子计算完成: %s", factor_result.get("message", "?"))
+			except Exception as factor_err:
+				logger.warning("日终 ETF 因子计算失败（非致命）: %s", factor_err)
+
+		await main_engine.register_daily_task("sync_daily", _task_sync_daily, phase="pre_gate", order=10)
+		await main_engine.register_daily_task("market_state_update", _task_market_state, phase="pre_gate", order=20)
+		await main_engine.register_daily_task("etf_factor", _task_etf_factor, phase="pre_gate", order=30)
 
 async def shutdown(main_engine=None) -> None:
 	"""数据模块关闭函数"""

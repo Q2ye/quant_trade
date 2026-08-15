@@ -14,7 +14,7 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional, cast
+from typing import Dict, Any, List, Optional, cast, Callable
 from datetime import datetime
 
 # 导入统一类型定义
@@ -132,6 +132,11 @@ class MainEngine(EngineBase):
         # 日终调度管理器
         self._schedule_manager = None
 
+        # 2026-08 C15：日终任务注册表（依赖反转：模块注册，core 仅调度）
+        # 每项 (order, name, fn)；pre_gate=门之前（数据准备），post_gate=门之后（驱动）
+        self._pre_gate_tasks: List[tuple] = []
+        self._post_gate_tasks: List[tuple] = []
+
         # 事件处理器
         self._event_handlers: Dict[str, List[str]] = {}
 
@@ -194,6 +199,90 @@ class MainEngine(EngineBase):
             logger.error(f"主引擎启动失败: {e}")
             raise
 
+    async def register_daily_task(
+        self, name: str, fn: Callable, phase: str = "pre_gate", order: int = 0,
+    ) -> None:
+        """模块注册日终任务（2026-08 C15：依赖反转）。
+
+        Args:
+            name: 任务名（日志用）
+            fn: 异步回调 fn(today) -> None（闭包内部自行获取 session/engine）
+            phase: "pre_gate"（数据准备，门之前）| "post_gate"（驱动，门之后）
+            order: 显式执行顺序（同 phase 内升序）——顺序不依赖注册先后，
+                   消除模块加载顺序的隐式依赖
+        """
+        target = self._pre_gate_tasks if phase == "pre_gate" else self._post_gate_tasks
+        target.append((order, name, fn))
+        target.sort(key=lambda x: x[0])
+        logger.info("日终任务已注册: [%s] %s (order=%s)", phase, name, order)
+
+    async def _run_daily_pipeline(self, today) -> None:
+        """日终流水线（2026-08 C15）：pre_gate 任务 → 数据完整性门 → post_gate 任务。
+
+        每任务独立 try/except（非致命语义，与重构前一致）；任务内部保留原日志级别。
+        """
+        if not self._pre_gate_tasks and not self._post_gate_tasks:
+            logger.warning("日终任务注册表为空（相关模块可能被禁用），流水线空转")
+            return
+
+        # ---- 阶段 1：数据准备（同步 → market_state → ETF 因子 → 结算）----
+        for _order, name, fn in self._pre_gate_tasks:
+            try:
+                await fn(today)
+            except Exception as e:
+                logger.warning("日终任务 %s 失败（非致命）: %s", name, e)
+
+        # ---- 数据完整性门（双保险：内部 try/except + 外层兜底）----
+        try:
+            gate_ok = await self._data_integrity_gate(today)
+        except Exception as e:
+            logger.warning("数据完整性门异常: %s → 保守跳过驱动", e)
+            gate_ok = False
+        if not gate_ok:
+            logger.warning("数据完整性校验失败 → 跳过实盘策略驱动（防止旧数据假信号）")
+            return
+
+        # ---- 阶段 2：驱动（rebalance → 策略驱动）----
+        for _order, name, fn in self._post_gate_tasks:
+            try:
+                await fn(today)
+            except Exception as e:
+                logger.warning("日终任务 %s 失败（非致命）: %s", name, e)
+
+    async def _data_integrity_gate(self, today) -> bool:
+        """数据完整性校验门（2026-08 C15 从内联代码抽取，语义不变）。
+
+        仅依赖 shared 层（get_session_manager + 文本 SQL），core→shared 合法方向。
+        600833 事故根因防护：当日行情未同步完整则跳过策略驱动。
+        """
+        try:
+            from shared.database.session import get_session_manager
+            from sqlalchemy import text as _text
+
+            sm = get_session_manager()
+            async with sm.get_session() as _ds:
+                _r = await _ds.execute(_text("SELECT MAX(trade_date) FROM stock_daily"))
+                _max_d = _r.scalar()
+                _c = await _ds.execute(_text(
+                    "SELECT COUNT(*) FROM stock_daily WHERE trade_date=:d"), {"d": today})
+                _n = _c.scalar() or 0
+            if not _max_d or str(_max_d) != str(today):
+                logger.warning(
+                    f"数据完整性校验失败: stock_daily 最新交易日={_max_d}, 目标={today}"
+                    f" → 跳过实盘策略驱动（防止旧数据假信号）")
+                return False
+            elif _n < 4000:
+                logger.warning(
+                    f"数据完整性校验失败: 当日仅 {_n} 条行情（A股全市场约5000+）"
+                    f" → 跳过实盘策略驱动（数据不完整）")
+                return False
+            else:
+                logger.info(f"数据完整性校验通过: stock_daily 最新={_max_d}, 当日 {_n} 条")
+                return True
+        except Exception as _de:
+            logger.warning(f"数据完整性校验异常: {_de} → 保守跳过实盘策略驱动")
+            return False
+
     async def _start_daily_scheduler(self) -> None:
         """
         启动日终调度器。
@@ -210,163 +299,17 @@ class MainEngine(EngineBase):
             self._schedule_manager = ScheduleManager()
 
             async def _daily_sync_job():
-                """20:00 同步核心数据，全部完成后再驱动策略。
+                """20:00 日终流水线（2026-08 C15 重构）：
 
-                日终调度保留在主事件循环中执行（不通过 BackgroundTaskExecutor）：
-                - 执行时间 20:00，通常无用户并发请求，不会阻塞用户体验
-                - 避免线程池跨 event loop 的 DB session 管理复杂性
+                pre_gate 任务（同步→state→因子→结算）→ 数据完整性门 → post_gate 任务（rebalance→策略驱动）。
+                任务由各模块在 initialize 时通过 register_daily_task 注册（依赖反转）。
                 """
                 from datetime import date as _date
-                from shared.database.session import get_session_manager
-                from modules.data.services.sync_service import DataSyncService
-                from modules.data.constants import DataType
 
                 today = _date.today()
                 logger.info("日终数据同步开始: %s", today)
-
-                sm = get_session_manager()
-                sync_ok = True
-                async with sm.get_session() as session:
-                    svc = DataSyncService(session=session)
-                    # 日终必须同步的类型（策略依赖 + 风控必需）
-                    _daily_types = (
-                        # 股票（策略核心数据）
-                        DataType.DAILY_QUOTES,      # 股票日线行情
-                        DataType.DAILY_BASIC,       # 股票每日指标（PE/PB/换手率等）
-                        DataType.ADJ_FACTOR,        # 股票复权因子
-                        # ETF（ETF策略 & 全市场扫描必需）
-                        DataType.ETF_DAILY,         # ETF日线行情
-                        DataType.FUND_ADJ_FACTOR,   # 基金复权因子
-                        # 指数
-                        DataType.INDEX_DAILY,       # 指数日线行情
-                        DataType.INDEX_DAILYBASIC,  # 大盘指数每日指标
-                        # 风控
-                        DataType.DAILY_LIMIT,       # 涨跌停价格（行情判定）
-                        DataType.SUSPEND,           # 每日停复牌（风控过滤）
-                    )
-                    # 修复 2026-08（B11）：9 类型并发同步（信号量限并发 3，避免串行数小时，
-                    # 同时避免压垮 Tushare 限流；sync_service 内部 _session_lock 保证会话安全）
-                    import asyncio as _asyncio
-                    _sem = _asyncio.Semaphore(3)
-
-                    async def _sync_one(dt):
-                        async with _sem:
-                            try:
-                                result = await svc.sync_market_data(dt, start_date=None, end_date=today)
-                                logger.info("日终同步 %s 完成: records=%s",
-                                    dt.value,
-                                    result.get("records_processed", 0) if isinstance(result, dict) else "?",
-                                )
-                                return True
-                            except Exception as sync_err:
-                                logger.error("日终同步 %s 失败: %s", dt.value, sync_err)
-                                return False
-
-                    _sync_results = await _asyncio.gather(
-                        *[_sync_one(dt) for dt in _daily_types],
-                        return_exceptions=True,
-                    )
-                    sync_ok = all(r is True for r in _sync_results)
-
-                if not sync_ok:
-                    logger.warning("日终数据同步部分失败，仍尝试驱动策略")
-
-                # v3.4: 计算 ETF 因子（依赖 ETF_DAYLY 同步完成）
-                try:
-                    # 先确保 market_state_daily 新鲜（ETF 因子的 market_regime 等市场状态因子依赖它）
-                    from modules.data.services.market_state_classifier import (
-                        classify_and_populate,
-                    )
-                    await classify_and_populate()
-                except Exception as msc_err:
-                    logger.warning("market_state_daily 更新失败（非致命）: %s", msc_err)
-
-                try:
-                    from modules.data.services.etf_factor_daily import (
-                        compute_etf_factors_daily,
-                    )
-                    factor_result = await compute_etf_factors_daily(trade_date=today)
-                    logger.info(
-                        "日终 ETF 因子计算完成: %s",
-                        factor_result.get("message", "?"),
-                    )
-                except Exception as factor_err:
-                    logger.warning("日终 ETF 因子计算失败（非致命）: %s", factor_err)
-
-                # v2.6: 日终账户结算（依赖当日行情重估市值，产出单日盈亏 + 日绩效快照）。
-                # 紧随数据同步执行；触发时间随本 job 的 schedule_config 调整。
-                try:
-                    from modules.account.tasks.settlement_tasks import (
-                        create_settlement_tasks,
-                    )
-                    async with sm.get_session() as _settle_session:
-                        _st = create_settlement_tasks(_settle_session)
-                        _sres = await _st.daily_settlement_task(today)
-                        _sok = sum(
-                            1 for r in _sres.get("results", {}).values()
-                            if r.get("status") == "success"
-                        )
-                        logger.info(
-                            "日终账户结算完成: 共 %s 账户, 成功 %s",
-                            _sres.get("total_accounts", 0),
-                            _sok,
-                        )
-                except Exception as settle_err:
-                    logger.error("日终账户结算失败: %s", settle_err, exc_info=True)
-
-                # v6.14: 数据完整性校验——当日行情未同步完整则跳过策略驱动，防止用旧数据产生假信号。
-                # 600833 事故根因：8-11 行情缺失（Tushare 限流/网络断）+ 复权表空，
-                # 策略用 8-10 旧数据触发假止损（收盘 11.01 vs 实际 12.11）。
-                _drive_ok = True
-                try:
-                    from sqlalchemy import text as _text
-                    async with sm.get_session() as _ds:
-                        _r = await _ds.execute(_text("SELECT MAX(trade_date) FROM stock_daily"))
-                        _max_d = _r.scalar()
-                        _c = await _ds.execute(_text(
-                            "SELECT COUNT(*) FROM stock_daily WHERE trade_date=:d"), {"d": today})
-                        _n = _c.scalar() or 0
-                    if not _max_d or str(_max_d) != str(today):
-                        logger.warning(
-                            f"数据完整性校验失败: stock_daily 最新交易日={_max_d}, 目标={today}"
-                            f" → 跳过实盘策略驱动（防止旧数据假信号）")
-                        _drive_ok = False
-                    elif _n < 4000:
-                        logger.warning(
-                            f"数据完整性校验失败: 当日仅 {_n} 条行情（A股全市场约5000+）"
-                            f" → 跳过实盘策略驱动（数据不完整）")
-                        _drive_ok = False
-                    else:
-                        logger.info(f"数据完整性校验通过: stock_daily 最新={_max_d}, 当日 {_n} 条")
-                except Exception as _de:
-                    logger.warning(f"数据完整性校验异常: {_de} → 保守跳过实盘策略驱动")
-                    _drive_ok = False
-
-                if not _drive_ok:
-                    return  # 数据不完整，跳过本次实盘策略驱动
-
-                logger.info("日终数据同步完成，开始驱动实盘策略: %s", today)
-
-                strategy_mgr = await self.get_module_engine("strategy_manager")
-
-                # v6.13: 组合每日 rebalance（在策略驱动前，让各策略用更新后的 allocated_capital）
-                try:
-                    from modules.strategy.services.composite_service import CompositeService
-                    async with sm.get_session() as _cs:
-                        svc = CompositeService(session=_cs, strategy_manager=strategy_mgr)
-                        result = await svc.run_daily_rebalance()
-                        logger.info("组合每日 rebalance 完成: %s", result.get("processed", 0))
-                except Exception as e:
-                    logger.warning("组合每日 rebalance 失败（非致命）: %s", e)
-
-                try:
-                    if strategy_mgr and hasattr(strategy_mgr, "run_daily_strategies"):
-                        signals = await strategy_mgr.run_daily_strategies(today)
-                        logger.info("日终策略驱动完成: %d 个信号", len(signals) if signals else 0)
-                    else:
-                        logger.warning("StrategyManager 未就绪，跳过策略驱动")
-                except Exception as e:
-                    logger.exception("日终策略驱动失败: %s", e)
+                await self._run_daily_pipeline(today)
+                logger.info("日终流水线完成: %s", today)
 
             # FIXME: 合入 master 前将 schedule_config 改回收盘后时间 (如 16:30)
             job = ScheduleJob(

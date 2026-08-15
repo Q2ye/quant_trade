@@ -178,6 +178,27 @@ async def initialize(
         return False
 
 
+        # ===== 2026-08 C15：注册日终结算任务（依赖反转）=====
+        if main_engine and hasattr(main_engine, "register_daily_task"):
+            async def _task_settlement(today):
+                from shared.database.session import get_session_manager
+                from modules.account.tasks.settlement_tasks import create_settlement_tasks
+                sm = get_session_manager()
+                try:
+                    async with sm.get_session() as _settle_session:
+                        _st = create_settlement_tasks(_settle_session)
+                        _sres = await _st.daily_settlement_task(today)
+                        _sok = sum(
+                            1 for r in _sres.get("results", {}).values()
+                            if r.get("status") == "success"
+                        )
+                        logger.info("日终账户结算完成: 共 %s 账户, 成功 %s",
+                            _sres.get("total_accounts", 0), _sok)
+                except Exception as settle_err:
+                    logger.error("日终账户结算失败: %s", settle_err, exc_info=True)
+
+            await main_engine.register_daily_task("daily_settlement", _task_settlement, phase="pre_gate", order=40)
+
 async def _do_initialize(session) -> Dict[str, Any]:
     """内部初始化逻辑"""
 

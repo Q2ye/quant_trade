@@ -127,6 +127,35 @@ async def initialize (
         return False
 
 
+    # ===== 2026-08 C15：注册日终驱动任务（依赖反转，闭包捕获 main_engine）=====
+    if main_engine and hasattr(main_engine, "register_daily_task"):
+        async def _task_rebalance(today):
+            from shared.database.session import get_session_manager
+            from modules.strategy.services.composite_service import CompositeService
+            strategy_mgr = await main_engine.get_module_engine("strategy_manager")
+            sm = get_session_manager()
+            try:
+                async with sm.get_session() as _cs:
+                    svc = CompositeService(session=_cs, strategy_manager=strategy_mgr)
+                    result = await svc.run_daily_rebalance()
+                    logger.info("组合每日 rebalance 完成: %s", result.get("processed", 0))
+            except Exception as e:
+                logger.warning("组合每日 rebalance 失败（非致命）: %s", e)
+
+        async def _task_drive(today):
+            strategy_mgr = await main_engine.get_module_engine("strategy_manager")
+            try:
+                if strategy_mgr and hasattr(strategy_mgr, "run_daily_strategies"):
+                    signals = await strategy_mgr.run_daily_strategies(today)
+                    logger.info("日终策略驱动完成: %d 个信号", len(signals) if signals else 0)
+                else:
+                    logger.warning("StrategyManager 未就绪，跳过策略驱动")
+            except Exception as e:
+                logger.exception("日终策略驱动失败: %s", e)
+
+        await main_engine.register_daily_task("composite_rebalance", _task_rebalance, phase="post_gate", order=10)
+        await main_engine.register_daily_task("strategy_drive", _task_drive, phase="post_gate", order=20)
+
 async def _initialize_strategy_module(session, main_engine, event_engine, config: dict) -> dict:
     """
     策略模块内部初始化逻辑（Eager Manager + Lazy Engine 模式）
