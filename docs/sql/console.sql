@@ -231,8 +231,6 @@ SELECT * FROM trade_fees ORDER BY created_at DESC LIMIT 3;
 SELECT * FROM positions WHERE ts_code='000001.SZ';
 SELECT * FROM accounts WHERE user_id='...';
 
-SELECT *
-FROM strategies where name = '防守实盘-1'
 
 
 

@@ -29,35 +29,19 @@ async def _get_today_close_prices(
 
     prices: Dict[str, float] = {}
 
-    # 优先从复权价格表查
-    q_adj = select(
-        StockAdjustedPrices.ts_code,
-        StockAdjustedPrices.close,
+    # 修复 2026-08（C12）：盯市改用未复权收盘价，与持仓成本（原始成交价）口径一致。
+    # 旧实现优先用前复权价（qfq），除权日市值与成本不可比导致 pnl 失真。
+    q_daily = select(
+        StockDaily.ts_code,
+        StockDaily.close,
     ).where(
-        StockAdjustedPrices.trade_date == trade_date,
-        StockAdjustedPrices.ts_code.in_(ts_codes),
-        StockAdjustedPrices.adj_type == "qfq",
-        StockAdjustedPrices.freq == "D",
+        StockDaily.trade_date == trade_date,
+        StockDaily.ts_code.in_(ts_codes),
     )
-    result = await session.execute(q_adj)
+    result = await session.execute(q_daily)
     for row in result.fetchall():
         if row[1] is not None:
             prices[row[0]] = float(row[1])
-
-    # 补缺 → 从原始日线表查
-    missing = [c for c in ts_codes if c not in prices]
-    if missing:
-        q_daily = select(
-            StockDaily.ts_code,
-            StockDaily.close,
-        ).where(
-            StockDaily.trade_date == trade_date,
-            StockDaily.ts_code.in_(missing),
-        )
-        result = await session.execute(q_daily)
-        for row in result.fetchall():
-            if row[1] is not None:
-                prices[row[0]] = float(row[1])
 
     return prices
 

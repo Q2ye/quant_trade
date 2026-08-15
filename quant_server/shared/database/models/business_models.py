@@ -251,6 +251,9 @@ class Signal(Base):
     max_slippage_pct = Column(Numeric(5, 4), default=0.02, comment='最大可接受滑点比例')
     order_type = Column(String(20), default='limit_range', comment='订单类型: limit/limit_range/market')
     order_id = Column(String(36), comment='关联订单ID（执行后回写）')
+    # 修复 2026-08（C14）：信号→盈亏数据资产闭环（is_executed + pnl_outcome 回填）
+    is_executed = Column(Boolean, default=False, comment='是否已执行（录单关联后置 True）')
+    pnl_outcome = Column(Numeric(10, 4), comment='盈亏结果回填（卖出录单时写入，正=盈利）')
     parent_id = Column(String(36), ForeignKey('signals.id'), nullable=True,
                        comment='v3.4: 父信号ID（候选→买入信号链路关联，用于全链路追溯）')
     account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True, comment='关联的交易账户ID')
@@ -1027,7 +1030,9 @@ class DataFixRecord(Base):
 
 class DataQualityMetric(Base):
     """数据质量指标历史表"""
-    __tablename__ = 'data_quality_metrics'
+    # 修复 2026-08（C16）：SQL 中无此表（仅有 data_quality_checks/data_quality_issues），
+    # 且全库无使用方——标注废弃，后续 D 类清理
+    __tablename__ = 'data_quality_metrics'  # DEPRECATED: table not in DDL
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='指标ID')
     metric_date = Column(Date, nullable=False, comment='指标日期')

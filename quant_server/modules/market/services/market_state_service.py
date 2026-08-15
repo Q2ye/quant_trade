@@ -44,15 +44,17 @@ async def get_market_state(session: AsyncSession, days: int = 60) -> Dict[str, A
     )).mappings().all()
     state_rows = list(reversed(state_rows))  # 升序
 
-    # 2. 涨跌停家数历史（沿用 market_breadth 口径：pct_chg >= 9.8 涨停 / <= -9.8 跌停）
+    # 2. 涨跌停家数历史（修复 2026-08（C13）：改用 stock_daily_limit 精确口径，
+    # 旧 9.8% 近似口径漏 ST ±5%、误计创业板 ±20%）
     limit_rows = (await session.execute(
         text("""
-            SELECT trade_date,
-                   COUNT(*) FILTER (WHERE pct_chg >= 9.8) AS limit_up,
-                   COUNT(*) FILTER (WHERE pct_chg <= -9.8) AS limit_down
-            FROM stock_daily
-            GROUP BY trade_date
-            ORDER BY trade_date DESC LIMIT :days
+            SELECT l.trade_date,
+                   COUNT(*) FILTER (WHERE sd.close >= l.up_limit) AS limit_up,
+                   COUNT(*) FILTER (WHERE sd.close <= l.down_limit) AS limit_down
+            FROM stock_daily_limit l
+            JOIN stock_daily sd ON sd.ts_code = l.ts_code AND sd.trade_date = l.trade_date
+            GROUP BY l.trade_date
+            ORDER BY l.trade_date DESC LIMIT :days
         """),
         {"days": days},
     )).mappings().all()

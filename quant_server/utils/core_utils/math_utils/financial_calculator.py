@@ -228,17 +228,22 @@ class FinancialCalculator:
 		if risk_free_rate is None:
 			risk_free_rate = self.risk_free_rate
 
-		annual_return = self.annualized_return(returns)
-		annual_vol = self.annualized_volatility(returns)
-
-		if annual_vol == 0:
+		if isinstance(returns, (list, pd.Series)):
+			returns = np.array(returns)
+		valid_returns = returns[~np.isnan(returns)]
+		if len(valid_returns) < 2:
 			return 0.0
 
-		# 将年化无风险利率转换为与收益率相同的频率
-		risk_free_rate_period = (1 + risk_free_rate) ** (1 / self.trading_days) - 1
-		excess_return = annual_return - risk_free_rate_period
+		# 修复 2026-08（C4）：日频超额口径 + ddof=1——
+		# 旧实现为 (年化收益 - 日化rf)/年化波动，维度错误；
+		# 统一 GIPS 口径：mean(r - rf/252) / std(ddof=1) × √252
+		rf_daily = risk_free_rate / self.trading_days
+		excess = valid_returns - rf_daily
+		std = float(np.std(excess, ddof=1))
+		if std == 0:
+			return 0.0
 
-		return excess_return / annual_vol
+		return float(np.mean(excess) / std * np.sqrt(self.trading_days))
 
 	def sortino_ratio (self, returns: Union[List[float], np.ndarray, pd.Series],
 	                   risk_free_rate: Optional[float] = None,

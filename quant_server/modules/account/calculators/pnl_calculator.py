@@ -181,12 +181,27 @@ class PnLCalculator:
 
             positions = await self.position_repo.get_account_positions(account_id)
             position_pnl_change = Decimal("0")
-            for pos in positions:
-                if pos.volume > 0 and pos.last_price and pos.cost_price:
-                    position_pnl_change += (
-                            Decimal(str(pos.volume))
-                            * (Decimal(str(pos.last_price)) - Decimal(str(pos.cost_price)))
-                    )
+            # 修复 2026-08（C4）：MTM 增量口径——今日市值 - 昨日市值（不含历史浮盈）。
+            # 旧实现用 (最新价 - 成本价) 实为累计浮盈，污染日收益序列。
+            _codes = [p.ts_code for p in positions if p.volume and p.volume > 0]
+            if _codes:
+                from sqlalchemy import text as _text
+                _rows = (await self.session.execute(_text(
+                    "SELECT sd.ts_code, sd.close AS today_close, "
+                    "(SELECT y.close FROM stock_daily y "
+                    "  WHERE y.ts_code = sd.ts_code AND y.trade_date < sd.trade_date "
+                    "  ORDER BY y.trade_date DESC LIMIT 1) AS prev_close "
+                    "FROM stock_daily sd "
+                    "WHERE sd.ts_code = ANY(:codes) AND sd.trade_date = :td"
+                ), {"codes": _codes, "td": trade_date})).fetchall()
+                _price_map = {r.ts_code: (r.today_close, r.prev_close) for r in _rows}
+                for pos in positions:
+                    if pos.volume and pos.volume > 0 and pos.ts_code in _price_map:
+                        _today_c, _prev_c = _price_map[pos.ts_code]
+                        if _prev_c is not None:
+                            position_pnl_change += Decimal(str(pos.volume)) * (
+                                Decimal(str(_today_c)) - Decimal(str(_prev_c))
+                            )
 
             return DailyPnLSummary(
                 trade_date=trade_date,
@@ -319,13 +334,12 @@ class PnLCalculator:
                         win_count += 1
             win_rate = win_count / sell_count if sell_count > 0 else 0.0
 
-            # 年化收益率
+            # 年化收益率（修复 2026-08（C4）：252 交易日基准，替代 365 自然日）
             annualized_return = total_return
             if records and len(records) > 1:
-                days = (records[-1].trade_date - records[0].trade_date).days
-                if days > 0:
-                    annualized_return = float(
-                        (1 + total_return) ** (365 / days) - 1) if total_return > -1 else total_return
+                _n = len(records)  # 绩效记录数 = 交易日数
+                if _n > 1 and total_return > -1:
+                    annualized_return = float((1 + total_return) ** (252 / _n) - 1)
 
             return {
                 "total_return": round(total_return, 6),
@@ -361,7 +375,7 @@ class PnLCalculator:
             return Decimal("0")
         arr = np.array(returns, dtype=np.float64)
         excess = arr - risk_free_rate / 252
-        std = float(np.std(excess))
+        std = float(np.std(excess, ddof=1))  # 修复 2026-08（C4）：ddof=1 样本标准差
         if std == 0:
             return Decimal("0")
         sharpe = float(np.mean(excess)) / std * np.sqrt(252)

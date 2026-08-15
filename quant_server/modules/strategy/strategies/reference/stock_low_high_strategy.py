@@ -1205,7 +1205,8 @@ class StockLowHighStrategy(BaseStrategy):
             if entry <= 0:
                 continue
             current = self._get_price(code)
-            if current <= 0:
+            # 修复 2026-08（C8）：NaN 防护——NaN <= 0 为 False 会穿透污染 nav
+            if current is None or current != current or current <= 0:
                 continue
             w = holding.get("weight", 1.0)
             nav *= 1.0 + (current - entry) / entry * w

@@ -1276,11 +1276,27 @@ class BacktestService:
 				slippage=float(config.get('slippage_rate', 0.0001)),
 			)
 
+			# 修复 2026-08（C9）：执行时优先用版本快照代码（此前记录快照却执行当前代码，回测不可复现）
+			_exec_code = strategy.code
+			if getattr(task, "strategy_version_id", None):
+				try:
+					from shared.database.repositories.strategy.management.strategy_version_repo import (
+						StrategyVersionRepository,
+					)
+					_vrepo = StrategyVersionRepository(self.db)
+					_ver = await _vrepo.get(str(task.strategy_version_id))
+					if _ver and getattr(_ver, "code_content", None):
+						_exec_code = _ver.code_content
+					else:
+						logger.warning("版本快照无代码内容，回退当前代码: %s", task.strategy_id)
+				except Exception as _ver_e:
+					logger.warning("读取版本快照失败，回退当前代码: %s", _ver_e)
+
 			await self.strategy_manager.load_strategy(
 				strategy_id=task.strategy_id,
 				name=strategy.name,
 				strategy_type=StrategyType.CUSTOM,
-				code=strategy.code,
+				code=_exec_code,
 				parameters=parameters,
 				config=strategy_config,
 			)

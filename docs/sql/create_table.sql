@@ -5249,3 +5249,7 @@ CREATE TABLE IF NOT EXISTS composite_account_snapshots (
     created_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(composite_group_id, trade_date)
 );
+
+-- 迁移 2026-08（C14）：signals 数据资产闭环列（现有库执行）
+-- ALTER TABLE signals ADD COLUMN IF NOT EXISTS is_executed BOOLEAN DEFAULT false;
+-- ALTER TABLE signals ADD COLUMN IF NOT EXISTS pnl_outcome NUMERIC(10,4);

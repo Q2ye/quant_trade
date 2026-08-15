@@ -1557,12 +1557,13 @@ class DataCleanEngine(EngineBase):
                 return {"rule": rule.name, "status": "skipped", "records_processed": 0, "changes_made": 0, "errors": ["清洗服务未配置"]}
 
             # 根据规则类型映射到清洗服务的检查方法
+            # 修复 2026-08（C3）：映射键对齐 CleanRule 实际 rule_type 值
+            # （missing/duplicate/outlier/standardization），此前键值不符致零匹配、清洗空转
             check_methods = {
-                "missing_data": "_check_missing_data",
-                "duplicate_data": "_check_duplicate_data",
-                "outlier_detection": "_check_outliers",
-                "invalid_symbols": "_check_invalid_stock_symbols",
-                "missing_info": "_check_missing_stock_info",
+                "missing": "_check_missing_data",
+                "duplicate": "_check_duplicate_data",
+                "outlier": "_check_outliers",
+                "standardization": "_check_inconsistent_data",
             }
             method_name = check_methods.get(rule.rule_type) if hasattr(rule, "rule_type") else None
 

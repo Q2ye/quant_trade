@@ -72,6 +72,20 @@ async def generate_adjusted_prices(
     result = await session.execute(latest_factor_query, {"ts_codes": ts_codes})
     latest_factors = {r[0]: float(r[1]) for r in result.fetchall()}
 
+    # 修复 2026-08（C2）：后复权需以最早因子为基准（旧实现用最新因子且除法，公式错误）
+    earliest_factor_query = text("""
+        SELECT af.ts_code, af.adj_factor
+        FROM stock_adj_factor af
+        INNER JOIN (
+            SELECT ts_code, MIN(trade_date) AS min_date
+            FROM stock_adj_factor
+            WHERE ts_code = ANY(:ts_codes)
+            GROUP BY ts_code
+        ) earliest ON af.ts_code = earliest.ts_code AND af.trade_date = earliest.min_date
+    """)
+    result = await session.execute(earliest_factor_query, {"ts_codes": ts_codes})
+    earliest_factors = {r[0]: float(r[1]) for r in result.fetchall()}
+
     # 获取当日复权因子
     current_factor_query = text(
         "SELECT ts_code, adj_factor FROM stock_adj_factor "
@@ -112,6 +126,7 @@ async def generate_adjusted_prices(
 
         latest_factor = latest_factors.get(ts_code)
         current_factor = current_factors.get(ts_code)
+        earliest_factor = earliest_factors.get(ts_code)
 
         if latest_factor is None or latest_factor <= 0:
             skipped += 1
@@ -122,19 +137,23 @@ async def generate_adjusted_prices(
             skipped += 1
             continue
 
-        # 复权计算
-        ratio = current_factor / latest_factor
+        # 复权计算（修复 2026-08 C2）
         if adj_type == "qfq":
+            # 前复权：以最新因子为基准，历史价 × (当日/最新)
+            ratio = current_factor / latest_factor
             adj_open = float(row.open) * ratio if row.open else 0
             adj_high = float(row.high) * ratio if row.high else 0
             adj_low = float(row.low) * ratio if row.low else 0
             adj_close = float(row.close) * ratio if row.close else 0
         else:  # hfq
-            if ratio > 0:
-                adj_open = float(row.open) / ratio if row.open else 0
-                adj_high = float(row.high) / ratio if row.high else 0
-                adj_low = float(row.low) / ratio if row.low else 0
-                adj_close = float(row.close) / ratio if row.close else 0
+            # 后复权：以最早因子为基准，当日价 × (当日/最早)。
+            # 旧实现 price / (当日/最新) 公式错误
+            if earliest_factor and earliest_factor > 0:
+                ratio = current_factor / earliest_factor
+                adj_open = float(row.open) * ratio if row.open else 0
+                adj_high = float(row.high) * ratio if row.high else 0
+                adj_low = float(row.low) * ratio if row.low else 0
+                adj_close = float(row.close) * ratio if row.close else 0
             else:
                 skipped += 1
                 continue

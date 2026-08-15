@@ -464,9 +464,11 @@ class ExposureCalculator:
 			if len(daily_returns) >= 20:
 				returns_arr = np.array(daily_returns)
 
-				# Sharpe Ratio: 日均收益 / 日收益标准差 × √252（假设无风险利率为0）
-				mean_return = float(np.mean(returns_arr))
-				std_return = float(np.std(returns_arr, ddof=1))
+				# 修复 2026-08（C4）：rf 纳入（统一 2%），与 pnl_calculator/financial_calculator 口径一致
+				_rf_daily = 0.02 / 252
+				_excess = returns_arr - _rf_daily
+				mean_return = float(np.mean(_excess))
+				std_return = float(np.std(_excess, ddof=1))
 				if std_return > 0:
 					sharpe_ratio = Decimal(str(round(mean_return / std_return * np.sqrt(252), 4)))
 

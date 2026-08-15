@@ -438,9 +438,9 @@ class ComparisonService:
 
             # 按指标方向排序
             if metric in ['max_drawdown']:
-                # 越小越好（回撤）
+                # 修复 2026-08（C4）：回撤统一负值后，数值越大越好（-5% > -15%）
                 sorted_strategies = sorted(
-                    metric_values.items(), key=lambda x: x[1]
+                    metric_values.items(), key=lambda x: x[1], reverse=True
                 )
             else:
                 # 越大越好

@@ -230,7 +230,7 @@ class AuditLog(Base):
 
 class SystemNotification(Base):
 	"""系统通知表"""
-	__tablename__ = 'system_notifications'
+	__tablename__ = 'sys_notifications'  # 修复 2026-08（C16）：与 create_table.sql 建表名一致
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='通知ID')
 	notification_type = Column(String(50), nullable=False, comment='通知类型：SYSTEM, ALERT, TASK, TRADE')

@@ -1265,8 +1265,16 @@ class DataCleanService:
 
 	@staticmethod
 	async def _fix_missing_quotes(issue: Dict) -> bool:
-		"""修复缺失的行情数据 — 前向填充缺失记录"""
+		"""修复缺失的行情数据
+
+		修复 2026-08（C1）：缺失交易日多为停牌，前向填充会制造假行情
+		（旧价 + vol=0），污染 PIT 正确性与因子计算。改为不做前向填充，
+		停牌日保留缺失（缺失即真实状态）。
+		"""
 		try:
+			logger.info("停牌/缺失日不做前向填充（修复 C1）：%s 共 %d 日保留缺失",
+			            issue.get("ts_code"), len(issue.get("dates", [])))
+			return False
 			from shared.database.session import get_session_manager
 			from sqlalchemy import text
 

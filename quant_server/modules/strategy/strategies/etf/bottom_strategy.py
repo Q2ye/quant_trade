@@ -633,6 +633,9 @@ class LightGBMBottomStrategy(BaseStrategy):
     def _check_exit(self, ts_code: str, bar: BarData) -> Optional[TradingSignal]:
         entry_date, entry_price = self._position_entry.get(ts_code, (None, None))
         if entry_price is None: return None
+        # 修复 2026-08（C8）：entry=0/NaN 防护——此前除零抛异常或 NaN 使持仓永不退出
+        if entry_price != entry_price or entry_price <= 0 or bar.close != bar.close or bar.close <= 0:
+            return None
         pnl = bar.close / entry_price - 1
         regime = self._get_regime(ts_code, bar.trade_date)
         if ts_code not in self._track_high:

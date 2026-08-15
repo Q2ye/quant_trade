@@ -128,12 +128,12 @@ class PerformanceService:
                 (total_assets - run_initial) / run_initial if run_initial > 0 else 0.0
             )
 
-            # 最大回撤
+            # 最大回撤（修复 2026-08（C4）：统一负值口径，与 exposure_calculator 一致）
             peak = max(
                 float(getattr(prev, "total_assets", total_assets) or total_assets),
                 total_assets,
             )
-            dd = (peak - total_assets) / peak if peak > 0 else 0.0
+            dd = (total_assets - peak) / peak if peak > 0 else 0.0
             max_dd = max(
                 float(getattr(prev, "max_drawdown", 0) or 0),
                 dd,
@@ -144,7 +144,7 @@ class PerformanceService:
             sharpe = None
             if len(returns) >= 5:
                 arr = np.array(returns, dtype=float)
-                std = float(np.std(arr))
+                std = float(np.std(arr, ddof=1))  # 修复 2026-08（C4）：ddof=1
                 if std > 1e-12:
                     sharpe = float(np.mean(arr)) / std * np.sqrt(252)
 

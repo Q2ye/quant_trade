@@ -202,6 +202,14 @@ class TradeRecordService:
                 fee_records.append(fee_record)
 
             # ---- 6. 更新 Position ----
+            # 修复 2026-08（C14）：卖出前查持仓成本，用于信号盈亏回填
+            _sell_cost = None
+            if direction == "sell" and signal_id:
+                _pos_old = await self._position_repo.get_user_position_by_strategy(
+                    user_id=user_id, account_id=account.id, ts_code=ts_code,
+                    strategy_id=strategy_id,
+                )
+                _sell_cost = getattr(_pos_old, "cost_price", None) if _pos_old else None
             position = await self._upsert_position(
                 user_id, account.id, ts_code, direction, price, quantity,
                 strategy_id=strategy_id,
@@ -221,10 +229,16 @@ class TradeRecordService:
 
             # ---- 8. 回写 Signal ----
             if signal_id:
-                await self._signal_repo.update(signal_id, {
+                # 修复 2026-08（C14）：is_executed + 卖出录单回填盈亏（数据资产闭环）
+                _sig_upd = {
                     "signal_status": "executed",
                     "order_id": order_id,
-                })
+                    "is_executed": True,
+                }
+                if direction == "sell" and _sell_cost is not None:
+                    _pnl = (price - Decimal(str(_sell_cost))) * Decimal(quantity)
+                    _sig_upd["pnl_outcome"] = float(_pnl)
+                await self._signal_repo.update(signal_id, _sig_upd)
 
         logger.info(
             f"手动成交录入成功: user={user_id}, {direction} {ts_code} "
