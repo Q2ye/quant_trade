@@ -12,7 +12,6 @@
 """
 
 from .authentication import AuthenticationManager
-from .authorization import AuthorizationManager
 from .jwt_handler import (
     get_token_from_header,
     verify_access_token,
@@ -23,7 +22,6 @@ from .jwt_handler import (
 
 __all__ = [
     "AuthenticationManager",
-    "AuthorizationManager",
     "get_token_from_header",
     "verify_access_token",
     "blacklist_token",

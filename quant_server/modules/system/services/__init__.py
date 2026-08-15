@@ -19,7 +19,6 @@ from .user_service import UserService
 from .role_service import RoleService
 from .config_service import ConfigService
 from .log_service import LogService
-from .task_service import TaskService
 
 __all__ = [
     "AuthService",
@@ -27,7 +26,6 @@ __all__ = [
     "RoleService",
     "ConfigService",
     "LogService",
-    "TaskService",
 ]
 
 __version__ = "1.0.0"

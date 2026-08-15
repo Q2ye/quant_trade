@@ -5,12 +5,10 @@ from modules.monitor.services.system_service import SystemMonitorService
 from modules.monitor.services.risk_service import RiskMonitorService
 from modules.monitor.services.business_service import BusinessMonitorService
 from modules.monitor.services.alert_service import AlertService
-from modules.monitor.services.log_service import LogService
 
 __all__ = [
     "SystemMonitorService",
     "RiskMonitorService",
     "BusinessMonitorService",
     "AlertService",
-    "LogService",
 ]

@@ -194,37 +194,6 @@ class AlertEngine(EngineBase):
                         )
                         await self._publish_event(failed_event.event_type, failed_event.data)
 
-    async def trigger_alert(
-        self,
-        alert_type: str,
-        alert_level: str,
-        title: str,
-        message: str,
-        source_module: str = "monitor",
-        channels: Optional[list] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
-        """
-        外部触发告警（由 handlers 调用）
-
-        Returns:
-            alert_id 或 None（若去重导致跳过）
-        """
-        if not self._db_session_factory:
-            return None
-
-        async with self._db_session_factory() as session:
-            result = await self._alert_manager.create_and_dispatch(
-                session=session,
-                alert_type=alert_type,
-                alert_level=alert_level,
-                title=title,
-                message=message,
-                source_module=source_module,
-                channels=channels,
-                metadata=metadata,
-            )
-            return result.get("alert_id")
 
     async def _handle_risk_alert(self, event) -> None:
         """处理风险告警事件"""

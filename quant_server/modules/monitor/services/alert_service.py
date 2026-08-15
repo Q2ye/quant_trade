@@ -73,18 +73,6 @@ class AlertService:
 		repo = MonitorAlertRepository(session)
 		return await repo.acknowledge_alert(alert_id, user_id, remarks)
 
-	@staticmethod
-	async def resolve_alert (
-			session: AsyncSession,
-			alert_id: str,
-			user_id: str,
-			remarks: Optional[str] = None,
-	) -> bool:
-		"""解决告警"""
-		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
-
-		repo = MonitorAlertRepository(session)
-		return await repo.resolve_alert(alert_id, user_id, remarks)
 
 	@staticmethod
 	async def check_duplicate (
@@ -181,24 +169,3 @@ class AlertService:
 
 		repo = MonitorAlertRepository(session)
 		return await repo.get_unresolved_alerts_summary()
-
-	@staticmethod
-	async def render_template (
-			session: AsyncSession,
-			alert_type: str,
-			alert_level: str,
-			context: Dict[str, Any],
-	) -> Optional[Dict[str, str]]:
-		"""使用模板渲染告警消息"""
-		from shared.database.repositories.analysis.monitor.alert_template_repo import \
-			AlertTemplateRepository
-
-		repo = AlertTemplateRepository(session)
-		try:
-			return await repo.render_by_type_level(alert_type, alert_level, context)
-		except Exception:
-			# 模板渲染失败时使用内置模板
-			return AlertUtils.format_alert_message(
-				AlertType(alert_type) if alert_type in [e.value for e in AlertType] else AlertType.SYSTEM_ERROR,
-				context,
-			)

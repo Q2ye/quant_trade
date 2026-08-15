@@ -20,7 +20,6 @@ class AnalysisType(str, Enum):
 	RISK = "risk"  # 风险分析
 	ATTRIBUTION = "attribution"  # 归因分析
 	COMPARISON = "comparison"  # 对比分析
-	TRADE = "events"  # 交易分析
 
 
 class ReportStatus(str, Enum):
@@ -43,8 +42,6 @@ class RiskModel(str, Enum):
 class AttributionModel(str, Enum):
 	"""归因模型枚举"""
 	BRINSON = "brinson"  # Brinson归因
-	CARINO = "carino"  # Carino归因
-	FRONGELLO = "frongello"  # Frongello归因
 	FACTOR = "factor"  # 因子归因
 
 

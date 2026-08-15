@@ -9,7 +9,6 @@ from .statement_generator import (
 	generate_monthly_report
 )
 from .position_processor import (
-	PositionProcessor,
 	calculate_position_pnl,
 	calculate_position_cost,
 	calculate_position_exposure
@@ -23,7 +22,6 @@ __all__ = [
 	'generate_monthly_report',
 
 	# Position Processor
-	'PositionProcessor',
 	'calculate_position_pnl',
 	'calculate_position_cost',
 	'calculate_position_exposure'

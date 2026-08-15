@@ -294,50 +294,7 @@ class JWTManager:
 		except Exception as e:
 			raise InvalidTokenError(f"令牌解码失败: {str(e)}") from e
 
-	def get_token_expiry (self, token: str) -> datetime:
-		"""
-		获取令牌过期时间
 
-		Args:
-			token: JWT令牌
-
-		Returns:
-			令牌过期时间
-		"""
-		try:
-			payload = self.decode_token_without_verification(token)
-			exp_timestamp = payload.get("exp")
-
-			if not exp_timestamp:
-				raise InvalidTokenError("令牌不包含过期时间")
-
-			return datetime.fromtimestamp(exp_timestamp)
-
-		except Exception as e:
-			raise InvalidTokenError(f"获取令牌过期时间失败: {str(e)}") from e
-
-	def is_token_expired (self, token: str, leeway: int = 0) -> bool:
-		"""
-		检查令牌是否已过期
-
-		Args:
-			token: JWT令牌
-			leeway: 时间容差（秒）
-
-		Returns:
-			True如果令牌已过期，否则False
-		"""
-		try:
-			self.verify_token(token, leeway=leeway)
-			return False
-		except TokenExpiredError:
-			return True
-		except Exception as e:
-			# 记录异常信息
-			import logging
-			logger = logging.getLogger(__name__)
-			logger.debug(f"令牌验证异常: {str(e)}")
-			return True
 
 
 # 全局JWT管理器实例（延迟初始化）

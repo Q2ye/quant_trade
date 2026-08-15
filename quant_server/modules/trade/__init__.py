@@ -213,10 +213,6 @@ __all__ = [
     # 事件
     "OrderEvent",
     "OrderUpdateEvent",
-    "PositionEvent",
-    "PositionUpdateEvent",
-    "RiskEvent",
-    "RiskAlertEvent",
     # 管理器
     "TradeManager",
     "RiskManager",

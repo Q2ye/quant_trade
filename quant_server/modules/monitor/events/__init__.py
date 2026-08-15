@@ -12,7 +12,6 @@ from modules.monitor.events.types import (
 from modules.monitor.events.system_events import SystemMonitorEvent
 from modules.monitor.events.risk_events import RiskMonitorEvent
 from modules.monitor.events.alert_events import AlertMonitorEvent
-from modules.monitor.events.health_events import HealthMonitorEvent
 
 __all__ = [
     "MonitorEventData",
@@ -24,5 +23,4 @@ __all__ = [
     "SystemMonitorEvent",
     "RiskMonitorEvent",
     "AlertMonitorEvent",
-    "HealthMonitorEvent",
 ]

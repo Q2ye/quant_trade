@@ -2,28 +2,22 @@
 """
 安全模块包入口
 提供统一的安全功能接口，包括加密、JWT、密码处理、权限验证和审计日志
+（2026-08 D 批清理：RSACipher/EncryptionManager/死密码函数/audit_log 装饰器已删）
 """
 
-from .encryption import EncryptionManager, AESCipher, RSACipher
+from .encryption import AESCipher
 from .jwt_handler import JWTManager, create_access_token, verify_token
 from .password import (
     PasswordManager,
     PasswordCrypto,
-    verify_password,
-    encrypt_password,
-    decrypt_password,
     get_password_crypto,
     get_password_manager,
-    generate_secure_password,
-    get_password_score,
 )
-from .audit import AuditLogger, audit_log
+from .audit import AuditLogger
 
 __all__ = [
 	# 加密
-	'EncryptionManager',
 	'AESCipher',
-	'RSACipher',
 
 	# JWT
 	'JWTManager',
@@ -33,17 +27,11 @@ __all__ = [
 	# 密码
 	'PasswordManager',
 	'PasswordCrypto',
-	'verify_password',
-	'encrypt_password',
-	'decrypt_password',
 	'get_password_crypto',
 	'get_password_manager',
-	'generate_secure_password',
-	'get_password_score',
 
 	# 审计
 	'AuditLogger',
-	'audit_log',
 ]
 
 __version__ = '1.0.0'

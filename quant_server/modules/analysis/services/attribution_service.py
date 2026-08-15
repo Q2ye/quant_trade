@@ -905,32 +905,3 @@ class AttributionService:
                 f"请确认行情数据源配置正确。"
             )
             return None
-
-    @staticmethod
-    async def _perform_factor_regression(
-        portfolio_returns: np.ndarray,
-        factor_returns: np.ndarray,
-        factor_names: List[str]
-    ) -> Tuple[Dict[str, float], Dict[str, float]]:
-        """Estimate factor exposures and attribution via OLS (np.linalg.lstsq)."""
-        if len(portfolio_returns) != len(factor_returns):
-            raise ValueError(
-                f"return series length mismatch: portfolio {len(portfolio_returns)}, factors {len(factor_returns)}"
-            )
-
-        # OLS: X = [1 | factor_returns], solve via lstsq
-        X = np.column_stack([np.ones(len(factor_returns)), factor_returns])
-        coef, residuals, rank, sv = np.linalg.lstsq(X, portfolio_returns, rcond=None)
-
-        # Factor exposures (skip intercept at index 0)
-        exposures = {}
-        for i, factor in enumerate(factor_names):
-            exposures[factor] = float(coef[i + 1])
-
-        # Factor contribution = beta_i * mean(factor_return_i)
-        attributions = {}
-        for i, factor in enumerate(factor_names):
-            contrib = float(coef[i + 1]) * float(np.mean(factor_returns[:, i]))
-            attributions[factor] = contrib
-
-        return exposures, attributions

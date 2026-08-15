@@ -144,36 +144,6 @@ class SystemStoppedEvent(BaseEvent):
 
 
 
-class ReportGeneratedEvent(BaseEvent):
-	"""
-	报告生成事件
-	当报告生成完成时触发
-	"""
-
-	def __init__ (
-			self,
-			task_id: str,
-			report_type: str,
-			report_path: str,
-			metadata: Optional[Dict[str, Any]] = None,
-			**kwargs
-	):
-		super().__init__(
-			event_type="report.generated",
-			source="report",
-			module="analysis",
-			priority=EventPriority.NORMAL,
-			category=EventCategory.SYSTEM,
-			**kwargs
-		)
-
-		self.data = {
-			"task_id": task_id,
-			"report_type": report_type,
-			"report_path": report_path,
-			"metadata": metadata or {},
-			"generated_at": datetime.now().isoformat(),
-		}
 
 
 # 导出所有事件类
@@ -185,5 +155,4 @@ __all__ = [
 	# 事件类
 	"SystemStartedEvent",
 	"SystemStoppedEvent",
-	"ReportGeneratedEvent",
 ]

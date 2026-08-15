@@ -68,60 +68,6 @@ def _is_common_password(password: str) -> bool:
     return password.lower() in common_passwords
 
 
-def generate_secure_password(length: int = 16) -> str:
-    """生成安全随机密码"""
-    import secrets
-    import string
-
-    lowercase = string.ascii_lowercase
-    uppercase = string.ascii_uppercase
-    digits = string.digits
-    special = '!@#$%^&*()_+-=[]{}|;:,.<>?'
-
-    password_chars = [
-        secrets.choice(lowercase),
-        secrets.choice(uppercase),
-        secrets.choice(digits),
-        secrets.choice(special)
-    ]
-    all_chars = lowercase + uppercase + digits + special
-    password_chars.extend(secrets.choice(all_chars) for _ in range(length - 4))
-    secrets.SystemRandom().shuffle(password_chars)
-    return ''.join(password_chars)
-
-
-def get_password_score(password: str) -> int:
-    """计算密码强度分数（0-100）"""
-    score = 0
-    if len(password) >= 8:
-        score += 20
-    if len(password) >= 12:
-        score += 10
-    if len(password) >= 16:
-        score += 10
-    if re.search(r'[a-z]', password):
-        score += 10
-    if re.search(r'[A-Z]', password):
-        score += 10
-    if re.search(r'[0-9]', password):
-        score += 10
-    if re.search(r'[^a-zA-Z0-9]', password):
-        score += 10
-    char_set_size = 0
-    if re.search(r'[a-z]', password):
-        char_set_size += 26
-    if re.search(r'[A-Z]', password):
-        char_set_size += 26
-    if re.search(r'[0-9]', password):
-        char_set_size += 10
-    if re.search(r'[^a-zA-Z0-9]', password):
-        char_set_size += 32
-    if char_set_size > 0:
-        entropy = len(password) * (char_set_size.bit_length() / 2)
-        score += min(int(entropy), 20)
-    if _is_common_password(password):
-        score = max(0, score - 30)
-    return min(score, 100)
 
 
 class PasswordManager:
@@ -156,21 +102,6 @@ class PasswordManager:
         except Exception as e:
             raise PasswordHashError(f"密码加密失败: {str(e)}") from e
 
-    def decrypt_password(self, encrypted: str) -> str:
-        """解密密码（验证用）—— 仅支持 AES256: 格式
-
-        注意：BCRYPT 格式密码不可解密，请使用 verify_password()
-        """
-        if not encrypted:
-            return ""
-        if encrypted.startswith(self._BCRYPT_PREFIX):
-            raise PasswordValidationError(
-                "BCRYPT 格式密码不可解密，请使用 verify_password() 验证"
-            )
-        try:
-            return self._crypto.decrypt(encrypted)
-        except Exception as e:
-            raise PasswordValidationError(f"密码解密失败: {str(e)}") from e
 
     def verify_password(
         self, plain_password: str, stored_value: str
@@ -224,11 +155,6 @@ class PasswordManager:
         hashed = bcrypt.hashpw(password.encode(), salt).decode()
         return self._BCRYPT_PREFIX + hashed
 
-    def needs_migration(self, stored_value: str) -> bool:
-        """检查存储的密码是否需要迁移到 bcrypt"""
-        return bool(stored_value) and not stored_value.startswith(
-            self._BCRYPT_PREFIX
-        )
 
     def validate_password_strength(self, password: str) -> Tuple[bool, list]:
         """验证密码强度，返回 (是否通过, 错误消息列表)"""
@@ -249,21 +175,6 @@ class PasswordManager:
             raise WeakPasswordError(f"密码强度不足: {'; '.join(errors)}")
         return True, []
 
-    def check_password_policy(self, password: str) -> Dict[str, bool]:
-        """检查密码策略的各个要求"""
-        return {
-            "length_ok": len(password) >= self.min_length,
-            "has_uppercase": bool(re.search(r'[A-Z]', password)),
-            "has_lowercase": bool(re.search(r'[a-z]', password)),
-            "has_number": bool(re.search(r'[0-9]', password)),
-            "has_special": bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password)),
-            "is_common": _is_common_password(password)
-        }
-
-
-# 全局实例（延迟初始化）
-_password_manager = None
-_password_crypto = None
 
 
 def get_password_manager(config: Optional[dict] = None) -> PasswordManager:
@@ -293,25 +204,3 @@ def get_password_crypto() -> PasswordCrypto:
 
 
 # 便捷函数
-def encrypt_password(password: str) -> str:
-    """加密密码"""
-    return get_password_manager().encrypt_password(password)
-
-
-def decrypt_password(encrypted: str) -> str:
-    """解密密码"""
-    return get_password_crypto().decrypt(encrypted)
-
-
-def verify_password(
-    plain_password: str, stored_value: str
-) -> Tuple[bool, Optional[str]]:
-    """验证密码，返回 (是否通过, 升级后的 bcrypt 密码或 None)"""
-    return get_password_manager().verify_password(plain_password, stored_value)
-
-
-def needs_password_migration(stored_value: str) -> bool:
-    """检查密码是否需要从 AES 迁移到 bcrypt"""
-    if not stored_value:
-        return False
-    return not stored_value.startswith(PasswordManager._BCRYPT_PREFIX)

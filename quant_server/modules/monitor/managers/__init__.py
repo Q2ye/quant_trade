@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """监控模块管理器"""
 
-from modules.monitor.managers.health_manager import HealthManager
 from modules.monitor.managers.alert_manager import AlertManager
 
-__all__ = ["HealthManager", "AlertManager"]
+__all__ = ["AlertManager"]

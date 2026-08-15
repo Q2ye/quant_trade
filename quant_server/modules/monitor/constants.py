@@ -84,23 +84,6 @@ class ModuleConfig:
     ENGINE_QUEUE_SIZE = 5000
 
 
-class EventType(str, Enum):
-    """监控模块事件类型"""
-    SYSTEM_METRICS_COLLECTED = "monitor.system.metrics.collected"
-    SYSTEM_HEALTH_CHANGED = "monitor.system.health.changed"
-    SYSTEM_COMPONENT_DOWN = "monitor.system.component.down"
-    RISK_THRESHOLD_BREACHED = "monitor.risk.threshold.breached"
-    RISK_ALERT_TRIGGERED = "monitor.risk.alert.triggered"
-    RISK_METRICS_UPDATED = "monitor.risk.metrics.updated"
-    BUSINESS_METRICS_UPDATED = "monitor.business.metrics.updated"
-    BUSINESS_ANOMALY_DETECTED = "monitor.business.anomaly.detected"
-    ALERT_CREATED = "monitor.alert.created"
-    ALERT_NOTIFICATION_SENT = "monitor.alert.notification.sent"
-    ALERT_NOTIFICATION_FAILED = "monitor.alert.notification.failed"
-    ALERT_ACKNOWLEDGED = "monitor.alert.acknowledged"
-    ALERT_RESOLVED = "monitor.alert.resolved"
-    HEALTH_CHECK_PASSED = "monitor.health.check.passed"
-    HEALTH_CHECK_FAILED = "monitor.health.check.failed"
 
 
 DEFAULT_THRESHOLDS = {

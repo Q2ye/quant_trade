@@ -8,32 +8,6 @@
 from enum import Enum
 
 
-# ==================== 规则名称枚举 ====================
-
-
-class RiskRuleName(str, Enum):
-    """风控规则名称枚举 — 与 RiskRule.get_name() 返回值一致"""
-    # 仓位规则
-    POSITION_LIMIT = "position_limit"
-    SINGLE_POSITION_LIMIT = "single_position_limit"
-    POSITION_CONCENTRATION = "position_concentration"
-
-    # 账户规则
-    ACCOUNT_BALANCE = "account_balance"
-    LOSS_LIMIT = "loss_limit"
-    DRAWDOWN_LIMIT = "drawdown_limit"
-    CAPITAL_CHANGE = "capital_change"
-
-    # 黑名单规则
-    BLACKLIST = "blacklist"
-    MARKET_BLACKLIST = "market_blacklist"
-    SECTOR_BLACKLIST = "sector_blacklist"
-
-    # 市场规则
-    LIQUIDITY = "liquidity"
-    PRICE = "price"
-    VOLATILITY = "volatility"
-    MARKET_STATUS = "market_status"
 
 
 # ==================== 告警级别 ====================

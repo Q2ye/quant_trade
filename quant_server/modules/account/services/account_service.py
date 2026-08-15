@@ -600,55 +600,6 @@ class AccountService:
 			logger.error(f"调整账户冻结资金失败: {str(e)}")
 			raise
 
-	async def record_daily_settlement (
-			self,
-			account_id: str,
-			trade_date: date,
-			total_asset: Decimal,
-			cash: Decimal,
-			market_value: Decimal,
-			daily_pnl: Decimal,
-			daily_return: Decimal
-	) -> bool:
-		"""
-		记录账户每日结算信息
-
-		Args:
-			account_id: 账户ID
-			trade_date: 交易日
-			total_asset: 总资产
-			cash: 现金
-			market_value: 持仓市值
-			daily_pnl: 当日盈亏
-			daily_return: 当日收益率
-
-		Returns:
-			记录是否成功
-		"""
-		try:
-			# 获取账户
-			account = await self.account_repo.get(account_id)
-			if not account:
-				raise ValueError(f"账户不存在: {account_id}")
-
-			# 创建每日绩效记录
-			performance_data = {"user_id": account.user_id, "trade_date": trade_date, "total_asset": total_asset,
-			                    "cash": cash, "market_value": market_value, "daily_pnl": daily_pnl,
-			                    "daily_return": daily_return,
-			                    'created_at': datetime.combine(trade_date, datetime.min.time())}
-
-			await self.performance_repo.create(performance_data)
-
-			# 更新账户最后交易日
-			await self.account_repo.update(account_id, {"last_trade_date": trade_date})
-
-			logger.info(f"记录每日结算: 账户ID={account_id}, 交易日={trade_date}, 总资产={total_asset}")
-
-			return True
-
-		except Exception as e:
-			logger.error(f"记录每日结算失败: {str(e)}")
-			raise
 
 	async def deposit (self, account_id: str, amount: float) -> bool:
 		"""

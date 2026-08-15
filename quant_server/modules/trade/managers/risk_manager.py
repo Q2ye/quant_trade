@@ -52,9 +52,6 @@ class RiskManager:
         self._risk_engine = None  # 延迟绑定
         self._registered_rules: List = []
 
-    def bind_risk_engine(self, risk_engine) -> None:
-        """绑定到 modules.risk 的 RiskEngine 实例"""
-        self._risk_engine = risk_engine
 
     def load_default_rules(self) -> None:
         """

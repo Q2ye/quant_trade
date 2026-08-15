@@ -28,11 +28,6 @@ from .user_events import (
     UserLoginEvent,
     UserUpdatedEvent,
 )
-from .task_events import (
-    TaskScheduledEvent,
-    TaskExecutedEvent,
-    TaskFailedEvent,
-)
 
 __all__ = [
     "SystemEventType",
@@ -44,9 +39,6 @@ __all__ = [
     "UserCreatedEvent",
     "UserLoginEvent",
     "UserUpdatedEvent",
-    "TaskScheduledEvent",
-    "TaskExecutedEvent",
-    "TaskFailedEvent",
 ]
 
 __version__ = "1.0.0"

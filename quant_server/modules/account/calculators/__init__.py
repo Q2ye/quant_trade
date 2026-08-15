@@ -10,11 +10,9 @@
 
 from .asset_calculator import AssetCalculator
 from .pnl_calculator import PnLCalculator
-from .exposure_calculator import ExposureCalculator
 
 __all__ = [
 	"AssetCalculator",
 	"PnLCalculator",
-	"ExposureCalculator",
 ]
 # 计算器

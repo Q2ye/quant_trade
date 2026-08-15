@@ -105,30 +105,3 @@ class BusinessMonitorService:
 				metrics["account"]["cumulative_pnl"] = round(total_pnl, 2)
 		except Exception:
 			pass
-
-	@staticmethod
-	async def compare_periods (
-			current: Dict[str, Any],
-			previous: Dict[str, Any],
-	) -> Dict[str, Any]:
-		"""计算环比变化"""
-
-		def _safe_delta (cur_val, prev_val):
-			if prev_val and prev_val != 0:
-				return round((cur_val - prev_val) / prev_val * 100, 2)
-			return 0.0
-
-		comparison = {}
-		for section in ("trading", "account", "strategy"):
-			cur_section = current.get(section, {})
-			prev_section = previous.get(section, {})
-			comparison[section] = {}
-			for key in cur_section:
-				if isinstance(cur_section[key], (int, float)):
-					comparison[section][key] = {
-						"current": cur_section[key],
-						"previous": prev_section.get(key, 0),
-						"change_pct": _safe_delta(cur_section[key], prev_section.get(key, 0)),
-					}
-
-		return comparison
