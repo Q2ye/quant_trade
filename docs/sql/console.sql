@@ -241,6 +241,19 @@ select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a
 
 select * from factor_definitions;
 
+-- ① 列是否存在于表
+SELECT column_name FROM information_schema.columns
+WHERE table_name='market_state_daily' AND column_name IN ('limit_up_count','avg_turnover');
+
+-- ② 有多少天有值
+SELECT COUNT(limit_up_count) AS 涨停家数已填充, COUNT(avg_turnover) AS 换手率已填充
+FROM market_state_daily;
+
+-- ③ 最近有值的数据
+SELECT trade_date, limit_up_count, avg_turnover
+FROM market_state_daily
+WHERE limit_up_count IS NOT NULL
+ORDER BY trade_date DESC LIMIT 5;
 
 -- 3. 一只典型 ETF 近 20 日 amount 值（确认单位），例如 515170.SH（食品饮料）
 SELECT trade_date, close, vol, amount, pct_chg

@@ -18,6 +18,9 @@ from modules.market.handlers import (
     do_style_factors, do_sector_turnover,
     do_get_watchlist, do_save_watchlist,
     do_stock_kline_range, do_market_state, do_style_rotation,
+    do_dashboard_temperature, do_limit_ladder, do_breadth_leaders,
+    do_dashboard_crowding, do_breadth_metrics, do_screener_industries,
+    do_screener_etf_types,
 )
 
 logger = __import__("logging").getLogger(__name__)
@@ -352,6 +355,98 @@ async def save_watchlist_api(
     try:
         codes = body.get("codes", [])
         r = await do_save_watchlist(db_session, current_user.get("id", ""), codes)  # A26: user_id->id
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/dashboard/temperature")
+async def market_temperature_api(
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """市场温度计（v5 N1）：估值/情绪/资金/技术四维分位 → 单温度 0~100℃"""
+    try:
+        r = await do_dashboard_temperature(db_session)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/dashboard/limit-ladder")
+async def limit_ladder_api(
+    trade_date: Optional[str] = Query(None),
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """涨停梯队（v5 N3）：连板高度分布 + 炸板率 + 封板资金(成交额近似) + 情绪周期"""
+    try:
+        r = await do_limit_ladder(db_session, trade_date)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/dashboard/breadth-leaders")
+async def breadth_leaders_api(
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """强弱榜（v5 N6）：创20日新高 / 创20日新低 / 连涨≥5日 TOP10"""
+    try:
+        r = await do_breadth_leaders(db_session)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/dashboard/crowding")
+async def crowding_api(
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """拥挤度（v5 N4）：全市场成交额 250 日分位 + 申万 L1 行业成交额分位 TOP5"""
+    try:
+        r = await do_dashboard_crowding(db_session)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/dashboard/breadth")
+async def breadth_metrics_api(
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """市场宽度补全（v5 N2）+ 波动率分位（N5）：新高新低家数 / 站上 MA20/MA60 比例 / 沪深300 波动率分位"""
+    try:
+        r = await do_breadth_metrics(db_session)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/screener/industries")
+async def screener_industries_api(
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """选股器行业下拉：stock_basic.industry 去重（东财口径）"""
+    try:
+        r = await do_screener_industries(db_session)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/screener/etf-types")
+async def screener_etf_types_api(
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """选股器 ETF 模式类型下拉：etf_basic.fund_type 去重"""
+    try:
+        r = await do_screener_etf_types(db_session)
         return {"success": True, "data": r}
     except Exception as e:
         raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")

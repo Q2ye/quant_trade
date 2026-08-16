@@ -344,9 +344,17 @@ async function addStrategy() {
 async function removeMember(strategyId: string) {
   if (!selected.value) return;
   try {
-    await compositeAPI.removeStrategy(selected.value.id, strategyId);
-    msg.success("策略已移出组合");
-    await selectGroup(selected.value);
+    const res = await compositeAPI.removeStrategy(selected.value.id, strategyId);
+    if (res?.composite_deleted) {
+      msg.success("策略已移出，组合已删除");
+      selected.value = null;
+      members.value = [];
+      navData.value = [];
+    } else {
+      msg.success("策略已移出组合");
+      await selectGroup(selected.value);
+    }
+    await loadGroups();
   } catch (e: any) {
     msg.error(e?.message || "移除失败");
   }

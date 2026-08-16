@@ -13,11 +13,14 @@ import {
   NEmpty,
   NResult,
   NSpace,
+  NInput,
+  NRadioGroup,
+  NRadioButton,
   useMessage,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import marketAPI from "@/api/market";
-import type { ScreenerStockItem } from "@/types/entities/market";
+import type { ScreenerStockItem, ScreenerEtfItem } from "@/types/entities/market";
 import { tokens } from "@/styles/design-tokens";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
@@ -76,6 +79,66 @@ const filters = reactive({
 const marketOpts = [
   { label: "沪市 (SH)", value: "SH" },
   { label: "深市 (SZ)", value: "SZ" },
+];
+
+// ---- 标的类型切换（v5.11：股票 / ETF，对齐 TradingView/富途 统一筛选器模式） ----
+const assetType = ref<"stock" | "etf">("stock");
+const etfSearch = ref("");
+const etfType = ref<string | null>(null);
+const etfTypeOpts = ref<Array<{ label: string; value: string }>>([]);
+const etfSortBy = ref("amount");
+const etfSortOpts = [
+  { label: "成交额", value: "amount" },
+  { label: "涨跌幅", value: "pct_chg" },
+  { label: "最新价", value: "close" },
+  { label: "规模", value: "scale" },
+];
+function onAssetTypeChange() {
+  checkedRowKeys.value = [];
+  search(1);
+}
+const etfColumns: DataTableColumns<ScreenerEtfItem> = [
+  { title: "代码", key: "ts_code", width: 100, fixed: "left" },
+  { title: "简称", key: "name", width: 120, fixed: "left" },
+  {
+    title: "类型",
+    key: "fund_type",
+    width: 70,
+    render: (r) => r.fund_type ?? "-",
+  },
+  {
+    title: "最新价",
+    key: "close",
+    width: 80,
+    render: (r) => r.close?.toFixed(3) ?? "-",
+  },
+  {
+    title: "涨跌幅",
+    key: "pct_chg",
+    width: 80,
+    render: (r) =>
+      h(
+        "span",
+        { style: { color: (r.pct_chg ?? 0) >= 0 ? "#ef5350" : "#26a69a" } },
+        r.pct_chg != null
+          ? (r.pct_chg > 0 ? "+" : "") + r.pct_chg.toFixed(2) + "%"
+          : "-",
+      ),
+  },
+  {
+    // etf_daily.amount 千元 → /1e5 = 亿
+    title: "成交额(亿)",
+    key: "amount",
+    width: 90,
+    render: (r) => (r.amount != null ? (r.amount / 1e5).toFixed(1) + "亿" : "-"),
+  },
+  {
+    // issue_amount 万份 × 面值≈1 元 → /1e4 = 亿元
+    title: "规模(亿)",
+    key: "scale_wan",
+    width: 80,
+    render: (r) => (r.scale_wan != null ? (r.scale_wan / 1e4).toFixed(1) + "亿" : "-"),
+  },
 ];
 const sortOpts = [
   { label: "涨跌幅", value: "pct_chg" },
@@ -139,11 +202,24 @@ async function search(p?: number) {
   error.value = false;
   const pg = p || page.value;
   try {
-    const result = await marketAPI.getScreener({
-      ...filters,
-      page: pg,
-      limit: 50,
-    });
+    const result = await marketAPI.getScreener(
+      assetType.value === "etf"
+        ? {
+            asset_type: "etf",
+            search: etfSearch.value || undefined,
+            fund_type: etfType.value || undefined,
+            sort_by: etfSortBy.value,
+            sort_dir: "desc",
+            page: pg,
+            limit: 50,
+          }
+        : {
+            ...filters,
+            asset_type: "stock",
+            page: pg,
+            limit: 50,
+          },
+    );
     stocks.value = result.stocks;
     total.value = result.total;
     page.value = pg;
@@ -173,6 +249,9 @@ function reset() {
   filters.roe_min = null;
   filters.sort_by = "pct_chg";
   filters.sort_dir = "desc";
+  etfSearch.value = "";
+  etfType.value = null;
+  etfSortBy.value = "amount";
   search();
 }
 
@@ -183,14 +262,16 @@ onMounted(async () => {
   if (qIndustry) {
     filters.industry = [qIndustry];
   }
-  // 加载行业选项
-  try {
-    const tree = await marketAPI.getIndustryTree()
-    industryOpts.value = (tree || []).map((item: any) => ({
-      label: item.industry_name || item.name || item.code,
-      value: item.industry_name || item.name || item.code,
-    }))
-  } catch { /* 行业选项加载失败不影响主流程 */ }
+  // 行业下拉：stock_basic.industry 去重（东财口径，保证与后端过滤一致）
+  industryOpts.value = (await marketAPI.getScreenerIndustries()).map((name) => ({
+    label: name,
+    value: name,
+  }));
+  // ETF 类型下拉：etf_basic.fund_type 去重
+  etfTypeOpts.value = (await marketAPI.getScreenerEtfTypes()).map((name) => ({
+    label: name,
+    value: name,
+  }));
   search();
 });
 </script>
@@ -212,7 +293,29 @@ onMounted(async () => {
     </div>
 
     <div class="main-content">
-      <n-grid :x-gap="16" :y-gap="12" :cols="6" style="margin-bottom: 16px">
+      <!-- 标的类型切换（股票 / ETF） -->
+      <n-space style="margin-bottom: 12px" align="center">
+        <n-radio-group v-model:value="assetType" size="small" @update:value="onAssetTypeChange">
+          <n-radio-button value="stock">股票</n-radio-button>
+          <n-radio-button value="etf">ETF</n-radio-button>
+        </n-radio-group>
+        <span style="font-size: 12px; color: var(--n-text-color-3)">
+          {{
+            assetType === "etf"
+              ? "按 类型/规模/成交额 筛选 ETF（与 ETF 市场页同数据源）"
+              : "多因子筛选 A 股（市场/行业/PE/PB/市值/涨跌幅/换手/ROE）"
+          }}
+        </span>
+      </n-space>
+
+      <!-- 股票筛选条件 -->
+      <n-grid
+        v-if="assetType === 'stock'"
+        :x-gap="16"
+        :y-gap="12"
+        :cols="6"
+        style="margin-bottom: 16px"
+      >
         <n-grid-item
           ><n-select
             v-model:value="filters.market"
@@ -302,6 +405,42 @@ onMounted(async () => {
         >
       </n-grid>
 
+      <!-- ETF 筛选条件 -->
+      <n-grid v-else :x-gap="16" :y-gap="12" :cols="6" style="margin-bottom: 16px">
+        <n-grid-item
+          ><n-input
+            v-model:value="etfSearch"
+            placeholder="代码或名称"
+            clearable
+            @update:value="onFilterChange"
+            @keyup.enter="search(1)"
+        /></n-grid-item>
+        <n-grid-item
+          ><n-select
+            v-model:value="etfType"
+            :options="etfTypeOpts"
+            placeholder="类型"
+            clearable
+            @update:value="onFilterChange"
+        /></n-grid-item>
+        <n-grid-item
+          ><n-select
+            v-model:value="etfSortBy"
+            :options="etfSortOpts"
+            @update:value="onFilterChange"
+        /></n-grid-item>
+        <n-grid-item
+          ><n-button @click="reset" size="small" quaternary>重置</n-button
+          ><n-button
+            type="primary"
+            size="small"
+            @click="search()"
+            style="margin-left: 8px"
+            >搜索</n-button
+          ></n-grid-item
+        >
+      </n-grid>
+
       <n-skeleton v-if="loading" :text="true" :repeat="6" />
       <n-result v-else-if="error" status="500" title="加载失败"
         ><template #footer
@@ -312,7 +451,7 @@ onMounted(async () => {
 
       <n-card v-else :class="tokens.surface.card">
         <div
-          v-if="hasSelection"
+          v-if="hasSelection && assetType === 'stock'"
           style="
             margin-bottom: 12px;
             display: flex;
@@ -330,17 +469,20 @@ onMounted(async () => {
           <n-button size="tiny" @click="doBatchCompare">加入财务对比</n-button>
         </div>
         <n-dataTable
-          :columns="columns"
+          :columns="assetType === 'etf' ? etfColumns : columns"
           :data="stocks"
-          row-key="ts_code"
+          :row-key="(row: ScreenerStockItem | ScreenerEtfItem) => row.ts_code"
           v-model:checked-row-keys="checkedRowKeys"
           size="small"
           :bordered="false"
           max-height="calc(100vh - 360px)"
           :row-props="
-            (row: ScreenerStockItem) => ({
+            (row: ScreenerStockItem | ScreenerEtfItem) => ({
               style: 'cursor:pointer',
-              onClick: () => router.push('/market/stock/' + row.ts_code),
+              onClick: () =>
+                assetType === 'etf'
+                  ? router.push('/market/etf?focus=' + row.ts_code)
+                  : router.push('/market/stock/' + row.ts_code),
             })
           "
           :pagination="{

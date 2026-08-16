@@ -86,6 +86,129 @@ async def _load_breadth(conn: asyncpg.Connection) -> Dict[date, float]:
     return {r["trade_date"]: float(r["ratio"]) for r in rows}
 
 
+async def _load_above_ma(
+    conn: asyncpg.Connection, scan_since: date, since: date
+) -> Dict[date, tuple]:
+    """预计算每日 全市场站上 MA20 / MA60 比例（0~100，方案 A）
+
+    scan_since: 窗口扫描起点（需早于 since 约 100 天，供 MA60 取完整前序）
+    since:      只返回该日期及之后的比例（GROUP BY 外层过滤）
+    """
+    rows = await conn.fetch("""
+        WITH w AS (
+            SELECT ts_code, trade_date, close,
+                   AVG(close) OVER (PARTITION BY ts_code ORDER BY trade_date
+                       ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS ma20,
+                   AVG(close) OVER (PARTITION BY ts_code ORDER BY trade_date
+                       ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) AS ma60,
+                   COUNT(close) OVER (PARTITION BY ts_code ORDER BY trade_date
+                       ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) AS n
+            FROM stock_daily
+            WHERE trade_date >= $1
+        )
+        SELECT trade_date,
+               COUNT(*) FILTER (WHERE n >= 60 AND close >= ma20)::float
+                   / NULLIF(COUNT(*) FILTER (WHERE n >= 60), 0) * 100 AS ma20_pct,
+               COUNT(*) FILTER (WHERE n >= 60 AND close >= ma60)::float
+                   / NULLIF(COUNT(*) FILTER (WHERE n >= 60), 0) * 100 AS ma60_pct
+        FROM w
+        WHERE trade_date >= $2
+        GROUP BY trade_date
+        ORDER BY trade_date
+    """, scan_since, since)
+    return {
+        r["trade_date"]: (float(r["ma20_pct"]), float(r["ma60_pct"]))
+        for r in rows if r["ma20_pct"] is not None and r["ma60_pct"] is not None
+    }
+
+
+async def update_above_ma_ratios(conn: asyncpg.Connection, since: date) -> int:
+    """把 since 起各交易日的 站上MA20/MA60 比例写入 market_state_daily（UPDATE 两列）
+
+    与 classifier 的 INSERT 解耦：不触碰其他列、不创建残缺行。
+    """
+    scan_since = since - timedelta(days=100)
+    mapping = await _load_above_ma(conn, scan_since, since)
+    if not mapping:
+        return 0
+    batch = [
+        (d, CLASSIFIED_BY, round(m20, 3), round(m60, 3))
+        for d, (m20, m60) in mapping.items()
+    ]
+    await conn.executemany("""
+        UPDATE market_state_daily
+        SET above_ma20_pct = $3, above_ma60_pct = $4
+        WHERE trade_date = $1 AND classified_by = $2
+    """, batch)
+    return len(batch)
+
+
+async def _load_limit_up_counts(
+    conn: asyncpg.Connection, since: date
+) -> Dict[date, int]:
+    """预计算每日涨停家数（收盘价≥涨停价的股票数，方案 B）
+
+    口径与温度计情绪维原查询完全一致：stock_daily_limit × stock_daily JOIN。
+    """
+    rows = await conn.fetch("""
+        SELECT l.trade_date,
+               COUNT(*) FILTER (WHERE sd.close >= l.up_limit)::int AS limit_up
+        FROM stock_daily_limit l
+        JOIN stock_daily sd ON sd.ts_code = l.ts_code AND sd.trade_date = l.trade_date
+        WHERE l.trade_date >= $1
+        GROUP BY l.trade_date
+        ORDER BY l.trade_date
+    """, since)
+    return {r["trade_date"]: int(r["limit_up"]) for r in rows if r["limit_up"] is not None}
+
+
+async def _load_avg_turnovers(
+    conn: asyncpg.Connection, since: date
+) -> Dict[date, float]:
+    """预计算每日全市场平均换手率（%），口径与情绪维原查询一致（方案 B）"""
+    rows = await conn.fetch("""
+        SELECT trade_date, ROUND(AVG(turnover_rate)::numeric, 4) AS avg_turnover
+        FROM stock_daily_basic
+        WHERE trade_date >= $1
+        GROUP BY trade_date
+        ORDER BY trade_date
+    """, since)
+    return {
+        r["trade_date"]: float(r["avg_turnover"])
+        for r in rows if r["avg_turnover"] is not None
+    }
+
+
+async def update_emotion_metrics(conn: asyncpg.Connection, since: date) -> int:
+    """把 since 起各交易日的 涨停家数/平均换手率 写入 market_state_daily（UPDATE 两列，方案 B）
+
+    与 classifier 的 INSERT 解耦：不触碰其他列、不创建残缺行。
+    两列**独立回填**（与温度计情绪维旧口径一致）：
+    - limit_up_count 仅在有 stock_daily_limit 数据的日期（数据覆盖有限，如 dev 32 天）；
+    - avg_turnover 填满 stock_daily_basic 覆盖的全部日期（换手率分位需 250 样本）。
+    """
+    limit_map = await _load_limit_up_counts(conn, since)
+    turn_map = await _load_avg_turnovers(conn, since)
+    n = 0
+    if limit_map:
+        batch = [(d, CLASSIFIED_BY, limit_map[d]) for d in limit_map]
+        await conn.executemany("""
+            UPDATE market_state_daily
+            SET limit_up_count = $3
+            WHERE trade_date = $1 AND classified_by = $2
+        """, batch)
+        n += len(batch)
+    if turn_map:
+        batch = [(d, CLASSIFIED_BY, turn_map[d]) for d in turn_map]
+        await conn.executemany("""
+            UPDATE market_state_daily
+            SET avg_turnover = $3
+            WHERE trade_date = $1 AND classified_by = $2
+        """, batch)
+        n += len(batch)
+    return n
+
+
 def _calc_ma(closes: List[float], window: int) -> List[float]:
     """计算滚动移动平均线"""
     result = [math.nan] * len(closes)
@@ -240,6 +363,21 @@ async def classify_and_populate():
                     volume_ratio = EXCLUDED.volume_ratio,
                     volatility_pct = EXCLUDED.volatility_pct
             """, batch)
+
+        # 6.5 全市场站上 MA20/MA60 比例（方案 A：日终预计算，覆盖温度计 150 样本需求）
+        try:
+            latest_date = max(dates)
+            updated = await update_above_ma_ratios(conn, since=latest_date - timedelta(days=400))
+            logger.info("above_ma20/60 预计算更新 %d 天", updated)
+        except Exception as e:
+            logger.warning("above_ma20/60 预计算失败（非致命）: %s", e)
+
+        # 6.6 涨停家数 / 平均换手率（方案 B：情绪维日终预计算，覆盖温度计 250 样本需求）
+        try:
+            updated = await update_emotion_metrics(conn, since=latest_date - timedelta(days=400))
+            logger.info("emotion(limit_up/avg_turnover) 预计算更新 %d 天", updated)
+        except Exception as e:
+            logger.warning("emotion 预计算失败（非致命）: %s", e)
 
         # 7. 验证
         cnt = await conn.fetchval("SELECT COUNT(*) FROM market_state_daily")

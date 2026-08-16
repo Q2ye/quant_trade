@@ -84,6 +84,17 @@ async def get_market_state(session: AsyncSession, days: int = 60) -> Dict[str, A
         cur = vol_list[-1]
         volatility_pctl = round(sum(1 for v in vol_list if v <= cur) / len(vol_list), 3)
 
+    # 雷达分位化（2026-08 Market v5 P1）：各维度当前值在近 N 日序列中的分位（0~100）
+    from modules.market.services.market_temperature_service import percentile_rank
+    breadth_vals = [float(r["breadth_ratio"] or 0) for r in state_rows]
+    momentum_vals = [float(r["momentum_score"] or 0) for r in state_rows]
+    trend_vals = [float(r["trend_strength"] or 0) for r in state_rows]
+    limit_up_vals = [int(r["limit_up"] or 0) for r in limit_rows]
+    pctl_breadth = percentile_rank(breadth_vals, breadth_vals[-1]) if breadth_vals else None
+    pctl_momentum = percentile_rank(momentum_vals, momentum_vals[-1]) if momentum_vals else None
+    pctl_trend = percentile_rank(trend_vals, trend_vals[-1]) if trend_vals else None
+    pctl_limit_up = percentile_rank(limit_up_vals, limit_up_vals[-1]) if limit_up_vals else None
+
     latest = state_rows[-1] if state_rows else {}
     return {
         "dates": [str(r["trade_date"]) for r in state_rows],
@@ -103,6 +114,10 @@ async def get_market_state(session: AsyncSession, days: int = 60) -> Dict[str, A
             "volatility": float(latest.get("volatility_pct") or 0) if latest else None,
             "momentum": float(latest.get("momentum_score") or 0) if latest else None,
             "trend": float(latest.get("trend_strength") or 0) if latest else None,
+            "breadth_pctl": pctl_breadth,
+            "momentum_pctl": pctl_momentum,
+            "trend_pctl": pctl_trend,
+            "limit_up_pctl": pctl_limit_up,
         },
     }
 

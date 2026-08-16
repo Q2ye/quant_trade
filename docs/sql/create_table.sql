@@ -3445,6 +3445,10 @@ CREATE TABLE market_state_daily (
     breadth_ratio   NUMERIC(6,4),
     volume_ratio    NUMERIC(6,4),
     volatility_pct  NUMERIC(8,4),
+    above_ma20_pct  NUMERIC(6,3),
+    above_ma60_pct  NUMERIC(6,3),
+    limit_up_count  INT,
+    avg_turnover    NUMERIC(8,4),
     classified_by   VARCHAR(50) NOT NULL DEFAULT 'unknown',
     extra           JSONB DEFAULT '{}'::JSONB,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -3459,6 +3463,10 @@ COMMENT ON COLUMN market_state_daily.momentum_score IS '动量得分（0~1）';
 COMMENT ON COLUMN market_state_daily.breadth_ratio IS '市场宽度（上涨家数/总家数）';
 COMMENT ON COLUMN market_state_daily.volume_ratio IS '成交量比值（当日量/20日均量）';
 COMMENT ON COLUMN market_state_daily.volatility_pct IS '波动率百分比';
+COMMENT ON COLUMN market_state_daily.above_ma20_pct IS '全市场站上MA20比例(%)，日终预计算（方案A）';
+COMMENT ON COLUMN market_state_daily.above_ma60_pct IS '全市场站上MA60比例(%)，日终预计算（方案A）';
+COMMENT ON COLUMN market_state_daily.limit_up_count IS '每日涨停家数（收盘价≥涨停价），日终预计算（方案B）';
+COMMENT ON COLUMN market_state_daily.avg_turnover IS '每日全市场平均换手率(%)，日终预计算（方案B）';
 COMMENT ON COLUMN market_state_daily.classified_by IS '分类器标识（策略名或版本）';
 COMMENT ON COLUMN market_state_daily.extra IS '扩展字段：各策略特有的判定细节（JSONB）';
 

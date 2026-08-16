@@ -29,22 +29,30 @@ async def screener(
     sort_dir: str = "desc",
     page: int = 1,
     limit: int = 50,
+    asset_type: str = "stock",
+    search: Optional[str] = None,
+    fund_type: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """多条件股票筛选"""
+    """多条件筛选器 — asset_type=stock 走 A 股多因子；asset_type=etf 走 ETF 筛选"""
+    if asset_type == "etf":
+        return await _screener_etf(
+            session, search=search, fund_type=fund_type,
+            sort_by=sort_by, sort_dir=sort_dir, page=page, limit=limit,
+        )
     sort_by = sort_by if sort_by in ALLOWED_SORT else "pct_chg"
     sort_dir = sort_dir if sort_dir in ALLOWED_DIR else "desc"
 
     where = []
     params: Dict[str, Any] = {}
 
-    # 市场筛选：SH → 6xxxx, SZ → 0xxxx/3xxxx
+    # 市场筛选：SH → 上交所(SSE)，SZ → 深交所(SZSE)（stock_basic.exchange，修复 q.ts_code 列不存在的 500）
     if market:
         mk_conds = []
         for i, m in enumerate(market):
             if m == "SH":
-                mk_conds.append(f"q.ts_code LIKE '6%'")
+                mk_conds.append("b.exchange = 'SSE'")
             elif m == "SZ":
-                mk_conds.append(f"(q.ts_code LIKE '0%' OR q.ts_code LIKE '3%')")
+                mk_conds.append("b.exchange = 'SZSE'")
         if mk_conds:
             where.append(f"({' OR '.join(mk_conds)})")
 
@@ -61,27 +69,27 @@ async def screener(
             f" OR b.industry IN ({in_clause})"
         )
 
-    # 数值筛选
+    # 数值筛选（未知值一律排除：IS NOT NULL，修复 COALESCE(-1/9999) 放行空值）
     if pe_min is not None:
-        where.append("COALESCE(d.pe, 9999) >= :pe_min"); params["pe_min"] = pe_min
+        where.append("d.pe IS NOT NULL AND d.pe >= :pe_min"); params["pe_min"] = pe_min
     if pe_max is not None:
-        where.append("COALESCE(d.pe, -1) <= :pe_max"); params["pe_max"] = pe_max
+        where.append("d.pe IS NOT NULL AND d.pe <= :pe_max"); params["pe_max"] = pe_max
     if pb_min is not None:
-        where.append("COALESCE(d.pb, 9999) >= :pb_min"); params["pb_min"] = pb_min
+        where.append("d.pb IS NOT NULL AND d.pb >= :pb_min"); params["pb_min"] = pb_min
     if pb_max is not None:
-        where.append("COALESCE(d.pb, -1) <= :pb_max"); params["pb_max"] = pb_max
+        where.append("d.pb IS NOT NULL AND d.pb <= :pb_max"); params["pb_max"] = pb_max
     if mv_min is not None:
         where.append("COALESCE(d.total_mv, 0) >= :mv_min"); params["mv_min"] = mv_min
     if mv_max is not None:
         where.append("COALESCE(d.total_mv, 9e99) <= :mv_max"); params["mv_max"] = mv_max
     if pct_chg_min is not None:
-        where.append("COALESCE(q.pct_chg, -999) >= :pct_min"); params["pct_min"] = pct_chg_min
+        where.append("q.pct_chg IS NOT NULL AND q.pct_chg >= :pct_min"); params["pct_min"] = pct_chg_min
     if pct_chg_max is not None:
-        where.append("COALESCE(q.pct_chg, 999) <= :pct_max"); params["pct_max"] = pct_chg_max
+        where.append("q.pct_chg IS NOT NULL AND q.pct_chg <= :pct_max"); params["pct_max"] = pct_chg_max
     if turnover_min is not None:
-        where.append("COALESCE(d.turnover_rate, 0) >= :to_min"); params["to_min"] = turnover_min
+        where.append("d.turnover_rate IS NOT NULL AND d.turnover_rate >= :to_min"); params["to_min"] = turnover_min
     if roe_min is not None:
-        where.append("COALESCE(f.roe, -999) >= :roe_min"); params["roe_min"] = roe_min
+        where.append("f.roe IS NOT NULL AND f.roe >= :roe_min"); params["roe_min"] = roe_min
 
     where_clause = " AND ".join(where) if where else "1=1"
 
@@ -153,3 +161,93 @@ async def screener(
                 s[k] = None
 
     return {"stocks": stocks, "total": total, "page": page}
+
+
+async def list_industries(session: AsyncSession) -> List[str]:
+    """去重行业列表（stock_basic.industry，东财口径，供选股器行业筛选下拉用）"""
+    r = await session.execute(text("""
+        SELECT DISTINCT industry FROM stock_basic
+        WHERE industry IS NOT NULL AND industry != ''
+        ORDER BY industry
+    """))
+    return [row[0] for row in r.fetchall()]
+
+
+async def list_etf_types(session: AsyncSession) -> List[str]:
+    """去重 ETF 类型列表（etf_basic.fund_type，供选股器 ETF 模式类型下拉用）"""
+    r = await session.execute(text("""
+        SELECT DISTINCT fund_type FROM etf_basic
+        WHERE fund_type IS NOT NULL AND fund_type != ''
+        ORDER BY fund_type
+    """))
+    return [row[0] for row in r.fetchall()]
+
+
+_ETF_SORT = {
+    "pct_chg": "q.pct_chg",
+    "amount": "q.amount",
+    "close": "q.close",
+    "scale": "b.issue_amount",
+}
+
+
+async def _screener_etf(
+    session: AsyncSession,
+    search: Optional[str] = None,
+    fund_type: Optional[str] = None,
+    sort_by: str = "amount",
+    sort_dir: str = "desc",
+    page: int = 1,
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """ETF 筛选：类型/搜索/规模/成交额，返回上市 ETF 列表"""
+    where = ["b.list_status = 'L'"]
+    params: Dict[str, Any] = {}
+    if search:
+        where.append("(b.ts_code ILIKE :kw OR b.name ILIKE :kw)")
+        params["kw"] = f"%{search}%"
+    if fund_type:
+        where.append("b.fund_type = :ft")
+        params["ft"] = fund_type
+    where_clause = " AND ".join(where)
+
+    sort_col = _ETF_SORT.get(sort_by, "q.amount")
+    sort_dir = sort_dir if sort_dir in ALLOWED_DIR else "desc"
+    dir_sql = "ASC" if sort_dir == "asc" else "DESC"
+
+    count_sql = f"""
+        SELECT COUNT(*) FROM etf_basic b
+        LEFT JOIN LATERAL (
+            SELECT close, pct_chg, amount FROM etf_daily q2
+            WHERE q2.ts_code = b.ts_code
+            AND q2.trade_date = (SELECT MAX(trade_date) FROM etf_daily)
+        ) q ON true
+        WHERE {where_clause}
+    """
+    r = await session.execute(text(count_sql), params)
+    total = r.fetchone()[0]
+
+    offset = (page - 1) * limit
+    query_sql = f"""
+        SELECT b.ts_code, b.name, b.fund_type, b.management,
+               q.close, q.pct_chg, q.amount,
+               b.issue_amount AS scale_wan
+        FROM etf_basic b
+        LEFT JOIN LATERAL (
+            SELECT close, pct_chg, amount FROM etf_daily q2
+            WHERE q2.ts_code = b.ts_code
+            AND q2.trade_date = (SELECT MAX(trade_date) FROM etf_daily)
+        ) q ON true
+        WHERE {where_clause}
+        ORDER BY {sort_col} {dir_sql} NULLS LAST
+        LIMIT :limit OFFSET :offset
+    """
+    params["limit"] = limit
+    params["offset"] = offset
+    r = await session.execute(text(query_sql), params)
+    etfs = [dict(row._mapping) for row in r.fetchall()]
+    for e in etfs:
+        for k, v in list(e.items()):
+            if isinstance(v, float) and v != v:
+                e[k] = None
+    return {"stocks": etfs, "total": total, "page": page}

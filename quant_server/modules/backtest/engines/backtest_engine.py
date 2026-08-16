@@ -763,11 +763,15 @@ class BacktestEngine(EngineBase):
 
 		strategy_ids = []
 		allocator_id_map: Dict[str, str] = {}
+		name_to_aid: Dict[str, str] = {}  # P1-3: 信号 strategy_id 是策略名（非 UUID），需映射到 allocator_id
 		for cfg in strategy_configs:
 			sid = cfg["strategy_id"]
 			aid = cfg.get("allocator_id", sid)
 			strategy_ids.append(sid)
 			allocator_id_map[sid] = aid
+			inst = manager.strategies.get(sid)
+			if inst is not None and getattr(inst, "name", ""):
+				name_to_aid[inst.name] = aid
 			if sid not in manager.strategies:
 				logger.warning(
 					f"策略 {sid} 未注册, 请在上游完成注册"
@@ -847,11 +851,18 @@ class BacktestEngine(EngineBase):
 			scale_stats: Dict[str, int] = {}
 			for sig in signals:
 				sid = getattr(sig, "strategy_id", "")
-				if sid and sid in allocator_id_map:
-					aid = allocator_id_map[sid]
+				# P1-3: 信号 strategy_id 是策略名（非 UUID），需同时查 name→aid 映射
+				aid = allocator_id_map.get(sid) or name_to_aid.get(sid)
+				if sid and aid:
 					w = allocator.get_weight(aid)
 					orig_w = getattr(sig, "weight", 1.0) or 1.0
 					sig.weight = orig_w * w
+					# P1-3: 策略自算 quantity 的信号走 QuantitySizer，不受 weight 缩放影响，
+					# 必须同步缩放 quantity，否则 allocator 资金分配被旁路。
+					# 仅入场信号（quantity>0）缩放；平仓信号 quantity=0 → CloseAllSizer 不受影响。
+					sig_qty = getattr(sig, "quantity", 0) or 0
+					if sig_qty > 0 and 0.0 < w < 1.0:
+						sig.quantity = int(sig_qty * w // 100) * 100
 					scale_stats[aid] = scale_stats.get(aid, 0) + 1
 
 			# ---- 每日信号日志（首日或有信号时 INFO） ----

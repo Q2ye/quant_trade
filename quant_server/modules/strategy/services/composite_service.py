@@ -219,13 +219,21 @@ class CompositeService:
                 "weights": {"0": w0, "1": w1, "2": w2}, "initial_capital": init_cap}
 
     async def remove_strategy(self, group_id: str, strategy_id: str) -> dict:
-        """组合移除策略：移除成员 + 移除权重 + 清反向引用。"""
+        """组合移除策略：移除成员 + 移除权重 + 清反向引用。
+
+        移除最后一个策略时，组合无成员 → 自动删除整个组合（复用 delete_group，
+        清反向引用 + 删组 + 快照级联删除）。
+        """
         group = await self.get_group(group_id)
         strategy_ids = [c for c in group.get("strategy_ids") or [] if c["strategy_id"] != strategy_id]
         if len(strategy_ids) == len(group.get("strategy_ids") or []):
             raise ValueError(f"策略 {strategy_id} 不在组合中")
+
+        # 最后一个策略被移除 → 组合无成员，直接删除整个组合（复用 delete_group）
         if len(strategy_ids) < 1:
-            raise ValueError("组合至少保留 1 个策略")
+            await self.delete_group(group_id)
+            logger.info(f"组合 {group_id} 移除最后一个策略 {strategy_id}，组合已删除")
+            return {"strategy_id": strategy_id, "composite_deleted": True}
 
         alloc_config = dict(group.get("allocator_config") or {})
         base = dict(alloc_config.get("REGIME_BASE_ALLOCATION") or {})

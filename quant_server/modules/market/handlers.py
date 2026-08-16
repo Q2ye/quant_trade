@@ -33,6 +33,18 @@ async def do_screener(session: AsyncSession, params: dict) -> dict:
     return await screener_query(session, **params)
 
 
+async def do_screener_industries(session: AsyncSession) -> list:
+    """选股器行业下拉：stock_basic.industry 去重（东财口径）"""
+    from modules.market.services.screener_service import list_industries
+    return await list_industries(session)
+
+
+async def do_screener_etf_types(session: AsyncSession) -> list:
+    """选股器 ETF 模式类型下拉：etf_basic.fund_type 去重"""
+    from modules.market.services.screener_service import list_etf_types
+    return await list_etf_types(session)
+
+
 async def do_industry_tree(session: AsyncSession) -> list:
     return await get_industry_tree(session)
 
@@ -230,3 +242,33 @@ async def do_save_watchlist(session: AsyncSession, user_id: str, codes: list) ->
     )
     await session.commit()
     return True
+
+
+async def do_dashboard_temperature(session: AsyncSession) -> dict:
+    """市场温度计（N1）：估值/情绪/资金/技术四维分位 → 单温度"""
+    from modules.market.services.market_temperature_service import get_market_temperature
+    return await get_market_temperature(session)
+
+
+async def do_limit_ladder(session: AsyncSession, trade_date: Optional[str] = None) -> dict:
+    """涨停梯队（N3）：连板高度分布 + 炸板率 + 封板资金近似 + 情绪周期"""
+    from modules.market.services.limit_service import get_limit_ladder
+    return await get_limit_ladder(session, trade_date)
+
+
+async def do_breadth_leaders(session: AsyncSession) -> dict:
+    """强弱榜（N6）：创20日新高/新低/连涨≥5日 TOP10"""
+    from modules.market.services.breadth_service import get_breadth_leaders
+    return await get_breadth_leaders(session)
+
+
+async def do_dashboard_crowding(session: AsyncSession) -> dict:
+    """拥挤度（N4）：全市场成交额分位 + 申万 L1 行业成交额分位 TOP5"""
+    from modules.market.services.crowding_service import get_crowding
+    return await get_crowding(session)
+
+
+async def do_breadth_metrics(session: AsyncSession) -> dict:
+    """市场宽度补全（N2）+ 波动率分位（N5）"""
+    from modules.market.services.breadth_service import get_breadth_metrics
+    return await get_breadth_metrics(session)

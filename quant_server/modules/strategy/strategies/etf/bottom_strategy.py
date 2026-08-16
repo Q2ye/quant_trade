@@ -50,7 +50,9 @@ class LightGBMBottomStrategy(BaseStrategy):
         "vol_filter_atr_min": 0.015,
         "confirm_enabled": True,
         # v4: 分市场参数 (0=BEAR, 1=RANGE, 2=BULL)
-        "regime_threshold_adj": {0: -0.02, 1: 0.04, 2: -0.06},
+        # P2-1 (修正甲): 熊市升阈值(0.60 只接高赔率底)、震荡中性(0.54 守空仓站位)、牛市升阈值(0.60 不追假底)。
+        # 2026-08 实测：震荡降阈值(0.48) 使策略在牛市夹杂震荡段不再严格空仓(前向 -1.96%)，故改中性
+        "regime_threshold_adj": {0: 0.06, 1: 0.0, 2: 0.06},
         "regime_max_positions":  {0: 5, 1: 3, 2: 4},
         "regime_stop_loss":     {0: -0.08, 1: -0.06, 2: -0.07},
         "regime_trail_act":     {0: 0.06, 1: 0.04, 2: 0.05},
@@ -383,6 +385,10 @@ class LightGBMBottomStrategy(BaseStrategy):
             fv = [row.get(fn) if row.get(fn) is not None else np.nan for fn in self.feature_names]
             features = np.array(fv, dtype=np.float64).reshape(1, -1)
             nmask = np.isnan(features[0])
+            # P2-6: 缺失率 >50% → 跳过（对齐回测脚本 backtest_etf_bottom.py:196 的 >50% NaN→skip），
+            # 避免低数据量 ETF 用 0 填充污染概率
+            if nmask.mean() > 0.5:
+                return None
             if nmask.any(): features[0, nmask] = 0.0
             if self.scaler_mu and self.scaler_sigma:
                 features[0] = (features[0] - np.array(self.scaler_mu)) / (np.array(self.scaler_sigma) + 1e-8)
@@ -539,12 +545,41 @@ class LightGBMBottomStrategy(BaseStrategy):
             logger.warning(f"ETF候选恢复失败: {e}")
 
     async def load_live_state(self, db, strategy_id=None, **kwargs):
-        """覆写：注入实盘状态后，从 DB 恢复 pending_confirm 候选（重启不丢候选）。"""
+        """覆写：注入实盘状态后，恢复 pending_confirm 候选 + 重建持仓状态（重启不丢）。"""
         await super().load_live_state(db, strategy_id=strategy_id, **kwargs)
         try:
             await self._restore_candidates_from_db()
         except Exception as e:
             logger.warning(f"[{self.name}] 候选恢复失败: {e}")
+        # P1-1 修复: 从框架注入的实盘持仓重建 _position_entry（持仓退出管理入口），
+        # 否则重启后已持仓标的的止损/时间/移动止盈全部静默失效，且可能被再次开仓。
+        self._rebuild_position_state()
+
+    def _rebuild_position_state(self) -> None:
+        """从 _active_positions（DB 真相源）重建 _position_entry。
+
+        - _position_entry: 持仓退出管理唯一入口（on_bar in_position 分支）。
+          重启后必须重建，否则止损/时间/移动止盈全部失效 + 重复开仓。
+        - _track_high: 不在此处理——框架 _restore_positions_from_db 先设为成本价，
+          再由 _recover_running_strategies 用 state_snapshot 覆盖为真实历史高点，
+          此处不覆盖以避免丢失峰值。
+        - 不在 DB 持仓中的 _position_entry 条目（未成交的幽灵持仓）在此清除。
+        """
+        held = {
+            c for c, lp in self._active_positions.items()
+            if lp.quantity > 0 and lp.cost_price > 0
+        }
+        ghost = sorted(c for c in self._position_entry if c not in held)
+        self._position_entry.clear()
+        for code in held:
+            lp = self._active_positions[code]
+            # 无持仓开仓日：从今天起算持有期（保守，避免重启即触发时间止损）
+            self._position_entry[code] = (date.today(), lp.cost_price)
+        if ghost or held:
+            logger.info(
+                "[%s] 实盘持仓状态重建: 恢复 %d 只, 清理幽灵 %d 只 (ghost=%s)",
+                self.name, len(held), len(ghost), ghost[:5],
+            )
 
     def on_bar(self, bar: BarData) -> List[TradingSignal]:
         # P4 确认缓冲区延迟恢复：实盘候选已由 load_live_state 从 DB 恢复（含 signal_id）；
@@ -592,8 +627,21 @@ class LightGBMBottomStrategy(BaseStrategy):
             return signals
         if ts_code in self._position_entry:
             d["in_position"] += 1
+            # A方案: 牛市强制清仓——已持仓在牛市确认后立即退出，资金释放给进攻策略。
+            # （此前 gate 只拦截新入场，已持仓照常走到止盈，导致牛市里占资金 5-6 个月）
+            if self.use_market_gate and self._market_regime(bar.trade_date) == 2:
+                es = self._make_exit(ts_code, bar, "牛市清仓让位进攻", SignalType.EXIT)
+                if es:
+                    signals.append(es)
+                    logger.info("[%s] %s 牛市清仓（让位进攻）", self.name, ts_code)
+                return signals
             es = self._check_exit(ts_code, bar)
             if es: signals.append(es)
+            return signals
+        # P1-1 兜底: 框架注入的实盘持仓同样视为已持仓，阻止重复开仓
+        #（正常情况下 _position_entry 已由 _rebuild_position_state 重建，此为防御）
+        _held_lp = self._active_positions.get(ts_code)
+        if _held_lp is not None and _held_lp.quantity > 0:
             return signals
 
         regime = self._get_regime(ts_code, bar.trade_date)
@@ -614,6 +662,12 @@ class LightGBMBottomStrategy(BaseStrategy):
             if self.parameters.get("trace", False):
                 logger.info('[P4/入] %s close=%.4f low=%.4f proba=%.3f → 检查确认',
                             ts_code, bar.close, pinfo['signal_low'], pinfo['proba'])
+            # P2-2: 确认时用当前 regime 重算 weight（原用信号日旧 weight，regime 变化后规模失真）
+            weight = self._calc_weight(regime)
+            if weight <= 0:
+                d["weight_zero"] += 1
+                logger.warning("[%s] %s P4确认时 weight<=0（regime 已变?），丢弃", self.name, ts_code)
+                return signals
             if bar.close > pinfo["signal_low"]:
                 if self.parameters.get("vol_confirm_enabled", True):
                     vr = self._get_factor_value(ts_code, bar.trade_date, "volume_ma20_ratio")
@@ -625,10 +679,14 @@ class LightGBMBottomStrategy(BaseStrategy):
                 # P1 修复: 重放(silent replay)时不转正——重放仅为追平状态，非真实确认
                 if _cand_sid and not getattr(self, "_replaying", False):
                     self._fire_db(self._mark_candidate_status(_cand_sid, "promoted", "收盘确认转正"))
-                s = self._make_entry(ts_code, bar, pinfo["proba"], pinfo["weight"], regime, parent_id=_cand_sid)
-                signals.append(s)
-                logger.info('[P4/SIG] %s ✓确认入场 proba=%.3f wt=%.3f 信号id=%s',
-                            ts_code, pinfo['proba'], pinfo['weight'], s.id)
+                s = self._make_entry(ts_code, bar, pinfo["proba"], weight, regime, parent_id=_cand_sid)
+                if s:
+                    signals.append(s)
+                    logger.info('[P4/SIG] %s ✓确认入场 proba=%.3f wt=%.3f 信号id=%s',
+                                ts_code, pinfo['proba'], weight, s.id)
+                else:
+                    d["weight_zero"] += 1
+                    logger.warning("[%s] %s P4确认但入场被拦截", self.name, ts_code)
             return signals
 
         # 新预测
@@ -663,20 +721,27 @@ class LightGBMBottomStrategy(BaseStrategy):
                     logger.info('[P4/BUF] %s proba=%.4f > thr=%.3f rc=%d → 缓冲待确认(已落库)',
                                 ts_code, proba, day_t, regime)
                 return signals
-            d["entry_generated"] += 1
             s = self._make_entry(ts_code, bar, proba, weight, regime)
-            signals.append(s)
+            if s:
+                d["entry_generated"] += 1
+                signals.append(s)
+            else:
+                d["weight_zero"] += 1
+                logger.warning("[%s] %s 新预测入场被拦截 (weight=%.3f)", self.name, ts_code, weight)
         except Exception as e:
             logger.error("[%s] on_bar error: %s", self.name, str(e)[:100])
         return signals
 
 
     def _make_entry(self, ts_code, bar, proba, weight, regime, parent_id=None):
-        self._position_entry[ts_code] = (bar.trade_date, bar.close)
-        self._track_high[ts_code] = bar.close
+        """生成买入信号。仅当信号有效（weight>0 且金额足够一手）时写入持仓状态。
+
+        P1-2 修复：原实现在计算数量前无条件写入 _position_entry/_track_high，
+        当 weight<=0（如牛市恢复的候选）时会留下幽灵持仓——阻塞后续入场、
+        计入 max_positions、凭空触发平仓。现改为先校验再写状态，无效返回 None。
+        """
         rn = {0: "熊", 1: "震", 2: "牛"}
         # 买入数量 = 可用资金 × 权重 / 价格，按 100 股/手向下取整（至少 1 手）
-        # 修复：原实现不设 quantity → 信号数量恒为 0（TradingSignal.quantity 默认 0）
         capital = float(getattr(self.context, "available_capital", 0) or 0) if self.context else 0.0
         amount = max(capital * float(weight), 0.0)
         price = float(bar.close) if bar.close else 0.0
@@ -684,6 +749,16 @@ class LightGBMBottomStrategy(BaseStrategy):
         if price > 0 and amount > 0:
             lot = 100  # A股/ETF 一手 = 100 份
             quantity = max(int(amount / price / lot) * lot, lot)
+        # P1-2: 无效信号（权重/金额/数量为 0）不写持仓状态、不产生信号
+        if float(weight) <= 0 or amount <= 0 or quantity <= 0:
+            logger.warning(
+                "[%s] %s 无效入场被拦截: weight=%.2f amount=%.0f qty=%d",
+                self.name, ts_code, float(weight), amount, quantity,
+            )
+            return None
+        # 仅有效信号写入入场状态（信号日收盘价；实际成交价由成交回调/对账对齐）
+        self._position_entry[ts_code] = (bar.trade_date, bar.close)
+        self._track_high[ts_code] = bar.close
         sig = TradingSignal(
             id=str(uuid.uuid4()), strategy_id=self.name, strategy_name=self.name,
             ts_code=ts_code, signal_type=SignalType.ENTRY,
@@ -714,7 +789,9 @@ class LightGBMBottomStrategy(BaseStrategy):
         dd = (high - bar.close) / high if high > 0 else 0
         base_stop = self.parameters.get("regime_stop_loss", {}).get(regime, -0.07)
         ar = self._get_factor_value(ts_code, bar.trade_date, "atr_ratio_20")
-        dyn_stop = max(base_stop, -2.5 * ar) if ar and ar > 0 else base_stop
+        # P2-3(cap): min 修正方向（高波动放宽/低波动不收紧）+ 1.5×base 上限，
+        # 避免无上限放宽放大单笔亏损（实测 2022 熊市 -8%→-12.5% 止损推高 MDD）
+        dyn_stop = max(min(base_stop, -2.5 * ar), base_stop * 1.5) if ar and ar > 0 else base_stop
         if pnl < dyn_stop:
             rn = {0: "熊", 1: "震", 2: "牛"}
             return self._make_exit(ts_code, bar,
@@ -733,15 +810,16 @@ class LightGBMBottomStrategy(BaseStrategy):
                 SignalType.TAKE_PROFIT)
         return None
 
-    @staticmethod
-    def _compute_hold_days(entry_date, current_date) -> int:
+    def _compute_hold_days(self, entry_date, current_date) -> int:
+        """持仓天数——日历口径（P2-5 隔离测试：暂回退交易日逻辑）"""
         try:
             if hasattr(current_date, 'date'): current_date = current_date.date()
             if hasattr(entry_date, 'date'): entry_date = entry_date.date()
             if isinstance(entry_date, str): entry_date = date.fromisoformat(entry_date[:10])
             if isinstance(current_date, str): current_date = date.fromisoformat(current_date[:10])
-            return (current_date - entry_date).days
-        except Exception: return 0
+            return max((current_date - entry_date).days, 0)
+        except Exception:
+            return 0
 
     def _make_exit(self, ts_code, bar, reason, signal_type) -> TradingSignal:
         self._position_entry.pop(ts_code, None)

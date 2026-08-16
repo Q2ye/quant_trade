@@ -1237,6 +1237,23 @@ class BacktestService:
 
 			# ---- 获取策略参数 ----
 			parameters = await self._get_strategy_params(task.strategy_id)
+			# 修复 2026-08（P1-4A）: 合并 backtest_parameters 中 strategy 类覆写参数。
+			# 此前 create_backtest_task 将请求 strategy_params 写入 backtest_parameters，
+			# 但此处只读 strategy_parameters 表 → 请求级参数覆写被静默忽略（死代码路径）。
+			# 合并顺序：strategy_parameters 表值 → backtest 任务覆写（后者优先）。
+			try:
+				from shared.database.repositories.strategy.backtest.parameter_repo import \
+					BacktestParameterRepository
+				_bp_repo = BacktestParameterRepository(self.db)
+				_strategy_overrides = await _bp_repo.get_parameters_by_category(task.id, "strategy")
+				if _strategy_overrides:
+					parameters.update(_strategy_overrides)
+					logger.info(
+						f"回测 {task_id}: 合并 {len(_strategy_overrides)} 个策略参数覆写 "
+						f"({sorted(_strategy_overrides.keys())})"
+					)
+			except Exception as _pe:
+				logger.warning(f"回测 {task_id}: 读取策略参数覆写失败: {_pe}")
 			# v2.5: 单策略回测时，用 initial_capital 覆盖 DB 中的 allocated_capital，
 			# 避免策略仅部署少量资金而闲置大部分本金。
 			_initial_cap = float(config.get('initial_capital', 1_000_000))

@@ -252,7 +252,7 @@ const viewStockDetail = (stock: LimitStock) =>
   router.push("/market/stock/" + stock.ts_code);
 
 onMounted(() => {
-  filterDate.value = new Date().getTime();
+  // 筛选条件首次进入置空（日期缺省 → 后端自动取最新交易日；交易所/板块默认"全部"）
   loadRealData();
 });
 </script>

@@ -174,7 +174,8 @@ async def remove_strategy_from_group(
 	try:
 		svc = _get_service(db)
 		result = await svc.remove_strategy(group_id, strategy_id)
-		return success_response(data=result, message="策略已移出组合")
+		msg = "策略已移出组合，组合已删除" if result.get("composite_deleted") else "策略已移出组合"
+		return success_response(data=result, message=msg)
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:

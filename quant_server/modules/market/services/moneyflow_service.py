@@ -66,11 +66,15 @@ async def get_stock_moneyflow_detail(session: AsyncSession, code: str, days: int
 
 
 async def get_sector_moneyflow(session: AsyncSession) -> list:
-    """全市场当日资金流向按申万 L1 行业聚合（行业资金横柱图用）"""
+    """全市场当日资金流向按行业聚合（行业资金横柱图用）
+
+    stock_moneyflow.net_mf_amount 单位为万元（模型注释确认）→ /1e4 = 亿。
+    行业口径：stock_basic.industry（东财行业），与风格轮动的申万 30 日涨幅榜不同。
+    """
     try:
         return await _all(session, """
             SELECT b.industry AS name,
-                   COALESCE(ROUND(SUM(m.net_mf_amount)::numeric / 1e8, 2), 0) AS net_amount_yi
+                   COALESCE(ROUND(SUM(m.net_mf_amount)::numeric / 1e4, 2), 0) AS net_amount_yi
             FROM stock_moneyflow m
             JOIN stock_basic b ON m.ts_code = b.ts_code
             WHERE m.trade_date = (SELECT MAX(trade_date) FROM stock_moneyflow)

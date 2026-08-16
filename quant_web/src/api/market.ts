@@ -16,6 +16,13 @@ import type {
   KLineItem,
 } from "@/types/entities/market";
 import type {
+  MarketTemperature,
+  LimitLadder,
+  BreadthLeaders,
+  Crowding,
+  BreadthMetrics,
+} from "@/types/entities/market";
+import type {
   ScreenerParams,
   ScreenerResult,
   IndustryNode,
@@ -148,6 +155,20 @@ export default {
       .post("/quantTrade/market/screener", params)
       .then(handleResponse)
       .then((d: any) => d.data);
+  },
+  async getScreenerIndustries(): Promise<string[]> {
+    return request
+      .get("/quantTrade/market/screener/industries")
+      .then(handleResponse)
+      .then((d: any) => d.data || [])
+      .catch(() => []);
+  },
+  async getScreenerEtfTypes(): Promise<string[]> {
+    return request
+      .get("/quantTrade/market/screener/etf-types")
+      .then(handleResponse)
+      .then((d: any) => d.data || [])
+      .catch(() => []);
   },
   async getIndustryTree(): Promise<IndustryNode[]> {
     return request
@@ -342,5 +363,42 @@ export default {
       .get("/quantTrade/market/dashboard/style", { params: { days } })
       .then(handleResponse)
       .then((d: any) => d.data);
+  },
+
+  // ---- 概览页 v5（温度计 / 涨停梯队 / 强弱榜） ----
+  async getMarketTemperature(): Promise<MarketTemperature | null> {
+    return request
+      .get("/quantTrade/market/dashboard/temperature")
+      .then(handleResponse)
+      .then((d: any) => d.data ?? null)
+      .catch(() => null);
+  },
+  async getLimitLadder(): Promise<LimitLadder | null> {
+    return request
+      .get("/quantTrade/market/dashboard/limit-ladder")
+      .then(handleResponse)
+      .then((d: any) => d.data ?? null)
+      .catch(() => null);
+  },
+  async getBreadthLeaders(): Promise<BreadthLeaders | null> {
+    return request
+      .get("/quantTrade/market/dashboard/breadth-leaders")
+      .then(handleResponse)
+      .then((d: any) => d.data ?? null)
+      .catch(() => null);
+  },
+  async getCrowding(): Promise<Crowding | null> {
+    return request
+      .get("/quantTrade/market/dashboard/crowding")
+      .then(handleResponse)
+      .then((d: any) => d.data ?? null)
+      .catch(() => null);
+  },
+  async getBreadthMetrics(): Promise<BreadthMetrics | null> {
+    return request
+      .get("/quantTrade/market/dashboard/breadth")
+      .then(handleResponse)
+      .then((d: any) => d.data ?? null)
+      .catch(() => null);
   },
 };

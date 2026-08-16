@@ -64,38 +64,84 @@ const selectedRadarKeys = ref([
   "debt_to_assets",
 ]);
 
+const radarPalette = ["#448aff", "#ef5350", "#ff9800", "#26a69a", "#7e57c2", "#e91e63"];
+
 const radarOption = computed(() => {
   if (!data.value.length || !selectedRadarKeys.value.length) return null;
   const selectedMetrics = radarKeys.filter((k) =>
     selectedRadarKeys.value.includes(k.key),
   );
-  const indicator = selectedMetrics.map((k) => ({ name: k.label, max: k.max }));
-  const seriesData = data.value.map((row: any) => {
+  // 每指标自适应上限（观测最大值×1.2，下限 1），保证多边形撑开、对比清晰
+  const indicator = selectedMetrics.map((k) => {
+    const vals = data.value
+      .map((r: any) => (r[k.key] == null ? 0 : Math.abs(r[k.key])))
+      .filter((v) => !isNaN(v));
+    const obsMax = vals.length ? Math.max(...vals) : 0;
+    let max = Math.max(1, obsMax * 1.2);
+    max = max >= 10 ? Math.ceil(max / 5) * 5 : Math.round(max * 10) / 10;
+    return { name: k.label, max };
+  });
+  const seriesData = data.value.map((row: any, idx: number) => {
+    const color = radarPalette[idx % radarPalette.length];
     const vals = selectedMetrics.map((k) => {
-      const v = row[k.key];
-      if (v == null) return 0;
-      if (k.invert) return Math.max(0, k.max - Math.abs(v)); // lower debt = better
-      return Math.min(k.max, Math.abs(v));
+      const cap = indicator[selectedMetrics.indexOf(k)].max;
+      const raw = row[k.key] == null ? 0 : Math.abs(row[k.key]);
+      if (k.invert) return Math.max(0, Math.min(cap, cap - raw)); // 负债率越低越好
+      return Math.min(cap, raw);
     });
-    return { value: vals, name: row.name || row.ts_code };
+    return {
+      value: vals,
+      name: row.name || row.ts_code,
+      lineStyle: { color, width: 2 },
+      areaStyle: { color: color + "2e" },
+      itemStyle: { color },
+      symbol: "circle",
+      symbolSize: 5,
+      emphasis: { lineStyle: { width: 3 }, areaStyle: { color: color + "44" } },
+    };
+  });
+  // 原始值映射（tooltip 展示真实数值而非归一化值）
+  const rawBySeries: Record<string, any> = {};
+  data.value.forEach((row: any) => {
+    rawBySeries[row.name || row.ts_code] = row;
   });
   return {
-    tooltip: { trigger: "item" },
-    legend: {
-      bottom: 0,
-      data: seriesData.map((d: any) => d.name),
-      textStyle: { fontSize: 10 },
-    },
-    radar: { indicator, center: ["50%", "50%"], radius: "65%" },
-    series: [
-      {
-        type: "radar",
-        data: seriesData,
-        emphasis: { lineStyle: { width: 3 } },
-        symbol: "circle",
-        symbolSize: 4,
+    tooltip: {
+      trigger: "item",
+      formatter: (p: any) => {
+        const raw = rawBySeries[p.name] || {};
+        const lines = ["<b>" + p.name + "</b>"];
+        selectedMetrics.forEach((k) => {
+          const v = raw[k.key];
+          const label = k.invert ? k.label + "（越低越好）" : k.label;
+          lines.push(
+            `${label}: ${v == null ? "--" : Number(v).toFixed(2)}`,
+          );
+        });
+        return lines.join("<br/>");
       },
-    ],
+    },
+    legend: {
+      top: 0,
+      right: 8,
+      data: seriesData.map((d: any) => d.name),
+      textStyle: { fontSize: 11 },
+      itemWidth: 14,
+      itemHeight: 8,
+    },
+    radar: {
+      indicator,
+      center: ["50%", "57%"],
+      radius: "62%",
+      splitNumber: 4,
+      axisName: { color: "#94a3b8", fontSize: 11 },
+      axisLine: { lineStyle: { color: "rgba(255,255,255,0.12)" } },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,0.12)" } },
+      splitArea: {
+        areaStyle: { color: ["rgba(255,255,255,0.02)", "rgba(255,255,255,0.05)"] },
+      },
+    },
+    series: [{ type: "radar", data: seriesData }],
   };
 });
 

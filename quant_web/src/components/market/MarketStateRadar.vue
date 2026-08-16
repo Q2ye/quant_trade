@@ -1,13 +1,15 @@
 <script setup lang="ts">
+// 四维状态雷达（v5，lightweight-charts 5 版）—— 顶部状态条 + 单图四线
+// 三条曲线 = 宽度 / 涨停家数 / 波动率 每日值在各自可用窗口内的分位（0~100），
+// 虚线"基准线"= 50（窗口内中位）。x 坐标均为时间（epoch 线性时间轴，自动按日期对齐）。
 import { ref, computed, onMounted } from "vue";
-import {
-  NCard, NSkeleton, NEmpty, NTag, NGrid, NGridItem,
-} from "naive-ui";
+import { NSkeleton, NEmpty, NTag } from "naive-ui";
 import marketAPI from "@/api/market";
 import type { MarketStateResponse } from "@/types/entities/market";
 import LightweightLineChart, {
   type LineSeriesDef,
 } from "@/components/charts/LightweightLineChart.vue";
+import PctlBar from "@/components/market/PctlBar.vue";
 
 const loading = ref(true);
 const error = ref(false);
@@ -26,37 +28,58 @@ const regimeType = computed<"success" | "error" | "warning">(() => {
   return "warning";
 });
 
-// 宽度曲线（单系列）
-const breadthSeries = computed<LineSeriesDef[]>(() => [{
-  name: "宽度",
-  color: "#448AFF",
-  data: (data.value?.dates || []).map((d, i) => ({ time: d, value: data.value?.breadth[i] ?? null })),
-}]);
-
-// 深度曲线（涨停/跌停双系列）
-const depthSeries = computed<LineSeriesDef[]>(() => [
-  {
-    name: "涨停",
-    color: "#ef5350",
-    data: (data.value?.limit_dates || []).map((d, i) => ({ time: d, value: data.value?.limit_up[i] ?? null })),
-  },
-  {
-    name: "跌停",
-    color: "#26a69a",
-    data: (data.value?.limit_dates || []).map((d, i) => ({ time: d, value: data.value?.limit_down[i] ?? null })),
-  },
-]);
-
-// 波动率曲线（单系列）
-const volatilitySeries = computed<LineSeriesDef[]>(() => [{
-  name: "波动率",
-  color: "#ff9800",
-  data: (data.value?.dates || []).map((d, i) => ({ time: d, value: data.value?.volatility[i] ?? null })),
-}]);
-
 const volPctl = computed(() => {
   const p = data.value?.latest.volatility_pctl;
   return p == null ? null : Math.round(p * 100);
+});
+const breadthPctl = computed(() => data.value?.latest.breadth_pctl ?? null);
+const limitUpPctl = computed(() => data.value?.latest.limit_up_pctl ?? null);
+
+// 分位化序列：每日值在"自身可用窗口"中的分位（0~100，null 占位 → lightweight-charts 按时间对齐并断线）
+function rankPctSeries(vals: (number | null)[]): (number | null)[] {
+  const avail = vals.filter((v): v is number => v != null);
+  return vals.map((v) => {
+    if (v == null) return null;
+    const le = avail.filter((x) => x <= v).length;
+    return Math.round((le / Math.max(avail.length, 1)) * 1000) / 10;
+  });
+}
+
+const seriesDefs = computed<LineSeriesDef[]>(() => {
+  const d = data.value;
+  if (!d || !d.dates.length) return [];
+  const dates = d.dates.map((x) => String(x));
+  // 涨跌停数据可能短于 60 日（未同步完整）→ 按日期对齐，缺失处 null
+  const limitByDate = new Map<string, number>();
+  d.limit_dates.forEach((dt, i) => limitByDate.set(String(dt), d.limit_up[i]));
+  const limitRaw = d.dates.map((dt) => limitByDate.get(String(dt)) ?? null);
+  const breadthP = rankPctSeries([...d.breadth]);
+  const limitP = rankPctSeries(limitRaw);
+  const volP = rankPctSeries([...d.volatility]);
+  return [
+    {
+      name: "宽度",
+      color: "#448aff",
+      data: dates.map((t, i) => ({ time: t, value: breadthP[i] })),
+    },
+    {
+      name: "涨停家数",
+      color: "#ef5350",
+      data: dates.map((t, i) => ({ time: t, value: limitP[i] })),
+    },
+    {
+      name: "波动率",
+      color: "#ff9800",
+      data: dates.map((t, i) => ({ time: t, value: volP[i] })),
+    },
+    {
+      name: "基准线",
+      color: "rgba(255,255,255,0.35)",
+      lineStyle: 2, // Dashed
+      lineWidth: 1,
+      data: dates.map((t) => ({ time: t, value: 50 })),
+    },
+  ];
 });
 
 async function load() {
@@ -76,113 +99,111 @@ onMounted(load);
 
 <template>
   <div class="market-state-radar">
-    <n-grid :x-gap="16" :y-gap="16" :cols="24" responsive="screen">
-      <!-- ① 牛熊仪表 -->
-      <n-grid-item span="24 s:24 m:6 l:6">
-        <n-card size="small" class="radar-card">
-          <template #header>牛熊状态</template>
-          <n-skeleton v-if="loading" :text="true" :repeat="3" />
-          <n-empty v-else-if="error" description="加载失败" size="small" />
-          <div v-else-if="data" class="regime-body">
-            <n-tag :type="regimeType" size="large" round :bordered="false">
-              {{ regimeLabel }}
-            </n-tag>
-            <div class="regime-sub">{{ data.latest.regime }}</div>
-            <div class="year-line">
-              年线门：
-              <span :class="(data.latest.year_line_pct ?? 0) >= 0 ? 'up' : 'down'">
-                {{ (data.latest.year_line_pct ?? 0) >= 0 ? "+" : "" }}{{ data.latest.year_line_pct?.toFixed(2) ?? "--" }}%
-              </span>
-            </div>
-            <div class="year-line-note">中证500 相对 MA250</div>
+    <n-skeleton v-if="loading" :text="true" :repeat="4" />
+    <n-empty v-else-if="error" description="加载失败" size="small" />
+    <template v-else-if="data">
+      <!-- 顶部状态条：牛熊 + 年线 + 三维当前分位 -->
+      <div class="rs-header">
+        <div class="rs-regime">
+          <n-tag :type="regimeType" size="small" round :bordered="false">
+            {{ regimeLabel }}
+          </n-tag>
+          <span class="rs-year">
+            年线
+            <b :class="(data.latest.year_line_pct ?? 0) >= 0 ? 'up' : 'down'">
+              {{ (data.latest.year_line_pct ?? 0) >= 0 ? "+" : ""
+              }}{{ data.latest.year_line_pct?.toFixed(2) ?? "--" }}%
+            </b>
+          </span>
+        </div>
+        <div class="rs-pctls">
+          <div class="rs-pctl">
+            <span class="rs-pctl-label">宽度</span>
+            <PctlBar :value="breadthPctl" color="#448aff" />
           </div>
-        </n-card>
-      </n-grid-item>
-
-      <!-- ② 宽度 -->
-      <n-grid-item span="24 s:24 m:6 l:6">
-        <n-card size="small" class="radar-card">
-          <template #header>市场宽度</template>
-          <div class="card-current" v-if="data">{{ (data.latest.breadth ?? 0).toFixed(2) }}</div>
-          <LightweightLineChart
-            :line-series="breadthSeries"
-            :height="130"
-            :loading="loading"
-            empty-text="暂无宽度数据"
-          />
-        </n-card>
-      </n-grid-item>
-
-      <!-- ③ 深度（涨跌停家数） -->
-      <n-grid-item span="24 s:24 m:12 l:6">
-        <n-card size="small" class="radar-card">
-          <template #header>市场深度（涨跌停家数）</template>
-          <LightweightLineChart
-            :line-series="depthSeries"
-            :height="150"
-            :loading="loading"
-            empty-text="暂无涨跌停数据"
-          />
-        </n-card>
-      </n-grid-item>
-
-      <!-- ④ 恐慌贪婪 -->
-      <n-grid-item span="24 s:24 m:12 l:6">
-        <n-card size="small" class="radar-card">
-          <template #header>恐慌贪婪</template>
-          <div class="card-current" v-if="data">
-            分位 {{ volPctl != null ? volPctl + "%" : "--" }}
+          <div class="rs-pctl">
+            <span class="rs-pctl-label">涨停</span>
+            <PctlBar :value="limitUpPctl" color="#ef5350" />
           </div>
-          <LightweightLineChart
-            :line-series="volatilitySeries"
-            :height="130"
-            :loading="loading"
-            empty-text="暂无波动率数据"
-          />
-        </n-card>
-      </n-grid-item>
-    </n-grid>
+          <div class="rs-pctl">
+            <span class="rs-pctl-label">波动</span>
+            <PctlBar :value="volPctl" color="#ff9800" />
+          </div>
+        </div>
+      </div>
+      <!-- 单图四线：x = 时间（lightweight-charts，滚轮缩放 / 拖拽平移） -->
+      <div class="rs-chart">
+        <LightweightLineChart
+          :line-series="seriesDefs"
+          :height="200"
+          :loading="false"
+          empty-text="暂无状态数据"
+        />
+      </div>
+      <div class="radar-note">
+        曲线 = 每日值在各自可用窗口内的分位（0~100）· 虚线 50 = 基准线（窗口内中位）· 牛熊 = MA20/60 体系 · 年线 = MA250
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .market-state-radar {
-  margin-bottom: 16px;
+  padding: 4px 0;
 }
-.radar-card {
-  height: 100%;
-}
-.regime-body {
+.rs-header {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.rs-regime {
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 0;
+  flex-shrink: 0;
 }
-.regime-sub {
-  font-size: 12px;
-  color: var(--n-text-color-3);
-}
-.year-line {
-  font-size: 13px;
-  color: var(--n-text-color-2);
-}
-.year-line .up { color: #ef5350; }
-.year-line .down { color: #26a69a; }
-.year-line-note {
+.rs-year {
   font-size: 11px;
   color: var(--n-text-color-3);
+  b {
+    font-weight: 600;
+  }
+  .up {
+    color: #ef5350;
+  }
+  .down {
+    color: #26a69a;
+  }
 }
-.card-current {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--n-text-color-1);
-  margin-bottom: 4px;
+.rs-pctls {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.header-hint {
-  font-size: 11px;
-  font-weight: 400;
+.rs-pctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rs-pctl-label {
+  width: 28px;
+  flex-shrink: 0;
+  font-size: 10px;
   color: var(--n-text-color-3);
-  margin-left: 8px;
+  text-align: right;
+}
+.rs-chart {
+  margin-top: 4px;
+}
+.radar-note {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--n-text-color-3);
+  text-align: center;
 }
 </style>

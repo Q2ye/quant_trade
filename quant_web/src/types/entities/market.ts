@@ -250,6 +250,20 @@ export interface ScreenerParams {
   sort_dir?: string;
   page?: number;
   limit?: number;
+  // v5.11：标的类型（stock/etf），ETF 模式用 search/fund_type
+  asset_type?: "stock" | "etf";
+  search?: string;
+  fund_type?: string;
+}
+export interface ScreenerEtfItem {
+  ts_code: string;
+  name: string;
+  fund_type?: string;
+  management?: string;
+  close?: number;
+  pct_chg?: number;
+  amount?: number;
+  scale_wan?: number;
 }
 export interface ScreenerResult {
   stocks: ScreenerStockItem[];
@@ -308,6 +322,10 @@ export interface MarketStateResponse {
     volatility: number | null;
     momentum: number | null;
     trend: number | null;
+    breadth_pctl: number | null;
+    momentum_pctl: number | null;
+    trend_pctl: number | null;
+    limit_up_pctl: number | null;
   };
 }
 
@@ -316,4 +334,78 @@ export interface StyleRotationResponse {
   index_series: Record<string, number[]>;
   index_names: Record<string, string>;
   industry_strength: { name: string; ret_30d: number }[];
+}
+
+// ==================== Market 概览页 v5 新增（2026-08） ====================
+
+export interface TemperatureDimension {
+  value: number | null;
+  percentile: number | null;
+  approx: boolean;
+}
+
+export interface MarketTemperature {
+  temperature: number | null;
+  zone: string | null;
+  sample_warning: boolean;
+  data_date: string | null;
+  updated_at: string | null;
+  dimensions: {
+    valuation: TemperatureDimension;
+    emotion: TemperatureDimension;
+    capital: TemperatureDimension;
+    technical: TemperatureDimension;
+  };
+}
+
+export interface LimitLadder {
+  data_date: string | null;
+  ladder: {
+    board1: number;
+    board2: number;
+    board3: number;
+    board4plus: number;
+  };
+  max_height: number;
+  bust_rate: number | null;
+  touched_count: number;
+  limit_up_count: number;
+  prev_limit_up_count: number | null;
+  seal_amount: number | null;
+  seal_amount_approx: boolean;
+  emotion_phase: string | null;
+  phase_desc: string | null;
+}
+
+export interface BreadthLeaderRow {
+  ts_code: string;
+  name: string | null;
+  industry: string | null;
+  close: number | null;
+  pct_chg: number | null;
+  amount: number | null;
+}
+
+export interface BreadthLeaders {
+  data_date: string | null;
+  new_highs: BreadthLeaderRow[];
+  new_lows: BreadthLeaderRow[];
+  streak_up: BreadthLeaderRow[];
+}
+
+export interface Crowding {
+  data_date: string | null;
+  market_turnover_percentile: number | null;
+  top_crowded_industries: { name: string; percentile: number }[];
+}
+
+export interface BreadthMetrics {
+  data_date: string | null;
+  new_highs: number | null;
+  new_lows: number | null;
+  above_ma20_market: number | null;
+  above_ma60_market: number | null;
+  above_ma20_hs300: number | null;
+  above_ma60_hs300: number | null;
+  volatility: { value_20d: number | null; percentile: number | null } | null;
 }

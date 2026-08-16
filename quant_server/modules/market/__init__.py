@@ -31,6 +31,11 @@ from .handlers import (
     do_index_history,
     do_etf_shares,
     do_etf_benchmark,
+    do_dashboard_temperature,
+    do_limit_ladder,
+    do_breadth_leaders,
+    do_dashboard_crowding,
+    do_breadth_metrics,
 )
 
 __all__ = [
@@ -62,4 +67,9 @@ __all__ = [
     "do_index_history",
     "do_etf_shares",
     "do_etf_benchmark",
+    "do_dashboard_temperature",
+    "do_limit_ladder",
+    "do_breadth_leaders",
+    "do_dashboard_crowding",
+    "do_breadth_metrics",
 ]

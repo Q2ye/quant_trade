@@ -42,11 +42,12 @@ const hasData = computed(() =>
   props.barSeries.some(s => s.data.length > 0)
 );
 
-// 图例：过滤零线等参考线
+// 图例：过滤零线/基准线等参考线
 const legendItems = computed(() => {
   const items: { name: string; color: string }[] = [];
   for (const s of props.lineSeries) {
-    if (s.name !== "零线") items.push({ name: s.name, color: s.color });
+    if (s.name !== "零线" && s.name !== "基准线")
+      items.push({ name: s.name, color: s.color });
   }
   for (const s of props.barSeries) {
     items.push({ name: s.name, color: "rgba(239,83,80,0.6)" });

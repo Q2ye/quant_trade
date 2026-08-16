@@ -24,8 +24,14 @@
           <!-- 策略选择 -->
           <n-collapse-item name="strategies" title="选择策略">
             <template #header-extra>
-              <span class="collapse-extra">{{ selectedStrategyIds.length }}/{{ strategySelectOptions.length }}</span>
+              <span class="collapse-extra">{{ selectedStrategyIds.length }}/{{ filteredStrategyOptions.length }}</span>
             </template>
+            <n-radio-group v-model:value="strategyStatusFilter" size="small" style="margin-bottom:6px;display:flex">
+              <n-radio-button value="all">全部</n-radio-button>
+              <n-radio-button value="draft">草稿</n-radio-button>
+              <n-radio-button value="running">运行中</n-radio-button>
+              <n-radio-button value="stopped">已停止</n-radio-button>
+            </n-radio-group>
             <n-input v-model:value="strategySearch" size="tiny" placeholder="搜索..." clearable style="margin-bottom:6px" />
             <div class="strategy-card-list" v-if="filteredStrategyOptions.length > 0">
               <div v-for="s in filteredStrategyOptions" :key="s.value" :class="['strategy-chip', { selected: selectedStrategyIds.includes(s.value) }]" @click="toggleStrategy(s.value)">
@@ -193,10 +199,18 @@ const msg = useMessage();
 const strategySelectOptions = ref<Array<{ label: string; value: string; status: string; statusText: string }>>([]);
 const selectedStrategyIds = ref<string[]>([]);
 const strategySearch = ref("");
+// 状态筛选（默认草稿——回测工作台主要对未实盘策略跑回测）
+const strategyStatusFilter = ref<"all" | "draft" | "running" | "stopped">("draft");
 const filteredStrategyOptions = computed(() => {
-  if (!strategySearch.value) return strategySelectOptions.value;
-  const q = strategySearch.value.toLowerCase();
-  return strategySelectOptions.value.filter(s => s.label.toLowerCase().includes(q));
+  let list = strategySelectOptions.value;
+  if (strategyStatusFilter.value !== "all") {
+    list = list.filter(s => s.status === strategyStatusFilter.value);
+  }
+  if (strategySearch.value) {
+    const q = strategySearch.value.toLowerCase();
+    list = list.filter(s => s.label.toLowerCase().includes(q));
+  }
+  return list;
 });
 const toggleStrategy = (id: string) => {
   if (selectedStrategyIds.value.includes(id)) selectedStrategyIds.value = selectedStrategyIds.value.filter(v => v !== id);

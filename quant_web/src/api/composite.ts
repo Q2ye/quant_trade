@@ -106,7 +106,8 @@ export default {
   async removeStrategy(groupId: string, strategyId: string): Promise<any> {
     return request
       .delete(`${BASE}/groups/${groupId}/strategies/${strategyId}`)
-      .then(handleResponse);
+      .then(handleResponse)
+      .then((res: any) => res?.data ?? res);
   },
 
   // ---- 净值曲线 ----
