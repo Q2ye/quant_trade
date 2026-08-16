@@ -1,0 +1,56 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>baseline (no fix)</title>
+<style>
+  html { zoom: 0.8; background: #10131a; }
+  body { margin: 0; font-family: sans-serif; }
+  /* 模拟 vueuc 弹层结构 */
+  .v-binder-follower-container { position: absolute; left: 0; right: 0; top: 0; height: 0; pointer-events: none; }
+  .v-binder-follower-content { position: absolute; }
+  .popup { pointer-events: all; width: 200px; height: 160px; background: rgba(30, 110, 220, 0.75); color: #fff; padding: 8px; box-sizing: border-box; }
+
+  .trigger { position: absolute; width: 200px; height: 40px; border: 3px solid #f66; background: rgba(255,100,100,0.15); color: #f99; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  .expect { position: absolute; width: 200px; height: 160px; border: 2px dashed rgba(80, 255, 120, 0.8); box-sizing: border-box; }
+  .label { position: fixed; left: 8px; top: 4px; color: #8af; font-size: 16px; font-family: monospace; }
+</style>
+</head>
+<body>
+  <div class="label">baseline: html zoom 0.8, no fix (popup transform uses VISUAL coords)</div>
+
+  <!-- pair 1 -->
+  <div class="trigger" style="left:520px; top:360px;">trigger1 (520,360)</div>
+  <div class="expect" style="left:520px; top:360px;"></div>
+  <div class="v-binder-follower-container">
+    <div class="v-binder-follower-content" style="transform: translateX(416px) translateY(288px);">
+      <div class="popup">popup1 — vueuc transform: translate(416px,288px) [visual coords]</div>
+    </div>
+  </div>
+
+  <!-- pair 2 -->
+  <div class="trigger" style="left:900px; top:500px;">trigger2 (900,500)</div>
+  <div class="expect" style="left:900px; top:500px;"></div>
+  <div class="v-binder-follower-container">
+    <div class="v-binder-follower-content" style="transform: translateX(720px) translateY(400px);">
+      <div class="popup">popup2 — transform: translate(720px,400px)</div>
+    </div>
+  </div>
+<script>
+window.addEventListener("load", () => {
+  const results = [];
+  document.querySelectorAll(".v-binder-follower-container").forEach((c, i) => {
+    const trigger = document.querySelectorAll(".trigger")[i];
+    const popup = c.querySelector(".popup");
+    const t = trigger.getBoundingClientRect();
+    const p = popup.getBoundingClientRect();
+    results.push("pair" + (i + 1) + ": trigger(left=" + t.left.toFixed(1) + ",top=" + t.top.toFixed(1) + ",w=" + t.width.toFixed(1) + ",h=" + t.height.toFixed(1) + ") popup(left=" + p.left.toFixed(1) + ",top=" + p.top.toFixed(1) + ",w=" + p.width.toFixed(1) + ",h=" + p.height.toFixed(1) + ") delta=(" + (p.left - t.left).toFixed(1) + "," + (p.top - t.top).toFixed(1) + ")");
+  });
+  const pre = document.createElement("pre");
+  pre.id = "measure";
+  pre.textContent = results.join("\n");
+  document.body.appendChild(pre);
+});
+</script>
+</body>
+</html>

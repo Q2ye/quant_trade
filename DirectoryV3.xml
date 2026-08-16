@@ -1,0 +1,1154 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+ <trees>
+     <tree path="/quant_server/modules/trade" title="交易模块" extension="" presentableText="" tooltipTitle="" icon=""
+           textColor="" backgroundColor=""/>
+     <tree path="/quant_server/modules/strategy" title="策略模块" extension="" presentableText="" tooltipTitle=""
+           icon="" textColor="" backgroundColor=""/>
+     <tree path="/quant_server/modules/data" title="数据模块" extension="" presentableText="" tooltipTitle="" icon=""
+           textColor="" backgroundColor=""/>
+     <tree path="/quant_server/modules" title="业务功能模块"/>
+     <tree path="/quant_server/modules/backtest" title="回测模块" extension="" presentableText="" tooltipTitle=""
+           icon="" textColor="" backgroundColor=""/>
+     <tree path="/quant_server/core" title="核心基础设施层"/>
+     <tree path="/quant_server/api" title="API网关层"/>
+     <tree path="/quant_server/shared" title="共享资源层"/>
+    <tree path="/quant_server/scripts" title="脚本工具"/>
+    <tree path="/quant_server/test" title="测试目录"/>
+    <tree path="/quant_server/api/middleware" title="web中间件" extension="" presentableText="" tooltipTitle="" icon=""
+          textColor="" backgroundColor=""/>
+    <tree path="/quant_server/api/dependencies" title="依赖注入"/>
+    <tree path="/quant_server/api/exceptions" title="异常处理"/>
+    <tree path="/quant_server/api/registry.py" title="模块注册"/>
+    <tree path="/quant_server/core/engines" title="引擎框架"/>
+    <tree path="/quant_server/core/events" title="核心事件框架" extension="" presentableText="" tooltipTitle="" icon=""
+          textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/utils" title="核心工具" extension="" presentableText="" tooltipTitle="" icon=""
+          textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database" title="数据库基础设施"/>
+    <tree path="/quant_server/shared/database/models" title="数据表模型" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/models/business_models.py" title="平台业务数据表模型"/>
+    <tree path="/quant_server/shared/database/models/data_models.py" title="股票数据表模型"/>
+    <tree path="/quant_server/shared/sources" title="外部数据源"/>
+    <tree path="/quant_server/shared/config" title="配置管理"/>
+    <tree path="/quant_server/shared/config/constants.py" title="常量定义"/>
+    <tree path="/quant_server/shared/config/settings.py" title="主配置类" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/cache" title="缓存管理"/>
+    <tree path="/quant_server/shared/database/repositories" title="数据仓库模式"/>
+    <tree path="/quant_server/modules/data/services" title="业务服务" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/data/services/sync" title="数据同步"/>
+    <tree path="/quant_server/modules/data/services/quality" title="数据质量"/>
+    <tree path="/quant_server/modules/data/services/research" title="因子研究"/>
+    <tree path="/quant_server/modules/data/managers" title="管理器"/>
+    <tree path="/quant_server/modules/data/models" title="模块专用模型"/>
+    <tree path="/quant_server/api/dependencies/database.py" title="数据库依赖"/>
+    <tree path="/quant_server/api/dependencies/auth.py" title="认证依赖"/>
+    <tree path="/quant_server/api/dependencies/config.py" title="配置依赖"/>
+    <tree path="/quant_server/api/exceptions/handlers.py" title="全局异常处理器" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/api/middleware/auth.py" title="认证中间件"/>
+    <tree path="/quant_server/api/middleware/rate_limit.py" title="限流中间件"/>
+    <tree path="/quant_server/api/middleware/logging.py" title="日志中间件"/>
+    <tree path="/quant_server/api/middleware/cors.py" title="CORS跨域中间件"/>
+    <tree path="/quant_server/api/middleware/exception.py" title="全局异常处理中间件"/>
+    <tree path="/quant_server/api/middleware/request_id.py" title="请求ID跟踪中间件"/>
+    <tree path="/quant_server/api/dependencies/event_engine.py" title="事件引擎依赖"/>
+    <tree path="/quant_server/api/dependencies/main_engine.py" title="主引擎依赖"/>
+    <tree path="/quant_server/api/dependencies/routers" title="路由注册（整合所有模块API）"/>
+    <tree path="/quant_server/api/routers" title="路由注册（整合所有模块API）"/>
+    <tree path="/quant_server/api/routers/data_router.py" title="数据模块路由"/>
+    <tree path="/quant_server/api/routers/strategy_router.py" title="策略模块路由"/>
+    <tree path="/quant_server/api/routers/trade_router.py" title="交易模块路由"/>
+    <tree path="/quant_server/api/routers/backtest_router.py" title="回测模块路由"/>
+    <tree path="/quant_server/api/routers/account_router.py" title="账户模块路由"/>
+    <tree path="/quant_server/api/routers/analysis_router.py" title="分析模块路由"/>
+    <tree path="/quant_server/api/routers/monitor_router.py" title="监控模块路由" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/api/routers/system_router.py" title="系统模块路由"/>
+    <tree path="/quant_server/api/websocket" title="WebSocket管理"/>
+    <tree path="/quant_server/api/websocket/manager.py" title="连接管理器"/>
+    <tree path="/quant_server/api/websocket/handlers" title="处理器"/>
+    <tree path="/quant_server/api/websocket/handlers/market_handler.py" title="行情推送"/>
+    <tree path="/quant_server/api/websocket/handlers/signal_handler.py" title="信号推送"/>
+    <tree path="/quant_server/api/websocket/handlers/order_handler.py" title="订单状态推送"/>
+    <tree path="/quant_server/api/websocket/handlers/system_handler.py" title="系统状态推送"/>
+    <tree path="/quant_server/api/websocket/events.py" title="事件定义"/>
+    <tree path="/quant_server/api/utils" title="API层工具"/>
+    <tree path="/quant_server/api/health" title="健康检查" extension="" presentableText="" tooltipTitle="" icon=""
+          textColor="" backgroundColor=""/>
+    <tree path="/quant_server/api/utils/response_formatter.py" title="统一响应格式化"/>
+    <tree path="/quant_server/api/utils/request_validator.py" title="请求验证器"/>
+    <tree path="/quant_server/api/utils/pagination.py" title="分页工具"/>
+    <tree path="/quant_server/api/utils/openapi.py" title="OpenAPI文档定制"/>
+    <tree path="/quant_server/api/health/endpoints.py" title="健康检查端点"/>
+    <tree path="/quant_server/api/health/probes.py" title="就绪性和存活探针"/>
+    <tree path="/quant_server/shared/database/models/strategy_models.py" title="api策略模型-待定"/>
+    <tree path="/quant_server/core/engines/base" title="引擎基类"/>
+    <tree path="/quant_server/core/engines/base/engine_base.py" title="引擎基类"/>
+    <tree path="/quant_server/core/engines/base/strategy_engine_base.py" title="策略引擎基类" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/engines/base/backtest_engine_base.py" title="回测引擎基类"/>
+    <tree path="/quant_server/core/engines/base/trade_engine_base.py" title="交易引擎基类"/>
+    <tree path="/quant_server/core/engines/base/engine_status.py" title="引擎状态枚举"/>
+    <tree path="/quant_server/core/engines/system" title="系统引擎"/>
+    <tree path="/quant_server/core/engines/system/main_engine.py" title="主引擎（协调中心）"/>
+    <tree path="/quant_server/core/engines/system/event_engine.py" title="事件引擎（消息总线）"/>
+    <tree path="/quant_server/core/engines/system/engine_registry.py" title="引擎注册表"/>
+    <tree path="/quant_server/core/engines/utils/engine_factory.py" title="引擎工厂"/>
+    <tree path="/quant_server/core/engines/utils/engine_monitor.py" title="引擎监控器"/>
+    <tree path="/quant_server/core/engines/utils" title="引擎工具"/>
+    <tree path="/quant_server/core/events/base.py" title="事件基类"/>
+    <tree path="/quant_server/core/events/types.py" title="事件类型枚举"/>
+    <tree path="/quant_server/core/events/handlers" title="事件处理器基类"/>
+    <tree path="/quant_server/core/events/handlers/event_handler_base.py" title="事件处理器基类" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/handlers/async_handler.py" title="异步处理器"/>
+    <tree path="/quant_server/core/events/handlers/handler_registry.py" title="处理器注册表"/>
+    <tree path="/quant_server/core/events/market" title="市场事件"/>
+    <tree path="/quant_server/core/events/market/market_events.py" title="市场事件定义" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/market/tick_event.py" title="Tick事件"/>
+    <tree path="/quant_server/core/events/market/bar_event.py" title="Bar事件"/>
+    <tree path="/quant_server/core/events/market/index_event.py" title="指数事件"/>
+    <tree path="/quant_server/core/events/strategy" title="策略模块事件" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/strategy/strategy_events.py" title="策略事件定义"/>
+    <tree path="/quant_server/core/events/strategy/signal_event.py" title="信号事件"/>
+    <tree path="/quant_server/core/events/strategy/status_event.py" title="策略状态事件"/>
+    <tree path="/quant_server/core/events/strategy/log_event.py" title="策略日志事件"/>
+    <tree path="/quant_server/core/events/trade/trade_events.py" title="交易事件定义"/>
+    <tree path="/quant_server/core/events/trade" title="交易模块事件" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/trade/order_event.py" title="订单事件"/>
+    <tree path="/quant_server/core/events/trade/position_event.py" title="持仓事件"/>
+    <tree path="/quant_server/core/events/trade/trade_event.py" title="成交事件"/>
+    <tree path="/quant_server/core/events/risk/risk_events.py" title="风险事件定义"/>
+    <tree path="/quant_server/core/events/risk" title="风险事件"/>
+    <tree path="/quant_server/core/events/risk/warning_event.py" title="风险警告事件"/>
+    <tree path="/quant_server/core/events/risk/alert_event.py" title="风险警报事件"/>
+    <tree path="/quant_server/core/events/risk/action_event.py" title="风险处置事件"/>
+    <tree path="/quant_server/core/events/data" title="数据模块事件" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/data/data_events.py" title="数据事件" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/data/sync_event.py" title="同步事件"/>
+    <tree path="/quant_server/core/events/data/quality_event.py" title="质量事件"/>
+    <tree path="/quant_server/core/events/data/update_event.py" title="更新事件"/>
+    <tree path="/quant_server/core/events/system" title="系统模块事件" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/system/system_events.py" title="系统事件定义"/>
+    <tree path="/quant_server/core/events/system/start_event.py" title="启动事件"/>
+    <tree path="/quant_server/core/events/system/stop_event.py" title="停止事件"/>
+    <tree path="/quant_server/core/events/system/error_event.py" title="错误事件"/>
+    <tree path="/quant_server/core/events/system/monitor_event.py" title="监控事件"/>
+    <tree path="/quant_server/core/events/bus" title="事件总线实现" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/bus/event_bus.py" title="事件总线实现"/>
+    <tree path="/quant_server/core/events/bus/queue_manager.py" title="队列管理器"/>
+    <tree path="/quant_server/core/events/bus/priority_dispatcher.py" title="优先级分发器"/>
+    <tree path="/quant_server/core/utils/time_utils" title="时间处理工具"/>
+    <tree path="/quant_server/core/utils/time_utils/trading_calendar.py" title="交易日历"/>
+    <tree path="/quant_server/core/utils/time_utils/time_converter.py" title="时间转换"/>
+    <tree path="/quant_server/core/utils/time_utils/schedule_manager.py" title="调度管理"/>
+    <tree path="/quant_server/core/utils/math_utils" title="数学工具"/>
+    <tree path="/quant_server/core/utils/math_utils/statistic_calculator.py" title="统计计算"/>
+    <tree path="/quant_server/core/utils/math_utils/financial_calculator.py" title="金融计算"/>
+    <tree path="/quant_server/core/utils/math_utils/optimization_tools.py" title="优化工具"/>
+    <tree path="/quant_server/core/utils/technical_indicators" title="技术指标"/>
+    <tree path="/quant_server/core/utils/technical_indicators/trend_indicators" title="趋势指标（MA, MACD等）"/>
+    <tree path="/quant_server/core/utils/technical_indicators/trend_indicators.py" title="趋势指标（MA, MACD等）"/>
+    <tree path="/quant_server/core/utils/technical_indicators/momentum_indicators.py" title="动量指标（RSI, KD等）"/>
+    <tree path="/quant_server/core/utils/technical_indicators/volatility_indicators.py"
+          title="波动率指标（Bollinger等）"/>
+    <tree path="/quant_server/core/utils/technical_indicators/volume_indicators.py" title="成交量指标"/>
+    <tree path="/quant_server/core/utils/data_utils" title="数据处理工具"/>
+    <tree path="/quant_server/core/utils/data_utils/data_validator.py" title="数据验证器"/>
+    <tree path="/quant_server/core/utils/data_utils/data_transformer.py" title="数据转换器"/>
+    <tree path="/quant_server/core/utils/data_utils/data_sampler.py" title="数据采样器"/>
+    <tree path="/quant_server/core/utils/logging_utils" title="日志工具"/>
+    <tree path="/quant_server/core/utils/logging_utils/structured_logger.py" title="结构化日志"/>
+    <tree path="/quant_server/core/utils/logging_utils/log_formatter.py" title="日志格式化"/>
+    <tree path="/quant_server/core/utils/logging_utils/log_context.py" title="日志上下文"/>
+    <tree path="/quant_server/core/constants.py" title="核心常量"/>
+    <tree path="/quant_server/core/patterns" title="设计模式实现"/>
+    <tree path="/quant_server/core/patterns/singleton.py" title="单例模式"/>
+    <tree path="/quant_server/core/patterns/observer.py" title="观察者模式"/>
+    <tree path="/quant_server/core/patterns/factory.py" title="工厂模式"/>
+    <tree path="/quant_server/core/patterns/strategy_pattern.py" title="策略模式"/>
+    <tree path="/quant_server/core/patterns/command.py" title="命令模式"/>
+    <tree path="/quant_server/core/patterns/state_machine.py" title="状态机"/>
+    <tree path="/quant_server/core/tests" title="核心层测试"/>
+    <tree path="/quant_server/shared/constants.py" title="共享常量"/>
+    <tree path="/quant_server/shared/database/session" title="数据库会话管理"/>
+    <tree path="/quant_server/shared/database/session/session_manager.py" title="会话管理器"/>
+    <tree path="/quant_server/shared/database/session/connection_pool.py" title="连接池"/>
+    <tree path="/quant_server/shared/database/session/transaction.py" title="事务管理"/>
+    <tree path="/quant_server/shared/database/repositories/stock_repo.py" title="股票基础信息" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/base.py" title="Repository基类（纯CRUD）" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/quote_repo.py" title="行情数据（日、周、月、分钟）" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/financial_repo.py" title="财务数据" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/strategy_repo.py" title="策略数据" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/trade_repo.py" title="交易订单" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/account_repo.py" title="账户数据" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/user_repo.py" title="用户仓库"/>
+    <tree path="/quant_server/shared/database/repositories/cache_repo.py" title="缓存仓库（二级缓存）"/>
+    <tree path="/quant_server/shared/config/database_config.py" title="数据库配置"/>
+    <tree path="/quant_server/shared/config/redis_config.py" title="Redis配置"/>
+    <tree path="/quant_server/shared/config/api_config.py" title="API配置"/>
+    <tree path="/quant_server/shared/config/trade_config.py" title="交易配置"/>
+    <tree path="/quant_server/shared/config/env.py" title="环境变量加载器"/>
+    <tree path="/quant_server/shared/cache/base.py" title="缓存基类"/>
+    <tree path="/quant_server/shared/cache/redis_cache.py" title="Redis缓存实现"/>
+    <tree path="/quant_server/shared/cache/memory_cache.py" title="内存缓存实现"/>
+    <tree path="/quant_server/shared/cache/cache_manager.py" title="缓存管理器"/>
+    <tree path="/quant_server/shared/cache/decorators.py" title="缓存装饰器"/>
+    <tree path="/quant_server/shared/cache/serializers.py" title="序列化器"/>
+    <tree path="/quant_server/shared/config/loader.py" title="配置加载器"/>
+    <tree path="/quant_server/shared/security" title="安全相关"/>
+    <tree path="/quant_server/shared/security/encryption.py" title="加密工具"/>
+    <tree path="/quant_server/shared/security/jwt_handler.py" title="JWT处理器"/>
+    <tree path="/quant_server/shared/security/password.py" title="密码处理"/>
+    <tree path="/quant_server/shared/security/permission.py" title="权限验证"/>
+    <tree path="/quant_server/shared/security/audit.py" title="审计日志"/>
+    <tree path="/quant_server/shared/messaging.py" title="消息中间件"/>
+    <tree path="/quant_server/shared/messaging" title="消息中间件"/>
+    <tree path="/quant_server/shared/messaging/producer.py" title="消息生产者"/>
+    <tree path="/quant_server/shared/messaging/consumer.py" title="消息消费者"/>
+    <tree path="/quant_server/shared/messaging/message_bus.py" title="消息总线"/>
+    <tree path="/quant_server/shared/messaging/serializer.py" title="消息序列化" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/monitoring" title="监控基础设施"/>
+    <tree path="/quant_server/shared/monitoring/metrics.py" title="指标收集"/>
+    <tree path="/quant_server/shared/monitoring/health_check.py" title="健康检查"/>
+    <tree path="/quant_server/shared/monitoring/telemetry.py" title="遥测数据"/>
+    <tree path="/quant_server/shared/utils" title="共享工具"/>
+    <tree path="/quant_server/shared/utils/validation.py" title="数据验证工具"/>
+    <tree path="/quant_server/shared/utils/serialization.py" title="序列化工具"/>
+    <tree path="/quant_server/shared/utils/file_utils.py" title="文件工具"/>
+    <tree path="/quant_server/shared/utils/network_utils.py" title="网络工具"/>
+    <tree path="/quant_server/shared/utils/async_utils.py" title="异步工具"/>
+    <tree path="/quant_server/modules/account" title="账户模块"/>
+    <tree path="/quant_server/modules/analysis" title="分析模块"/>
+    <tree path="/quant_server/modules/monitor" title="监控模块"/>
+    <tree path="/quant_server/modules/system" title="系统模块"/>
+    <tree path="/quant_server/modules/data/handlers.py" title="数据API处理函数"/>
+    <tree path="/quant_server/modules/data/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/data/models.py" title="业务模型"/>
+    <tree path="/quant_server/modules/data/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/data/managers/data_manager.py" title="数据管理器"/>
+    <tree path="/quant_server/modules/data/managers/research_manager.py" title="研究管理器"/>
+    <tree path="/quant_server/modules/data/engines" title="业务引擎"/>
+    <tree path="/quant_server/modules/data/engines/sync_engine.py" title="数据同步引擎"/>
+    <tree path="/quant_server/modules/data/engines/clean_engine.py" title="数据清洗引擎"/>
+    <tree path="/quant_server/modules/data/engines/research_engine.py" title="因子研究引擎"/>
+    <tree path="/quant_server/modules/data/engines/quality_engine.py" title="质量检查引擎"/>
+    <tree path="/quant_server/modules/data/services/data_clean_service.py" title="数据清洗服务"/>
+    <tree path="/quant_server/modules/data/services/data_sync_service.py" title="数据同步服务"/>
+    <tree path="/quant_server/modules/data/services/clean_service.py" title="数据清洗服务"/>
+    <tree path="/quant_server/modules/data/services/sync_service.py" title="数据同步服务"/>
+    <tree path="/quant_server/modules/data/services/quality_service.py" title="数据质量服务"/>
+    <tree path="/quant_server/modules/data/services/research_service.py" title="因子研究服务"/>
+    <tree path="/quant_server/modules/data/services/market_service.py" title="市场数据服务"/>
+    <tree path="/quant_server/modules/data/tasks/sync_tasks.py" title="数据同步任务" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/data/tasks/quality_tasks.py" title="质量检查任务"/>
+    <tree path="/quant_server/modules/data/tasks/research_tasks.py" title="研究任务"/>
+    <tree path="/quant_server/modules/data/tasks" title="异步任务"/>
+    <tree path="/quant_server/modules/data/utils" title="模块工具"/>
+    <tree path="/quant_server/modules/data/utils/data_formatter.py" title="数据格式化"/>
+    <tree path="/quant_server/modules/data/utils/factor_calculator.py" title="因子计算器"/>
+    <tree path="/quant_server/modules/data/utils/quality_checker.py" title="质量检查器"/>
+    <tree path="/quant_server/modules/data/tests" title="模块测试"/>
+    <tree path="/quant_server/modules/strategy/handlers.py" title="策略API处理函数"/>
+    <tree path="/quant_server/modules/strategy/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/strategy/models.py" title="策略业务模型"/>
+    <tree path="/quant_server/modules/strategy/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/strategy/engines" title="策略引擎集群"/>
+    <tree path="/quant_server/modules/strategy/engines/strategy_manager.py" title="策略管理器（总控）"/>
+    <tree path="/quant_server/modules/strategy/engines/alpha_engine.py" title="Alpha策略引擎"/>
+    <tree path="/quant_server/modules/strategy/engines/cta_engine.py" title="CTA策略引擎"/>
+    <tree path="/quant_server/modules/strategy/engines/ai_engine.py" title="AI策略引擎"/>
+    <tree path="/quant_server/modules/strategy/engines/engine_factory.py" title="引擎工厂"/>
+    <tree path="/quant_server/modules/strategy/strategies" title="策略实现"/>
+    <tree path="/quant_server/modules/strategy/strategies/base" title="策略基类"/>
+    <tree path="/quant_server/modules/strategy/strategies/base/base_strategy.py" title="策略基类"/>
+    <tree path="/quant_server/modules/strategy/strategies/base/strategy_context.py" title="策略上下文"/>
+    <tree path="/quant_server/modules/strategy/strategies/technical" title="技术指标策略"/>
+    <tree path="/quant_server/modules/strategy/strategies/technical/macd_strategy.py" title="MACD策略"/>
+    <tree path="/quant_server/modules/strategy/strategies/technical/ma_cross_strategy.py" title="双均线策略"/>
+    <tree path="/quant_server/modules/strategy/strategies/alpha" title="Alpha策略"/>
+    <tree path="/quant_server/modules/strategy/strategies/alpha/factor_strategy.py" title="多因子策略"/>
+    <tree path="/quant_server/modules/strategy/strategies/alpha/mean_reversion_strategy.py" title="均值回归"/>
+    <tree path="/quant_server/modules/strategy/strategies/ai" title="AI策略"/>
+    <tree path="/quant_server/modules/strategy/strategies/ai/dl_strategy.py" title="深度学习策略"/>
+    <tree path="/quant_server/modules/strategy/strategies/ai/ml_strategy.py" title="机器学习策略"/>
+    <tree path="/quant_server/modules/strategy/services/__init__.py" title="业务服务"/>
+    <tree path="/quant_server/modules/strategy/services" title="业务服务"/>
+    <tree path="/quant_server/modules/strategy/services/strategy_service.py" title="策略管理服务" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/strategy/services/execution_service.py" title="策略执行服务"/>
+    <tree path="/quant_server/modules/strategy/services/portfolio_service.py" title="策略组合服务"/>
+    <tree path="/quant_server/modules/strategy/services/template_service.py" title="策略模板服务"/>
+    <tree path="/quant_server/modules/strategy/managers/dependency_manager.py" title="依赖管理器"/>
+    <tree path="/quant_server/modules/strategy/managers/lifecycle_manager.py" title="生命周期管理器"/>
+    <tree path="/quant_server/modules/strategy/managers" title="管理器"/>
+    <tree path="/quant_server/modules/strategy/utils" title="策略工具"/>
+    <tree path="/quant_server/modules/strategy/utils/parameter_validator.py" title="参数验证器"/>
+    <tree path="/quant_server/modules/strategy/utils/strategy_loader.py" title="策略加载器"/>
+    <tree path="/quant_server/modules/strategy/tasks" title="异步任务" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/trade/handlers.py" title="交易API处理函数"/>
+    <tree path="/quant_server/modules/trade/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/trade/models.py" title="交易业务模型"/>
+    <tree path="/quant_server/modules/trade/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/trade/engines" title="交易引擎集群"/>
+    <tree path="/quant_server/modules/trade/engines/signal_engine.py" title="信号处理引擎"/>
+    <tree path="/quant_server/modules/trade/engines/risk_engine.py" title="风险控制引擎"/>
+    <tree path="/quant_server/modules/trade/engines/execution_engine.py" title="订单执行引擎"/>
+    <tree path="/quant_server/modules/trade/engines/position_engine.py" title="持仓管理引擎"/>
+    <tree path="/quant_server/modules/trade/services" title="业务服务"/>
+    <tree path="/quant_server/modules/trade/services/signal_service.py" title="信号服务"/>
+    <tree path="/quant_server/modules/trade/services/risk_service.py" title="风控服务"/>
+    <tree path="/quant_server/modules/trade/services/order_service.py" title="订单服务"/>
+    <tree path="/quant_server/modules/trade/services/position_service.py" title="持仓服务"/>
+    <tree path="/quant_server/modules/trade/services/execution_service.py" title="执行服务"/>
+    <tree path="/quant_server/modules/trade/rules" title="风控规则定义"/>
+    <tree path="/quant_server/modules/trade/rules/base_rule.py" title="规则基类"/>
+    <tree path="/quant_server/modules/trade/rules/position_rules.py" title="仓位规则"/>
+    <tree path="/quant_server/modules/trade/rules/account_rules.py" title="账户规则"/>
+    <tree path="/quant_server/modules/trade/rules/market_rules.py" title="市场规则"/>
+    <tree path="/quant_server/modules/trade/rules/blacklist_rules.py" title="黑名单规则"/>
+    <tree path="/quant_server/modules/trade/adapters" title="券商适配器"/>
+    <tree path="/quant_server/modules/trade/adapters/broker_adapter.py" title="券商适配器接口"/>
+    <tree path="/quant_server/modules/trade/adapters/xtp_adapter.py" title="XTP适配器"/>
+    <tree path="/quant_server/modules/trade/adapters/sim_adapter.py" title="模拟交易适配器"/>
+    <tree path="/quant_server/modules/trade/managers" title="管理器"/>
+    <tree path="/quant_server/modules/trade/managers/risk_manager.py" title="风控管理器"/>
+    <tree path="/quant_server/modules/trade/managers/trade_manager.py" title="交易管理器"/>
+    <tree path="/quant_server/modules/trade/utils" title="交易工具"/>
+    <tree path="/quant_server/modules/trade/utils/cost_calculator.py" title="成本计算器"/>
+    <tree path="/quant_server/modules/trade/utils/order_validator.py" title="订单验证器"/>
+    <tree path="/quant_server/modules/trade/tasks" title="异步任务"/>
+    <tree path="/quant_server/modules/trade/tasks/risk_tasks.py" title="风控任务"/>
+    <tree path="/quant_server/modules/trade/tasks/execution_tasks.py" title="执行任务"/>
+    <tree path="/quant_server/modules/backtest/handlers.py" title="回测API处理函数"/>
+    <tree path="/quant_server/modules/backtest/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/backtest/models.py" title="回测业务模型"/>
+    <tree path="/quant_server/modules/backtest/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/backtest/engines" title="回测引擎"/>
+    <tree path="/quant_server/modules/backtest/engines/backtest_engine.py" title="回测主引擎"/>
+    <tree path="/quant_server/modules/backtest/engines/simulation_engine.py" title="模拟执行引擎"/>
+    <tree path="/quant_server/modules/backtest/engines/optimization_engine.py" title="优化引擎"/>
+    <tree path="/quant_server/modules/backtest/engines/report_engine.py" title="报告生成引擎"/>
+    <tree path="/quant_server/modules/backtest/services" title="业务服务"/>
+    <tree path="/quant_server/modules/backtest/services/backtest_service.py" title="回测服务"/>
+    <tree path="/quant_server/modules/backtest/services/optimization_service.py" title="优化服务"/>
+    <tree path="/quant_server/modules/backtest/services/report_service.py" title="报告服务"/>
+    <tree path="/quant_server/modules/backtest/analyzers" title="绩效分析器" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/backtest/analyzers/performance_analyzer.py" title="绩效分析"/>
+    <tree path="/quant_server/modules/backtest/analyzers/risk_analyzer.py" title="风险分析"/>
+    <tree path="/quant_server/modules/backtest/analyzers/trade_analyzer.py" title="交易分析"/>
+    <tree path="/quant_server/modules/backtest/optimizers" title="优化器"/>
+    <tree path="/quant_server/modules/backtest/optimizers/grid_search.py" title="网格搜索"/>
+    <tree path="/quant_server/modules/backtest/optimizers/genetic_algorithm.py" title="遗传算法"/>
+    <tree path="/quant_server/modules/backtest/optimizers/bayesian_optimization.py" title="贝叶斯优化"/>
+    <tree path="/quant_server/modules/backtest/simulators" title="模拟器"/>
+    <tree path="/quant_server/modules/backtest/simulators/market_simulator.py" title="市场模拟器"/>
+    <tree path="/quant_server/modules/backtest/simulators/cost_simulator.py" title="成本模拟器"/>
+    <tree path="/quant_server/modules/backtest/simulators/slippage_simulator.py" title="滑点模拟器"/>
+    <tree path="/quant_server/modules/backtest/managers" title="管理器"/>
+    <tree path="/quant_server/modules/backtest/managers/task_manager.py" title="任务管理器"/>
+    <tree path="/quant_server/modules/backtest/managers/resource_manager.py" title="资源管理器"/>
+    <tree path="/quant_server/modules/backtest/utils" title="回测工具"/>
+    <tree path="/quant_server/modules/backtest/utils/data_loader.py" title="数据加载器" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/backtest/utils/chart_generator.py" title="图表生成器"/>
+    <tree path="/quant_server/modules/backtest/tasks" title="异步任务"/>
+    <tree path="/quant_server/modules/backtest/tasks/optimization_tasks.py" title="优化任务"/>
+    <tree path="/quant_server/modules/backtest/tasks/backtest_tasks.py" title="回测任务" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/account/handlers.py" title="账户API处理函数"/>
+    <tree path="/quant_server/modules/account/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/account/models.py" title="账户业务模型"/>
+    <tree path="/quant_server/modules/account/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/account/services" title="业务服务"/>
+    <tree path="/quant_server/modules/account/services/account_service.py" title="账户服务"/>
+    <tree path="/quant_server/modules/account/services/asset_service.py" title="资产服务"/>
+    <tree path="/quant_server/modules/account/services/position_service.py" title="持仓服务"/>
+    <tree path="/quant_server/modules/account/services/cash_service.py" title="资金服务"/>
+    <tree path="/quant_server/modules/account/services/fee_service.py" title="费用服务"/>
+    <tree path="/quant_server/modules/account/calculators" title="计算器"/>
+    <tree path="/quant_server/modules/account/calculators/asset_calculator.py" title="资产计算器"/>
+    <tree path="/quant_server/modules/account/calculators/pnl_calculator.py" title="盈亏计算器"/>
+    <tree path="/quant_server/modules/account/calculators/exposure_calculator.py" title="风险敞口计算器"/>
+    <tree path="/quant_server/modules/account/managers" title="管理器"/>
+    <tree path="/quant_server/modules/account/managers/account_manager.py" title="账户管理器"/>
+    <tree path="/quant_server/modules/account/managers/reconciliation_manager.py" title="对账管理器" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/account/utils" title="账户工具"/>
+    <tree path="/quant_server/modules/account/utils/statement_generator.py" title="对账单生成器"/>
+    <tree path="/quant_server/modules/account/utils/position_processor.py" title="持仓处理器"/>
+    <tree path="/quant_server/modules/account/tasks" title="异步任务"/>
+    <tree path="/quant_server/modules/account/tasks/settlement_tasks.py" title="结算任务"/>
+    <tree path="/quant_server/modules/account/tasks/reconciliation_tasks.py" title="对账任务"/>
+    <tree path="/quant_server/modules/analysis/handlers.py" title="分析API处理函数"/>
+    <tree path="/quant_server/modules/analysis/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/analysis/models.py" title="分析业务模型"/>
+    <tree path="/quant_server/modules/analysis/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/analysis/services" title="业务服务"/>
+    <tree path="/quant_server/modules/analysis/services/performance_service.py" title="绩效服务"/>
+    <tree path="/quant_server/modules/analysis/services/attribution_service.py" title="归因服务"/>
+    <tree path="/quant_server/modules/analysis/services/comparison_service.py" title="对比服务"/>
+    <tree path="/quant_server/modules/analysis/services/trade_analysis_service.py" title="交易分析服务"/>
+    <tree path="/quant_server/modules/analysis/analyzers" title="分析器集群" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/analysis/analyzers/performance" title="绩效分析器"/>
+    <tree path="/quant_server/modules/analysis/analyzers/performance/return_analyzer.py" title="收益分析"/>
+    <tree path="/quant_server/modules/analysis/analyzers/performance/risk_analyzer.py" title="风险分析"/>
+    <tree path="/quant_server/modules/analysis/analyzers/attribution" title="归因分析器"/>
+    <tree path="/quant_server/modules/analysis/analyzers/attribution/brinson_attribution.py" title="Brinson归因"/>
+    <tree path="/quant_server/modules/analysis/analyzers/attribution/factor_attribution.py" title="因子归因"/>
+    <tree path="/quant_server/modules/analysis/analyzers/trade" title="交易分析器"/>
+    <tree path="/quant_server/modules/analysis/analyzers/trade/cost_analyzer.py" title="成本分析"/>
+    <tree path="/quant_server/modules/analysis/analyzers/trade/execution_analyzer.py" title="执行分析"/>
+    <tree path="/quant_server/modules/analysis/visualizers" title="可视化器"/>
+    <tree path="/quant_server/modules/analysis/visualizers/chart_generator.py" title="图表生成器"/>
+    <tree path="/quant_server/modules/analysis/visualizers/report_generator.py" title="报告生成器"/>
+    <tree path="/quant_server/modules/analysis/managers" title="管理器"/>
+    <tree path="/quant_server/modules/analysis/managers/analysis_manager.py" title="分析管理器"/>
+    <tree path="/quant_server/modules/analysis/managers/report_manager.py" title="报告管理器"/>
+    <tree path="/quant_server/modules/analysis/utils" title="分析工具"/>
+    <tree path="/quant_server/modules/analysis/utils/statistic_utils.py" title="统计工具"/>
+    <tree path="/quant_server/modules/analysis/utils/chart_utils.py" title="图表工具" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/analysis/tasks" title="异步任务"/>
+    <tree path="/quant_server/modules/analysis/tasks/daily_analysis_tasks.py" title="日分析任务"/>
+    <tree path="/quant_server/modules/analysis/tasks/report_tasks.py" title="报告生成任务"/>
+    <tree path="/quant_server/modules/monitor/handlers.py" title="监控API处理函数"/>
+    <tree path="/quant_server/modules/monitor/models.py" title="监控业务模型"/>
+    <tree path="/quant_server/modules/monitor/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/monitor/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/monitor/engines" title="监控引擎"/>
+    <tree path="/quant_server/modules/monitor/engines/system_monitor.py" title="系统监控引擎"/>
+    <tree path="/quant_server/modules/monitor/engines/alert_engine.py" title="报警引擎"/>
+    <tree path="/quant_server/modules/monitor/engines/business_monitor.py" title="业务监控引擎"/>
+    <tree path="/quant_server/modules/monitor/engines/risk_monitor.py" title="风险监控引擎"/>
+    <tree path="/quant_server/modules/monitor/services" title="业务服务"/>
+    <tree path="/quant_server/modules/monitor/services/system_service.py" title="系统监控服务"/>
+    <tree path="/quant_server/modules/monitor/services/risk_service.py" title="风险监控服务"/>
+    <tree path="/quant_server/modules/monitor/services/business_service.py" title="业务监控服务"/>
+    <tree path="/quant_server/modules/monitor/services/alert_service.py" title="报警服务"/>
+    <tree path="/quant_server/modules/monitor/services/log_service.py" title="日志服务"/>
+    <tree path="/quant_server/modules/monitor/collectors" title="数据收集器"/>
+    <tree path="/quant_server/modules/monitor/collectors/system_collector.py" title="系统数据收集"/>
+    <tree path="/quant_server/modules/monitor/collectors/metric_collector.py" title="指标收集"/>
+    <tree path="/quant_server/modules/monitor/collectors/log_collector.py" title="日志收集" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/monitor/alerters" title="报警器"/>
+    <tree path="/quant_server/modules/monitor/alerters/email_alerter.py" title="邮件报警"/>
+    <tree path="/quant_server/modules/monitor/alerters/wechat_alerter.py" title="微信报警"/>
+    <tree path="/quant_server/modules/monitor/alerters/dingtalk_alerter.py" title="钉钉报警"/>
+    <tree path="/quant_server/modules/monitor/managers" title="管理器"/>
+    <tree path="/quant_server/modules/monitor/managers/health_manager.py" title="健康管理器"/>
+    <tree path="/quant_server/modules/monitor/managers/alert_manager.py" title="报警管理器"/>
+    <tree path="/quant_server/modules/monitor/utils" title="监控工具"/>
+    <tree path="/quant_server/modules/monitor/utils/metric_utils.py" title="指标工具"/>
+    <tree path="/quant_server/modules/monitor/utils/alert_utils.py" title="报警工具"/>
+    <tree path="/quant_server/modules/monitor/tasks" title="异步任务"/>
+    <tree path="/quant_server/modules/monitor/tasks/monitoring_tasks.py" title="监控任务"/>
+    <tree path="/quant_server/modules/monitor/tasks/alerting_tasks.py" title="报警任务"/>
+    <tree path="/quant_server/modules/system/handlers.py" title="系统API处理函数"/>
+    <tree path="/quant_server/modules/system/schemas.py" title="API请求/响应模型"/>
+    <tree path="/quant_server/modules/system/models.py" title="系统业务模型"/>
+    <tree path="/quant_server/modules/system/constants.py" title="模块常量"/>
+    <tree path="/quant_server/modules/system/services" title="业务服务"/>
+    <tree path="/quant_server/modules/system/services/user_service.py" title="用户服务"/>
+    <tree path="/quant_server/modules/system/services/auth_service.py" title="认证服务"/>
+    <tree path="/quant_server/modules/system/services/role_service.py" title="角色服务"/>
+    <tree path="/quant_server/modules/system/services/config_service.py" title="配置服务"/>
+    <tree path="/quant_server/modules/system/services/task_service.py" title="任务服务"/>
+    <tree path="/quant_server/modules/system/services/log_service.py" title="日志服务"/>
+    <tree path="/quant_server/modules/system/auth" title="认证授权"/>
+    <tree path="/quant_server/modules/system/auth/authentication.py" title="身份验证"/>
+    <tree path="/quant_server/modules/system/auth/authorization.py" title="授权"/>
+    <tree path="/quant_server/modules/system/auth/jwt_handler.py" title="JWT处理器"/>
+    <tree path="/quant_server/modules/system/configs" title="配置管理"/>
+    <tree path="/quant_server/modules/system/configs/global_config.py" title="全局配置"/>
+    <tree path="/quant_server/modules/system/configs/trade_config.py" title="交易配置"/>
+    <tree path="/quant_server/modules/system/scheduler" title="任务调度"/>
+    <tree path="/quant_server/modules/system/scheduler/task_scheduler.py" title="任务调度器"/>
+    <tree path="/quant_server/modules/system/scheduler/execution_tracker.py" title="执行跟踪器"/>
+    <tree path="/quant_server/modules/system/managers" title="管理器"/>
+    <tree path="/quant_server/modules/system/managers/user_manager.py" title="用户管理器"/>
+    <tree path="/quant_server/modules/system/managers/permission_manager.py" title="权限管理器"/>
+    <tree path="/quant_server/modules/system/managers/config_manager.py" title="配置管理器"/>
+    <tree path="/quant_server/modules/system/utils" title="系统工具" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/system/utils/validation_utils.py" title="验证工具"/>
+    <tree path="/quant_server/modules/system/utils/file_utils.py" title="文件工具"/>
+    <tree path="/quant_server/modules/system/tasks" title="异步任务"/>
+    <tree path="/quant_server/modules/system/tasks/system_tasks.py" title="系统任务"/>
+    <tree path="/quant_server/modules/system/tasks/cleanup_tasks.py" title="清理任务"/>
+    <tree path="/quant_server/shared/database/repositories/trade_calendar_repo.py" title="交易日历" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/sync_task_repo.py" title="同步任务" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/__init__.py" title="导出所有Repository"/>
+    <tree path="/quant_server/shared/database/repositories/types.py" title="自定义数据类型"/>
+    <tree path="/quant_server/shared/database/repositories/utils.py" title="Repository工具函数"/>
+    <tree path="/quant_server/shared/database/repositories/company_repo.py" title="公司信息" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/etf_repo.py" title="ETF数据" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/fund_repo.py" title="基金数据"/>
+    <tree path="/quant_server/shared/database/repositories/index_repo.py" title="指数数据"/>
+    <tree path="/quant_server/shared/database/repositories/basket_repo.py" title="股票篮子"/>
+    <tree path="/quant_server/shared/database/repositories/st_list_repo.py" title="ST股票列表"/>
+    <tree path="/quant_server/shared/database/repositories/daily_basic_repo.py" title="每日基本面"/>
+    <tree path="/quant_server/shared/database/repositories/daily_limit_repo.py" title="涨跌停数据"/>
+    <tree path="/quant_server/shared/database/repositories/moneyflow_repo.py" title="资金流数据"/>
+    <tree path="/quant_server/shared/database/repositories/reward_repo.py" title="分红送股"/>
+    <tree path="/quant_server/shared/database/repositories/adjusted_price_repo.py" title="复权价格"/>
+    <tree path="/quant_server/shared/database/repositories/parameter_repo.py" title="策略参数"/>
+    <tree path="/quant_server/shared/database/repositories/signal_repo.py" title="交易信号"/>
+    <tree path="/quant_server/shared/database/repositories/backtest_repo.py" title="回测结果"/>
+    <tree path="/quant_server/shared/database/repositories/performance_repo.py" title="绩效数据"/>
+    <tree path="/quant_server/shared/database/repositories/position_repo.py" title="持仓数据"/>
+    <tree path="/quant_server/shared/database/repositories/asset_repo.py" title="资产数据"/>
+    <tree path="/quant_server/shared/database/repositories/role_repo.py" title="角色数据"/>
+    <tree path="/quant_server/shared/database/repositories/permission_repo.py" title="权限数据"/>
+    <tree path="/quant_server/shared/database/repositories/config_repo.py" title="系统配置"/>
+    <tree path="/quant_server/shared/database/repositories/log_repo.py" title="日志数据"/>
+    <tree path="/quant_server/shared/config/env_loader.py" title="环境变量加载器"/>
+    <tree path="/quant_server/shared/config/schemas.py" title="配置验证模型"/>
+    <tree path="/quant_server/shared/database/repositories/adj_factor_repo.py" title="复权因子数据"/>
+    <tree path="/quant_server/shared/database/repositories/backtest_task_repo.py" title="回测任务数据仓库"/>
+    <tree path="/quant_server/core/engines/types/entities.py" title="系统实体类"/>
+    <tree path="/quant_server/core/engines/types/enums.py" title="系统枚举" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/exceptions" title="异常处理模块"/>
+    <tree path="/quant_server/core/exceptions/__init__.py" title="异常类导出" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/exceptions/base.py" title="异常基类"/>
+    <tree path="/quant_server/core/exceptions/types.py" title="异常类型枚举"/>
+    <tree path="/quant_server/core/exceptions/handlers.py" title="异常处理器"/>
+    <tree path="/quant_server/core/exceptions/business_exceptions.py" title="业务异常"/>
+    <tree path="/quant_server/core/exceptions/system_exceptions.py" title="系统异常"/>
+    <tree path="/quant_server/core/exceptions/trade_exceptions.py" title="交易异常"/>
+    <tree path="/quant_server/core/exceptions/error_codes.py" title="错误码定义"/>
+    <tree path="/quant_server/core/exceptions/data_exceptions.py" title="数据异常"/>
+    <tree path="/quant_server/core/middleware" title="业务中间件"/>
+    <tree path="/quant_server/core/middleware/exception.py" title="全局异常处理"/>
+    <tree path="/quant_server/core/middleware/auth.py" title="业务认证逻辑"/>
+    <tree path="/quant_server/core/middleware/validation.py" title="业务数据验证"/>
+    <tree path="/quant_server/core/middleware/monitoring.py" title="业务监控"/>
+    <tree path="/quant_server/api/handlers/exception_handlers.py" title="API层异常处理器"/>
+    <tree path="/quant_server/api/handlers" title="处理器"/>
+    <tree path="/quant_server/core/events/data/sync_events.py" title="数据同步事件"/>
+    <tree path="/quant_server/core/events/data/quality_events.py" title="数据质量事件"/>
+    <tree path="/quant_server/core/events/data/research_events.py" title="因子研究事件"/>
+    <tree path="/quant_server/core/events/data/market_events.py" title="市场数据处理事件"/>
+    <tree path="/quant_server/core/events/strategy/management_events.py" title="策略管理事件"/>
+    <tree path="/quant_server/core/events/strategy/lifecycle_events.py" title="策略生命周期事件"/>
+    <tree path="/quant_server/core/events/strategy/portfolio_events.py" title="策略组合事件"/>
+    <tree path="/quant_server/core/events/strategy/signal_events.py" title="策略信号事件"/>
+    <tree path="/quant_server/core/events/trade/order_events.py" title="订单相关事件" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/trade/risk_events.py" title="风险控制事件"/>
+    <tree path="/quant_server/core/events/trade/execution_events.py" title="订单执行事件"/>
+    <tree path="/quant_server/core/events/trade/position_events.py" title="持仓相关事件" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/backtest" title="回测模块事件" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/backtest/progress_events.py" title="回测进度事件"/>
+    <tree path="/quant_server/core/events/backtest/result_events.py" title="回测结果事件"/>
+    <tree path="/quant_server/core/events/backtest/optimization_events.py" title="参数优化事件" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/account" title="账户模块事件"/>
+    <tree path="/quant_server/core/events/account/balance_events.py" title="资金余额事件"/>
+    <tree path="/quant_server/core/events/account/position_events.py" title="账户持仓事件"/>
+    <tree path="/quant_server/core/events/account/settlement_events.py" title="结算对账事件"/>
+    <tree path="/quant_server/core/events/analysis" title="分析模块事件"/>
+    <tree path="/quant_server/core/events/analysis/performance_events.py" title="绩效分析事件" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/analysis/attribution_events.py" title="归因分析事件"/>
+    <tree path="/quant_server/core/events/analysis/comparison_events.py" title="对比分析事件" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/core/events/monitor" title="监控模块事件"/>
+    <tree path="/quant_server/core/events/monitor/system_events.py" title="系统监控事件"/>
+    <tree path="/quant_server/core/events/monitor/risk_events.py" title="风险监控事件"/>
+    <tree path="/quant_server/core/events/monitor/alert_events.py" title="警报事件"/>
+    <tree path="/quant_server/core/events/monitor/health_events.py" title="健康检查事件"/>
+    <tree path="/quant_server/core/events/system/user_events.py" title="用户管理事件"/>
+    <tree path="/quant_server/core/events/system/auth_events.py" title="认证授权事件"/>
+    <tree path="/quant_server/core/events/system/config_events.py" title="配置管理事件"/>
+    <tree path="/quant_server/core/events/system/task_events.py" title="任务调度事件"/>
+    <tree path="/quant_server/modules/data/events" title="数据模块事件"/>
+    <tree path="/quant_server/modules/data/events/sync_events.py" title="数据同步事件" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/data/events/research_events.py" title="因子研究事件"/>
+    <tree path="/quant_server/modules/data/events/market_events.py" title="市场数据处理事件" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/data/events/quality_events.py" title="数据质量事件"/>
+    <tree path="/quant_server/modules/data/events/types.py" title="事件类型枚举"/>
+    <tree path="/quant_server/modules/strategy/events" title="策略模块事件"/>
+    <tree path="/quant_server/modules/strategy/events/management_events.py" title="策略管理事件"/>
+    <tree path="/quant_server/modules/strategy/events/lifecycle_events.py" title="策略生命周期事件"/>
+    <tree path="/quant_server/modules/strategy/events/signal_events.py" title="策略信号事件"/>
+    <tree path="/quant_server/modules/strategy/events/portfolio_events.py" title="策略组合事件"/>
+    <tree path="/quant_server/modules/strategy/events/types.py" title="StrategyEventType枚举"/>
+    <tree path="/quant_server/modules/trade/trade" title="交易模块事件"/>
+    <tree path="/quant_server/modules/trade/trade/types.py" title="TradeEventType枚举"/>
+    <tree path="/quant_server/modules/trade/trade/order_events.py" title="订单相关事件"/>
+    <tree path="/quant_server/modules/trade/trade/risk_events.py" title="风险控制事件"/>
+    <tree path="/quant_server/modules/trade/trade/execution_events.py" title="订单执行事件"/>
+    <tree path="/quant_server/modules/trade/trade/position_events.py" title="持仓相关事件"/>
+    <tree path="/quant_server/modules/backtest/backtest" title="回测模块事件"/>
+    <tree path="/quant_server/modules/backtest/backtest/types.py" title="BacktestEventType枚举"/>
+    <tree path="/quant_server/modules/backtest/backtest/progress_events.py" title="回测进度事件"/>
+    <tree path="/quant_server/modules/backtest/backtest/result_events.py" title="回测结果事件"/>
+    <tree path="/quant_server/modules/backtest/backtest/optimization_events.py" title="参数优化事件"/>
+    <tree path="/quant_server/modules/account/events" title="账户模块事件"/>
+    <tree path="/quant_server/modules/trade/events" title="交易模块事件"/>
+    <tree path="/quant_server/modules/backtest/events" title="回测模块事件"/>
+    <tree path="/quant_server/modules/account/events/types.py" title="AccountEventType枚举"/>
+    <tree path="/quant_server/modules/account/events/balance_events.py" title="资金余额事件"/>
+    <tree path="/quant_server/modules/account/events/position_events.py" title="账户持仓事件"/>
+    <tree path="/quant_server/modules/account/events/settlement_events.py" title="结算对账事件"/>
+    <tree path="/quant_server/modules/analysis/events/types.py" title="AnalysisEventType枚举"/>
+    <tree path="/quant_server/modules/analysis/events/attribution_events.py" title="归因分析事件"/>
+    <tree path="/quant_server/modules/analysis/events/comparison_events.py" title="对比分析事件"/>
+    <tree path="/quant_server/modules/analysis/events/performance_events.py" title="绩效分析事件"/>
+    <tree path="/quant_server/modules/analysis/events/report_events.py" title="报告事件"/>
+    <tree path="/quant_server/modules/analysis/events/trade_analysis_events.py" title="交易分析事件"/>
+    <tree path="/quant_server/modules/analysis/events" title="分析模块事件"/>
+    <tree path="/quant_server/modules/backtest/events/progress_events.py" title="回测进度事件"/>
+    <tree path="/quant_server/modules/backtest/events/result_events.py" title="回测结果事件"/>
+    <tree path="/quant_server/modules/backtest/events/optimization_events.py" title="参数优化事件"/>
+    <tree path="/quant_server/modules/backtest/events/types.py" title="BacktestEventType枚举"/>
+    <tree path="/quant_server/modules/monitor/events/alert_events.py" title="警报事件"/>
+    <tree path="/quant_server/modules/monitor/events/health_events.py" title="健康检查事件"/>
+    <tree path="/quant_server/modules/monitor/events/risk_events.py" title="风险监控事件"/>
+    <tree path="/quant_server/modules/monitor/events/system_events.py" title="系统监控事件"/>
+    <tree path="/quant_server/modules/monitor/events/types.py" title="MonitorEventType枚举"/>
+    <tree path="/quant_server/modules/monitor/events" title="监控模块事件"/>
+    <tree path="/quant_server/modules/system/events/types.py" title="SystemEventType枚举"/>
+    <tree path="/quant_server/modules/system/events" title="系统模块事件"/>
+    <tree path="/quant_server/modules/system/events/auth_events.py" title="认证授权事件"/>
+    <tree path="/quant_server/modules/system/events/config_events.py" title="配置管理事件"/>
+    <tree path="/quant_server/modules/system/events/task_events.py" title="任务调度事件"/>
+    <tree path="/quant_server/modules/system/events/user_events.py" title="用户管理事件"/>
+    <tree path="/quant_server/modules/trade/events/order_events.py" title="订单相关事件"/>
+    <tree path="/quant_server/modules/trade/events/risk_events.py" title="风险控制事件"/>
+    <tree path="/quant_server/modules/trade/events/execution_events.py" title="订单执行事件"/>
+    <tree path="/quant_server/modules/trade/events/position_events.py" title="持仓相关事件"/>
+    <tree path="/quant_server/modules/trade/events/types.py" title="TradeEventType枚举"/>
+    <tree path="/quant_server/core/events/engine.py" title="事件引擎类"/>
+    <tree path="/quant_server/core/events/system_events.py" title="系统级事件"/>
+    <tree path="/quant_server/core/events/framework.py" title="事件框架工具"/>
+    <tree path="/quant_server/shared/database/repositories/market" title="市场数据领域"/>
+    <tree path="/quant_server/shared/database/repositories/market/stock_repo.py" title="股票基础信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/sync_task_repo.py" title="同步任务"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote_repo.py" title="行情数据（日、周、月、分钟）"/>
+    <tree path="/quant_server/shared/database/repositories/market/financial_repo.py" title="财务数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/company_repo.py" title="公司信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/etf_repo.py" title="ETF数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/fund_repo.py" title="基金数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/index_repo.py" title="指数数据"/>
+    <tree path="/quant_server/shared/database/repositories/trading" title="交易领域"/>
+    <tree path="/quant_server/shared/database/repositories/trading/trade_repo.py" title="交易订单"/>
+    <tree path="/quant_server/shared/database/repositories/trading/position_repo.py" title="持仓数据"/>
+    <tree path="/quant_server/shared/database/repositories/trading/account_repo.py" title="账户数据"/>
+    <tree path="/quant_server/shared/database/repositories/trading/asset_repo.py" title="资产数据"/>
+    <tree path="/quant_server/shared/database/repositories/trading/fee_repo.py" title="费用数据"/>
+    <tree path="/quant_server/shared/database/repositories/strategy" title="策略领域"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/strategy_repo.py" title="策略数据"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/parameter_repo.py" title="策略参数"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/signal_repo.py" title="交易信号"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest_repo.py" title="回测结果"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/performance_repo.py" title="绩效数据"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/portfolio_repo.py" title="组合数据"/>
+    <tree path="/quant_server/shared/database/repositories/risk" title="风控领域"/>
+    <tree path="/quant_server/shared/database/repositories/risk/risk_rule_repo.py" title="风控规则"/>
+    <tree path="/quant_server/shared/database/repositories/risk/risk_event_repo.py" title="风险事件"/>
+    <tree path="/quant_server/shared/database/repositories/risk/blacklist_repo.py" title="黑名单"/>
+    <tree path="/quant_server/shared/database/repositories/risk/limit_repo.py" title="限制规则"/>
+    <tree path="/quant_server/shared/database/repositories/reference/trade_calendar_repo.py" title="交易日历"/>
+    <tree path="/quant_server/shared/database/repositories/reference" title="参考数据领域"/>
+    <tree path="/quant_server/shared/database/repositories/reference/basket_repo.py" title="股票篮子"/>
+    <tree path="/quant_server/shared/database/repositories/reference/st_list_repo.py" title="ST股票列表"/>
+    <tree path="/quant_server/shared/database/repositories/reference/daily_basic_repo.py" title="每日基本面"/>
+    <tree path="/quant_server/shared/database/repositories/reference/daily_limit_repo.py" title="涨跌停数据"/>
+    <tree path="/quant_server/shared/database/repositories/reference/moneyflow_repo.py" title="资金流数据"/>
+    <tree path="/quant_server/shared/database/repositories/reference/reward_repo.py" title="分红送股"/>
+    <tree path="/quant_server/shared/database/repositories/reference/adjusted_price_repo.py" title="复权价格"/>
+    <tree path="/quant_server/shared/database/repositories/system" title="系统管理领域"/>
+    <tree path="/quant_server/shared/database/repositories/system/user_repo.py" title="用户数据"/>
+    <tree path="/quant_server/shared/database/repositories/system/role_repo.py" title="角色数据"/>
+    <tree path="/quant_server/shared/database/repositories/system/permission_repo.py" title="权限数据"/>
+    <tree path="/quant_server/shared/database/repositories/system/config_repo.py" title="系统配置"/>
+    <tree path="/quant_server/shared/database/repositories/system/log_repo.py" title="日志数据"/>
+    <tree path="/quant_server/shared/database/repositories/system/notification_repo.py" title="通知记录"/>
+    <tree path="/quant_server/shared/database/repositories/system/audit_repo.py" title="审计日志"/>
+    <tree path="/quant_server/shared/database/repositories/cache" title="缓存数据领域"/>
+    <tree path="/quant_server/shared/database/repositories/cache/cache_repo.py" title="缓存数据"/>
+    <tree path="/quant_server/shared/database/repositories/cache/distributed_lock_repo.py" title="分布式锁"/>
+    <tree path="/quant_server/utils" title="顶级工具"/>
+    <tree path="/quant_server/utils/validation.py" title="数据验证工具" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/utils/serialization.py" title="序列化工具" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/utils/file_utils.py" title="文件操作工具" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/utils/network_utils.py" title="网络工具" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/utils/async_utils.py" title="异步工具" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/utils/datetime_utils.py" title="时间工具"/>
+    <tree path="/quant_server/utils/cryptography_utils.py" title="加解密工具"/>
+    <tree path="/quant_server/utils/font_utils.py" title="字体工具"/>
+    <tree path="/quant_server/utils/core_utils" title="核心计算工具"/>
+    <tree path="/quant_server/utils/core_utils/time_utils" title="时间处理工具"/>
+    <tree path="/quant_server/utils/core_utils/time_utils/trading_calendar.py" title="交易日历"/>
+    <tree path="/quant_server/utils/core_utils/time_utils/time_converter.py" title="时间转换"/>
+    <tree path="/quant_server/utils/core_utils/time_utils/schedule_manager.py" title="调度管理"/>
+    <tree path="/quant_server/utils/core_utils/math_utils" title="数学计算"/>
+    <tree path="/quant_server/utils/core_utils/math_utils/statistic_calculator.py" title="统计计算"/>
+    <tree path="/quant_server/utils/core_utils/math_utils/financial_calculator.py" title="金融计算：复利、IRR、NPV"/>
+    <tree path="/quant_server/utils/core_utils/math_utils/optimization_tools.py" title="优化工具：凸优化"/>
+    <tree path="/quant_server/utils/core_utils/technical_indicators" title="技术指标"/>
+    <tree path="/quant_server/utils/core_utils/technical_indicators/trend_indicators.py" title="趋势指标 MA, MACD, ADX"
+          extension="" presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/utils/core_utils/technical_indicators/momentum_indicators.py"
+          title="动量指标 RSI, Stochastic, CCI"/>
+    <tree path="/quant_server/utils/core_utils/technical_indicators/volatility_indicators.py"
+          title="波动率指标 Bollinger, ATR, Keltner"/>
+    <tree path="/quant_server/utils/core_utils/technical_indicators/volume_indicators.py" title="成交量指标 OBV, MFI, Chaikin"
+          extension="" presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/utils/core_utils/data_utils" title="数据处理"/>
+    <tree path="/quant_server/utils/core_utils/data_utils/data_validator.py" title="数据验证"/>
+    <tree path="/quant_server/utils/core_utils/data_utils/data_transformer.py" title="数据转换"/>
+    <tree path="/quant_server/utils/core_utils/data_utils/data_sampler.py" title="数据采样"/>
+    <tree path="/quant_server/utils/core_utils/logging_utils/structured_logger.py" title="结构化日志"/>
+    <tree path="/quant_server/utils/core_utils/logging_utils/log_formatter.py" title="日志格式化"/>
+    <tree path="/quant_server/utils/core_utils/logging_utils/log_context.py" title="日志上下文"/>
+    <tree path="/quant_server/utils/api_utils" title="API层专用工具"/>
+    <tree path="/quant_server/utils/api_utils/response_formatter.py" title="统一响应格式化"/>
+    <tree path="/quant_server/utils/api_utils/request_validator.py" title="请求验证器"/>
+    <tree path="/quant_server/utils/api_utils/pagination.py" title="分页工具"/>
+    <tree path="/quant_server/utils/api_utils/openapi.py" title="OpenAPI文档定制"/>
+    <tree path="/quant_server/utils/api_utils/rate_limit.py" title="限流工具"/>
+    <tree path="/quant_server/core/exceptions/validation_exceptions.py" title="验证异常"/>
+    <tree path="/quant_server/tests" title="统一测试"/>
+    <tree path="/quant_server/tests/conftest.py" title="全局测试配置"/>
+    <tree path="/quant_server/tests/api" title="API层测试"/>
+    <tree path="/quant_server/tests/api/test_middleware.py" title="中间件测试"/>
+    <tree path="/quant_server/tests/api/test_routers" title="路由测试" extension="" presentableText="" tooltipTitle=""
+          icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/tests/api/test_websocket" title="WebSocket测试"/>
+    <tree path="/quant_server/tests/core" title="核心层测试"/>
+    <tree path="/quant_server/tests/core/test_engines" title="引擎测试"/>
+    <tree path="/quant_server/tests/core/test_utils" title="核心工具测试"/>
+    <tree path="/quant_server/tests/core/test_exceptions" title="异常测试"/>
+    <tree path="/quant_server/tests/shared" title="共享层测试"/>
+    <tree path="/quant_server/tests/shared/test_database" title="数据库测试"/>
+    <tree path="/quant_server/tests/shared/test_cache" title="缓存测试"/>
+    <tree path="/quant_server/tests/shared/test_config" title="配置测试"/>
+    <tree path="/quant_server/tests/shared/test_sources" title="数据源测试"/>
+    <tree path="/quant_server/tests/modules" title="业务模块测试"/>
+    <tree path="/quant_server/tests/modules/__init__.py" title="业务模块测试"/>
+    <tree path="/quant_server/tests/modules/test_data" title="数据模块测试"/>
+    <tree path="/quant_server/tests/modules/test_strategy" title="策略模块测试"/>
+    <tree path="/quant_server/tests/modules/test_trade" title="交易模块测试"/>
+    <tree path="/quant_server/tests/modules/test_backtest" title="回测模块测试"/>
+    <tree path="/quant_server/tests/modules/test_account" title="账户模块测试"/>
+    <tree path="/quant_server/tests/modules/test_analysis" title="分析模块测试"/>
+    <tree path="/quant_server/tests/modules/test_monitor" title="监控模块测试"/>
+    <tree path="/quant_server/tests/modules/test_system" title="系统模块测试"/>
+    <tree path="/quant_server/modules/data/events/factor_calculation_events.py" title="因子计算事件"/>
+    <tree path="/quant_server/modules/data/events/handlers_example.py" title="事件处理器示例"/>
+    <tree path="/quant_server/modules/data/managers/status_manager.py" title="同步状态管理器"/>
+    <tree path="/quant_server/shared/database/models/system_models.py" title="系统模型"/>
+    <tree path="/quant_server/shared/database/models/base.py" title="基础类"/>
+    <tree path="/quant_server/core/strategies" title="原策略目录，以后重构使用"/>
+    <tree path="/quant_server/utils/core_utils/logging_utils" title="日志工具"/>
+    <tree path="/quant_server/core/exceptions/middleware.py" title="异常中间件"/>
+    <tree path="/quant_server/core/exceptions/auth_exceptions.py" title="认证授权异常"/>
+    <tree path="/quant_server/core/exceptions/security_exceptions.py" title="安全相关异常"/>
+    <tree path="/quant_server/api/routers/health_router.py" title="健康检测路由"/>
+    <tree path="/quant_server/shared/messaging/base.py" title="消息中间件抽象基类"/>
+    <tree path="/quant_server/shared/messaging/types.py" title="消息中间件类型"/>
+    <tree path="/quant_server/core/exceptions/event_exceptions.py" title="事件相关异常"/>
+    <tree path="/quant_server/shared/database/repositories/market/factor_definition_repo.py" title="因子定义"/>
+    <tree path="/quant_server/shared/database/repositories/market/factor_data_repo.py" title="因子数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/factor_research_repo.py" title="因子研究"/>
+    <tree path="/quant_server/shared/database/repositories/system/user_preference_repo.py" title="用户偏好设置"/>
+    <tree path="/quant_server/shared/database/repositories/system/api_usage_log_repo.py" title="API使用日志"/>
+    <tree path="/quant_server/shared/database/repositories/system/system_health_metric_repo.py" title="系统健康指标"/>
+    <tree path="/quant_server/shared/database/repositories/system/license_key_repo.py" title="许可证密钥"/>
+    <tree path="/quant_server/shared/database/repositories/market/data_quality_metric_repo.py"
+          title="数据质量指标历史"/>
+    <tree path="/quant_server/shared/database/repositories/market/data_research_task_repo.py" title="因子研究任务"/>
+    <tree path="/quant_server/shared/database/repositories/market/data_fix_record_repo.py" title="数据修复记录"/>
+    <tree path="/quant_server/shared/database/repositories/market/data_quality_check_repo.py" title="数据质量检查记录"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/portfolio_strategy_repo.py" title="策略组合关联"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/strategy_parameter_repo.py" title="策略参数配置"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/strategy_template_repo.py" title="策略模板"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/strategy_version_repo.py" title="策略版本管理"/>
+    <tree path="/quant_server/shared/database/repositories/trading/position_adjustment_repo.py" title="持仓调整记录"/>
+    <tree path="/quant_server/shared/database/repositories/trading/trade_fee_repo.py" title="交易费用明细"/>
+    <tree path="/quant_server/shared/database/repositories/trading/order_template_repo.py" title="订单模板"/>
+    <tree path="/quant_server/shared/database/repositories/trading/trade_instruction_repo.py" title="交易指令"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest" title="回测验证"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/task_repo.py" title="回测任务表"
+          extension="" presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/trade_repo.py" title="回测成交表"
+          extension="" presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/position_repo.py"
+          title="回测持仓表" extension="" presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/strategy/timeseries" title="时序数据管理（超表专用）"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/timeseries/backtest_equity_curve_repo.py"
+          title="回测净值曲线数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/parameter_repo.py"
+          title="回测参数配置表" extension="" presentableText="" tooltipTitle="" icon="" textColor=""
+          backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/scenario_repo.py"
+          title="回测场景表" extension="" presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/comparison_repo.py"
+          title="回测对比结果表" extension="" presentableText="" tooltipTitle="" icon="" textColor=""
+          backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/resource_repo.py"
+          title="回测资源使用表" extension="" presentableText="" tooltipTitle="" icon="" textColor=""
+          backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/trading/position" title="持仓管理"/>
+    <tree path="/quant_server/shared/database/repositories/trading/position/position_repo.py" title="实时持仓"/>
+    <tree path="/quant_server/shared/database/repositories/account" title="账户管理领域"/>
+    <tree path="/quant_server/shared/database/repositories/account/asset" title="资产与绩效"/>
+    <tree path="/quant_server/shared/database/repositories/account/settlement" title="资金与对账"/>
+    <tree path="/quant_server/shared/database/repositories/account/asset/account_repo.py" title="账户信息"/>
+    <tree path="/quant_server/shared/database/repositories/timeseries/account_performance_repo.py"
+          title="账户每日绩效数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/timeseries" title="时序数据管理（超表专用）"/>
+    <tree path="/quant_server/shared/database/repositories/account/settlement/transaction_repo.py"
+          title="账户流水数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/account/settlement/statement_repo.py"
+          title="账户对账单数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/account/settlement/cash_flow_repo.py"
+          title="资金流水数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/account/audit_log_repo.py" title="账户审计日志数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/base" title="Repository基类"/>
+    <tree path="/quant_server/shared/database/repositories/base/repository_base.py" title="Repository基类"/>
+    <tree path="/quant_server/shared/database/repositories/base/hyper_repository_base.py" title="超表Repository基类"/>
+    <tree path="/quant_server/shared/database/repositories/base/pagination.py" title="分页基类"/>
+    <tree path="/quant_server/shared/database/repositories/base/query_builder.py" title="查询构建器"/>
+    <tree path="/quant_server/shared/database/repositories/system/auth" title="用户与权限" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/system/auth/user_repo.py" title="系统用户表"/>
+    <tree path="/quant_server/shared/database/repositories/system/auth/role_repo.py" title="角色表"/>
+    <tree path="/quant_server/shared/database/repositories/system/auth/permission_repo.py" title="权限表"/>
+    <tree path="/quant_server/shared/database/repositories/system/config" title="配置与日志"/>
+    <tree path="/quant_server/shared/database/repositories/system/config/config_repo.py" title="系统配置仓库"/>
+    <tree path="/quant_server/shared/database/repositories/system/config/audit_repo.py" title="审计日志"/>
+    <tree path="/quant_server/shared/database/repositories/system/config/notification_repo.py" title="系统通知"/>
+    <tree path="/quant_server/shared/database/repositories/system/config/user_preference_repo.py" title="用户偏好设置"/>
+    <tree path="/quant_server/shared/database/repositories/system/config/api_usage_log_repo.py" title="API使用日志"/>
+    <tree path="/quant_server/shared/database/repositories/system/config/operation_log_repo.py" title="操作日志表"/>
+    <tree path="/quant_server/shared/database/repositories/system/ops" title="系统运维"/>
+    <tree path="/quant_server/shared/database/repositories/system/ops/scheduled_task_repo.py" title="定时任务表"/>
+    <tree path="/quant_server/shared/database/repositories/system/ops/license_key_repo.py" title="许可证密钥表"/>
+    <tree path="/quant_server/shared/database/repositories/system/ops/system_health_metric_repo.py"
+          title="系统健康指标表"/>
+    <tree path="/quant_server/shared/database/repositories/market/basic" title="基础信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/basic/stock_repo.py" title="股票基础信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/basic/company_repo.py" title="公司信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/basic/st_list_repo.py" title="ST股票列表"/>
+    <tree path="/quant_server/shared/database/repositories/market/basic/etf_repo.py" title="ETF基础信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/basic/index_repo.py" title="ETF指数信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/basic/fund_repo.py" title="基金基础信息"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote" title="行情数据（时序超表）" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/stock_daily_repo.py" title="股票日行情 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/stock_minute_repo.py" title="股票分钟行情[超表]"
+          extension="" presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/stock_weekly_repo.py"
+          title="股票周行情表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/stock_monthly_repo.py"
+          title="股票月行情表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/stock_adj_factor_repo.py"
+          title="股票复权因子表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/stock_adjusted_price_repo.py"
+          title="股票复权价格表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/stock_daily_limit_repo.py"
+          title="股票涨跌停价格表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/etf_daily_repo.py" title="ETF日行情表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/etf_minute_repo.py"
+          title="ETF分钟行情表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/quote/fund_adj_factor_repo.py"
+          title="基金复权因子表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental" title="财务与基本面" extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/stock_daily_basic_repo.py"
+          title="股票每日基础指标表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/stock_moneyflow_repo.py"
+          title="股票资金流向表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/financial_statement_repo.py"
+          title="财务报表数据表"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/company_announcement_repo.py"
+          title="公司公告表"/>
+    <tree path="/quant_server/shared/database/repositories/market/governance" title="公司治理"/>
+    <tree path="/quant_server/shared/database/repositories/market/governance/manager_repo.py" title="上市公司管理层表"/>
+    <tree path="/quant_server/shared/database/repositories/market/governance/reward_repo.py" title="股票分红送股表"/>
+    <tree path="/quant_server/shared/database/repositories/market/reference" title="参考数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/reference/trade_calendar_repo.py"
+          title="交易日历表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/market/reference/basket_repo.py" title="股票篮子"/>
+    <tree path="/quant_server/shared/database/repositories/trading/order" title="订单与成交"/>
+    <tree path="/quant_server/shared/database/repositories/trading/order/trade_repo.py" title="成交表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/order/order_repo.py" title="订单表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/order/trade_instruction_repo.py" title="交易指令表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/order/order_template_repo.py" title="订单模板表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/position/position_adjustment_repo.py"
+          title="持仓调整记录表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/position/position_snapshot_repo.py"
+          title="持仓快照表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/risk" title="风险管理"/>
+    <tree path="/quant_server/shared/database/repositories/trading/risk/risk_rule_repo.py" title="风险规则表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/risk/risk_event_repo.py" title="风险事件表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/trading/risk/blacklist_repo.py" title="黑名单表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/support" title="交易辅助"/>
+    <tree path="/quant_server/shared/database/repositories/trading/support/trade_fee_repo.py" title="交易费用明细表"/>
+    <tree path="/quant_server/shared/database/repositories/trading/support/broker_connection_repo.py"
+          title="券商连接表"/>
+    <tree path="/quant_server/shared/database/repositories/account/asset/account_performance_repo.py"
+          title="账户每日绩效表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/account/asset/strategy_daily_performance_repo.py"
+          title="策略每日绩效表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/analysis" title="数据分析领域"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/factor" title="因子研究"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/factor/factor_definition_repo.py"
+          title="因子定义表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/factor/factor_data_repo.py"
+          title="因子数据表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/factor/data_quality_check_repo.py"
+          title="数据质量检查记录表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/factor/data_quality_metric_repo.py"
+          title="数据质量指标历史表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/performance" title="绩效分析"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/performance/analysis_report_repo.py"
+          title="分析报告表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/performance/analysis_task_repo.py"
+          title="分析任务表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/performance/analysis_template_repo.py"
+          title="分析模板表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/performance/analysis_benchmark_repo.py"
+          title="分析基准表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/monitor" title="监控分析"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/monitor/monitor_alert_repo.py" title="监控报警表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/monitor/monitor_threshold_repo.py"
+          title="监控阈值配置表"/>
+    <tree path="/quant_server/shared/database/repositories/operation" title="运营管理领域"/>
+    <tree path="/quant_server/shared/database/repositories/operation/basket" title="篮子管理"/>
+    <tree path="/quant_server/shared/database/repositories/operation/basket/basket_repo.py" title="股票篮子表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/basket/basket_item_repo.py" title="篮子成分股表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/workflow" title="工作流管理"/>
+    <tree path="/quant_server/shared/database/repositories/operation/workflow/workflow_task_repo.py"
+          title="工作流任务表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/workflow/workflow_log_repo.py"
+          title="工作流执行日志表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/workflow/workflow_template_repo.py"
+          title="工作流模板表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/file" title="文件管理"/>
+    <tree path="/quant_server/shared/database/repositories/operation/file/file_attachment_repo.py" title="文件附件表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/task" title="任务调度"/>
+    <tree path="/quant_server/shared/database/repositories/operation/task/data_sync_task_repo.py"
+          title="数据同步任务表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/task/data_research_task_repo.py"
+          title="因子研究任务表" extension="" presentableText="" tooltipTitle="" icon="" textColor=""
+          backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/operation/task/monitor_task_repo.py" title="监控任务表"/>
+    <tree path="/quant_server/shared/database/repositories/operation/task/factor_research_repo.py"
+          title="因子研究任务表"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/factor/data_fix_record_repo.py"
+          title="数据修复记录"/>
+    <tree path="/quant_server/shared/database/repositories/hyper_tables" title="超表专用管理"/>
+    <tree path="/quant_server/shared/database/repositories/hyper_tables/hyper_table_manager.py" title="超表管理器"/>
+    <tree path="/quant_server/shared/database/repositories/hyper_tables/time_bucket_manager.py" title="时间分桶管理"/>
+    <tree path="/quant_server/shared/database/repositories/hyper_tables/retention_policy_manager.py"
+          title="数据保留策略管理器"/>
+    <tree path="/quant_server/shared/database/repositories/hyper_tables/chunk_manager.py" title="分片管理器"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/monitor/alert_template_repository.py"
+          title="报警模板"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/monitor/alert_delivery_log_repository.py"
+          title="报警发送日志"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management" title="策略管理"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management/strategy_repo.py" title="策略信息表"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management/strategy_version_repo.py"
+          title="策略版本管理表"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management/strategy_template_repo.py"
+          title="策略模板表"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management/strategy_parameter_repo.py"
+          title="策略参数配置表"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management/portfolio_strategy_repo.py"
+          title="策略组合关联表"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management/strategy_dependency_repo.py"
+          title="策略依赖表"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/signal" title="信号数据"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/signal/signal_repo.py" title="交易信号表 [超表]"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/signal/signal_log_repo.py" title="信号日志表"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/backtest/backtest_equity_curve_repo.py"
+          title="回测净值曲线表 [超表]"/>
+    <tree path="/quant_server/modules/data/events/clean_events.py" title="数据清洗事件"/>
+    <tree path="/quant_server/utils/api_utils/pagination_config.py" title="分页配置工具"/>
+    <tree path="/quant_server/utils/api_utils/pagination_decorator.py" title="分页装饰器工具"/>
+    <tree path="/quant_server/shared/database/repositories/strategy/management/strategy_run_repo.py"
+          title="策略运行记录"/>
+    <tree path="/quant_server/shared/config/config_manager.py" title="配置管理器"/>
+    <tree path="/quant_server/modules/account/utils/pnl_calculator.py" title="盈亏计算器"/>
+    <tree path="/quant_server/modules/account/utils/asset_calculator.py" title="资产计算器"/>
+    <tree path="/quant_server/shared/utils/file_storage.py" title="文件存储服务"/>
+    <tree path="/quant_server/modules/account/events/reconciliation_events.py" title="对账事件"/>
+    <tree path="/quant_server/modules/strategy/tasks/portfolio_tasks.py" title="组合异步任务"/>
+    <tree path="/quant_server/modules/strategy/tasks/strategy_tasks.py" title="策略异步任务"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/monitor/alert_delivery_log_repo.py"
+          title="报警发送日志"/>
+    <tree path="/quant_server/shared/database/repositories/analysis/monitor/alert_template_repo.py" title="报警模板"/>
+    <tree path="/quant_server/shared/database/repositories/system/ops/retention_policy_log_repo.py"
+          title="保留策略执行日志"/>
+    <tree path="/quant_server/core/events/engine_events.py" title="引擎生命周期事件"/>
+    <tree path="/quant_server/modules/analysis/engines/analysis_engine.py" title='分析模块引擎' extension=""
+          presentableText="" tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/analysis/engines" title="分析模块引擎"/>
+    <tree path="/quant_server/modules/analysis/handlers/event_handler.py" title="分析模块事件处理器"/>
+    <tree path="/quant_server/modules/analysis/events/task_events.py" title="分析任务生命周期事件"/>
+    <tree path="/quant_server/modules/analysis/events/risk_events.py" title="风险分析事件"/>
+    <tree path="/quant_server/modules/analysis/services/integration_service.py" title="分析模块集成服务"/>
+    <tree path="/quant_server/api/websocket/routers.py" title="WebSocket 路由端点"/>
+    <tree path="/quant_web/src/views" title="页面组件"/>
+    <tree path="/quant_web/src/views/Backtest" title="回测" extension="" presentableText="" tooltipTitle="" icon=""
+          textColor="" backgroundColor=""/>
+    <tree path="/quant_web/src/views/Market" title="市场数据" extension="" presentableText="" tooltipTitle="" icon=""
+          textColor="" backgroundColor=""/>
+    <tree path="/quant_web/src/views/DataSync" title="数据同步"/>
+    <tree path="/quant_web/src/views/Strategy" title="策略管理"/>
+    <tree path="/quant_web/src/views/Basket" title="篮子" extension="" presentableText="" tooltipTitle="" icon=""
+          textColor="" backgroundColor=""/>
+    <tree path="/quant_web/src/views/Research" title="因子研究"/>
+    <tree path="/quant_web/src/views/Trade" title="交易"/>
+    <tree path="/quant_web/src/views/Portfolio" title="组合分析"/>
+    <tree path="/quant_web/src/views/Performance" title="绩效"/>
+    <tree path="/quant_web/src/views/Risk" title="风控"/>
+    <tree path="/quant_web/src/views/Signal" title="信号"/>
+    <tree path="/quant_web/src/views/System" title="系统"/>
+    <tree path="/quant_web/src/components" title="可复用组件"/>
+    <tree path="/quant_web/src/components/ui" title="通用 UI"/>
+    <tree path="/quant_web/src/components/charts" title="图表"/>
+    <tree path="/quant_web/src/components/three" title="3D"/>
+    <tree path="/quant_web/src/store" title="Vuex 状态管理"/>
+    <tree path="/quant_web/src/router" title="路由"/>
+    <tree path="/quant_web/src/api" title="请求层"/>
+    <tree path="/quant_web/src/types" title="TS类型定义"/>
+    <tree path="/quant_web/src/styles" title="统一样式系统"/>
+    <tree path="/quant_web/src/locales" title="国际化"/>
+    <tree path="/quant_web/src/utils" title="工具函数"/>
+    <tree path="/quant_web/src/directives" title="自定义指令"/>
+    <tree path="/quant_web/src/layouts" title="布局组件"/>
+    <tree path="/quant_web/src/views/Dashboard" title="总览"/>
+    <tree path="/quant_web/src/views/DataCenter" title="数据中心"/>
+    <tree path="/quant_web/src/views/DataCenter/Market" title="市场概览"/>
+    <tree path="/quant_web/src/views/DataCenter/DataSync" title="同步概览" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_web/src/views/StrategyCenter" title="策略中心"/>
+    <tree path="/quant_web/src/views/StrategyCenter/Factors" title="因子研究"/>
+    <tree path="/quant_web/src/views/StrategyCenter/Build" title="策略构建"/>
+    <tree path="/quant_web/src/views/StrategyCenter/Backtest" title="回测验证"/>
+    <tree path="/quant_web/src/views/StrategyCenter/Performance" title="绩效总览"/>
+    <tree path="/quant_web/src/views/TradeCenter" title="交易与持仓"/>
+    <tree path="/quant_web/src/views/TradeCenter/Trading" title="驾驶舱"/>
+    <tree path="/quant_web/src/views/TradeCenter/Basket" title="篮子管理"/>
+    <tree path="/quant_web/src/views/TradeCenter/Order" title="订单管理"/>
+    <tree path="/quant_web/src/views/TradeCenter/Position" title="持仓管理"/>
+    <tree path="/quant_web/src/views/TradeCenter/Account" title="账户"/>
+    <tree path="/quant_web/src/views/TradeCenter/Execution" title="执行分析"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/audit_opinion_repo.py"
+          title="审计意见数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/business_income_repo.py"
+          title="主营业务收入数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/dividend_repo.py"
+          title="分红送股数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/etf_share_repo.py"
+          title="ETF份额数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/express_repo.py"
+          title="业绩快报数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/fina_indicator_repo.py"
+          title="财务指标数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/forecast_repo.py"
+          title="业绩预告数据仓库"/>
+    <tree path="/quant_server/modules/data/utils/timing.py" title="同步耗时记录工具"/>
+    <tree path="/quant_server/shared/database/repositories/market/macro" title="宏观经济数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/macro/cpi_repo.py" title="CPI 居民消费价格指数数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/macro/gdp_repo.py" title="GDP 国内生产总值数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/macro/ppi_repo.py"
+          title="PPI 工业生产者出厂价格指数数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/hsgt_repo.py"
+          title="沪深港通股票列表数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/disclosure_date_repo.py"
+          title="财报披露日期数据"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/share_float_repo.py"
+          title="限售股解禁数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/st_risk_repo.py"
+          title="ST风险警示板数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/holdernumber_repo.py"
+          title="股东人数数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/holdertrade_repo.py"
+          title="股东增减持数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/pledge_stat_repo.py"
+          title="股权质押统计数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/top10_float_holders_repo.py"
+          title="前十大流通股东数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/top10_holders_repo.py"
+          title="前十大股东数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/suspend_info_repo.py"
+          title="停复牌信息数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/forecast_pro_repo.py"
+          title="卖方盈利预测数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/index_dailybasic_repo.py"
+          title="大盘指数每日指标数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/index_sw_classify_repo.py"
+          title="申万行业分类数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/index_sw_member_repo.py"
+          title="申万行业成分数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/moneyflow_hsgt_repo.py"
+          title="沪深港通资金流向数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/index_sw_daily_repo.py"
+          title="申万行业日线行情数据仓库" extension="" presentableText="" tooltipTitle="" icon="" textColor=""
+          backgroundColor=""/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/index_factor_pro_daily_repo.py"
+          title="指数技术因子专业版数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/index_weekly_repo.py"
+          title="指数周线行情数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/stock_daily_limit_repo.py"
+          title="股票每日涨跌停价格数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/stock_factor_daily_repo.py"
+          title="股票技术因子基础版数据仓库"/>
+    <tree path="/quant_server/shared/database/repositories/market/fundamental/stock_factor_pro_daily_repo.py"
+          title="股票技术因子专业版数据仓库"/>
+    <tree path="/quant_server/shared/storage" title="文件存储服务"/>
+    <tree path="/quant_server/modules/strategy/engines/data_feed_engine.py" title="数据推送引擎"/>
+    <tree path="/quant_server/modules/strategy/engines/strategy_registry.py" title="策略类注册表"/>
+    <tree path="/quant_server/modules/backtest/engines/backtest_broker.py" title="虚拟券商"/>
+    <tree path="/quant_server/modules/market" title="市场数据展示"/>
+    <tree path="/quant_server/modules/risk/rules" title="风控规则定义"/>
+    <tree path="/quant_server/modules/strategy/strategies/rotation" title="右侧交易" extension="" presentableText=""
+          tooltipTitle="" icon="" textColor="" backgroundColor=""/>
+    <tree path="/quant_server/modules/strategy/strategies/etf" title="ETF轮动"/>
+</trees>
