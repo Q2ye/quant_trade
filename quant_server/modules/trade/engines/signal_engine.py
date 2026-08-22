@@ -144,6 +144,7 @@ class SignalEngine(EngineBase):
                     signal_record = await repo.create({
                         "strategy_id": sid,
                         "strategy_version_id": signal_data.get("strategy_version_id") or None,
+                        "account_id": signal_data.get("account_id") or None,  # 4a: 多账户路由——信号归属账户
                         "ts_code": signal_data.get("ts_code", ""),
                         "direction": _db_direction,
                         "signal_type": _db_signal_type,
@@ -194,6 +195,7 @@ class SignalEngine(EngineBase):
             "order_type": signal_data.get("order_type", "limit_range"),
             "parent_id": signal_data.get("parent_id"),  # v3.4: 父信号ID透传（P0 修复：此前重建 dict 缺此键导致追溯链路断裂）
             "strategy_id": signal_data.get("strategy_id", "unknown"),
+            "account_id": signal_data.get("account_id") or None,  # 4a: 多账户路由——信号归属账户（StrategyManager 从 strategies.account_id 注入）
             "created_at": beijing_now().isoformat(),
             "status": "received",
             "message": "信号已接收"

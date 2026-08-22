@@ -5308,3 +5308,16 @@ CREATE TABLE IF NOT EXISTS composite_account_snapshots (
 -- 迁移 2026-08（C14）：signals 数据资产闭环列（现有库执行）
 -- ALTER TABLE signals ADD COLUMN IF NOT EXISTS is_executed BOOLEAN DEFAULT false;
 -- ALTER TABLE signals ADD COLUMN IF NOT EXISTS pnl_outcome NUMERIC(10,4);
+
+-- 阶段4b（2026-08）：恐慌指数表（恐慌抄底策略触发判据，日频，普通表）
+CREATE TABLE IF NOT EXISTS panic_index (
+    trade_date      DATE NOT NULL,
+    panic_idx       NUMERIC(8,4) NOT NULL,   -- 恐慌指数 = |全市场跌幅中位数| × 下跌比例
+    median_pct_chg  NUMERIC(8,4),            -- 当日全市场涨跌幅中位数（%）
+    down_ratio      NUMERIC(8,4),            -- 下跌家数 / 总家数
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (trade_date)
+);
+CREATE INDEX IF NOT EXISTS idx_panic_index_date ON panic_index(trade_date);
+COMMENT ON TABLE panic_index IS '恐慌指数（阶段4b）：全市场恐慌程度日频指标，恐慌抄底策略触发判据';
+COMMENT ON COLUMN panic_index.panic_idx IS '恐慌指数 = |跌幅中位数(%)| × 下跌比例；>=3.0 为触发阈值（M2 反例统计修订）';

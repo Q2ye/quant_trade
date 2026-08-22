@@ -12,7 +12,7 @@ on_bar 缓存 → on_bar_batch_end 调仓/风控 → 信号 → 简化持仓模�
 import asyncio
 import logging
 import sys
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -81,6 +81,55 @@ class SmokePortfolio:
                 self.pending_exits.append((code, h["qty"]))
 
 
+async def _warmup_all_market(strategy, sf, end_date: date) -> int:
+    """全市场 K 线预热 — 修复：脚本此前依赖引擎预热导致 _data_cache 恒空。
+
+    与 StrategyManager._warmup_all_market 同口径（主板代码 + qfq 复权批量加载），
+    差异：DataFrame 保留 trade_date 列（兼容本脚本 dates 提取与策略 _append_data concat）。
+    预热截止 end_date（回测开始日），**不含未来数据**（避免回测未来函数）。
+    """
+    from sqlalchemy import text
+    from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+        StockAdjFactorRepository,
+    )
+
+    lookback = int(getattr(strategy, "lookback_days", 250) or 250)
+    start_d = end_date - timedelta(days=lookback * 2)
+
+    async with sf() as session:
+        r = await session.execute(text(
+            "SELECT DISTINCT ts_code FROM stock_basic "
+            "WHERE (ts_code LIKE '000%' OR ts_code LIKE '002%' OR ts_code LIKE '600%' "
+            "   OR ts_code LIKE '601%' OR ts_code LIKE '603%' OR ts_code LIKE '605%')"
+        ))
+        codes = [row[0] for row in r.fetchall()]
+        rows = await StockAdjFactorRepository(session).get_adjusted_daily_batch(
+            symbols=codes, start_date=start_d, end_date=end_date, adj_type="qfq",
+        )
+
+        by_code: Dict[str, list] = {}
+        for row in rows:
+            by_code.setdefault(row["ts_code"], []).append(row)
+
+        populated = 0
+        for code, recs in by_code.items():
+            if len(recs) < 2:
+                continue
+            df = pd.DataFrame([{
+                "trade_date": str(r["trade_date"])[:10],
+                "open": float(r["open"] or 0),
+                "high": float(r["high"] or 0),
+                "low": float(r["low"] or 0),
+                "close": float(r["close"] or 0),
+                "volume": float(r["volume"] or 0),
+                "amount": float(r["amount"] or 0),
+            } for r in recs])
+            df = df.sort_values("trade_date").reset_index(drop=True)
+            strategy._data_cache[code] = df
+            populated += 1
+        return populated
+
+
 async def run_smoke(start: str = START, end: str = END) -> None:
     from core.engines.types.entities import BarData
     from shared.database.session.connection_pool import get_connection_pool
@@ -107,15 +156,25 @@ async def run_smoke(start: str = START, end: str = END) -> None:
     await strategy.on_start()
 
     symbols = list(strategy.universe)
-    logger.info(f"标的池: {len(symbols)}只, 预热缓存: {sum(len(df) for df in strategy._data_cache.values())}行")
+    logger.info(f"标的池: {len(symbols)}只")
 
-    # 按交易日推进
-    dates: List[str] = []
-    for df in strategy._data_cache.values():
-        if "trade_date" in df.columns:
-            dates.extend(df["trade_date"].astype(str).str[:10].tolist())
-    dates = sorted(set(dates))
-    dates = [d for d in dates if start <= d <= end]
+    # ── 修复：预热 _data_cache（全市场 K 线，截止回测开始日，避免未来函数）──
+    start_d = date.fromisoformat(start)
+    warmed = await _warmup_all_market(strategy, sf, start_d)
+    cache_rows = sum(len(df) for df in strategy._data_cache.values())
+    logger.info(f"预热完成: {warmed} 只股票, 缓存 {cache_rows} 行")
+
+    # 回测区间交易日（独立查询 index_daily，不依赖缓存——缓存只含 start 前数据）
+    from sqlalchemy import text
+    async with sf() as _sess:
+        _r = await _sess.execute(text(
+            "SELECT DISTINCT trade_date FROM index_daily "
+            "WHERE ts_code = '000300.SH' AND trade_date BETWEEN :s AND :e ORDER BY trade_date"
+        ), {"s": start_d, "e": date.fromisoformat(end)})
+        dates = [str(row[0])[:10] for row in _r.fetchall()]
+    if not dates:
+        logger.error("回测区间无交易日数据: %s ~ %s", start, end)
+        return
     logger.info(f"回测区间: {dates[0]} ~ {dates[-1]}, 共 {len(dates)} 个交易日")
 
     # 建立 日→symbol→bar 索引
