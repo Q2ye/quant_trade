@@ -117,10 +117,6 @@ const pageState = ref<PageState>("loading");
 
 // v3.0: 内置策略中文映射
 const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record<string,string> }> = {
-  MACrossStrategy: { name: '双均线策略', desc: '短期均线上穿长期均线买入，下穿卖出。经典趋势跟踪。' },
-  MACDStrategy: { name: 'MACD 策略', desc: '基于 MACD 金叉死叉，结合 DIF/DEA/柱状图判断趋势。' },
-  FactorStrategy: { name: '多因子策略', desc: '多因子模型选股，动量、价值、质量等因子综合打分。' },
-  MeanReversionStrategy: { name: '均值回归策略', desc: '基于均值回归原理，适合震荡市，偏离均值时反向操作。' },
   MLStrategy: { name: '机器学习策略', desc: '基于随机森林、XGBoost 等传统 ML 算法的交易策略。' },
   DLStrategy: { name: '深度学习策略', desc: '基于 LSTM、Transformer 等深度学习模型的交易策略。' },
   IndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '申万31行业多因子评分（趋势动量+资金量价+估值空间），板块去重，每周轮动 Top5 行业 ETF。' },

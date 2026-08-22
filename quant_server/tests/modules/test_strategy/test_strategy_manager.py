@@ -35,10 +35,10 @@ class TestStrategyManager:
     @pytest.mark.asyncio
     async def test_register_strategy(self, manager):
         """测试注册自定义策略类"""
-        from modules.strategy.strategies.technical.ma_cross_strategy import MACrossStrategy
+        from modules.strategy.strategies.reference.stock_low_high_strategy import StockLowHighStrategy
 
-        manager.register_strategy(StrategyType.CTA, MACrossStrategy)
-        assert manager._strategy_registry[StrategyType.CTA] == MACrossStrategy
+        manager.register_strategy(StrategyType.CTA, StockLowHighStrategy)
+        assert manager._strategy_registry[StrategyType.CTA] == StockLowHighStrategy
 
     @pytest.mark.asyncio
     async def test_load_strategy(self, manager):

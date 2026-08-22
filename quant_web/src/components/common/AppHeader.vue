@@ -226,11 +226,6 @@ export default defineComponent({
         icon: () => h(SmartIcon, { name: "Person" }),
       },
       {
-        label: "系统设置",
-        key: "settings",
-        icon: () => h(SmartIcon, { name: "Settings" }),
-      },
-      {
         type: "divider",
         key: "d1",
       },
@@ -340,8 +335,6 @@ export default defineComponent({
       userMenuVisible.value = false;
       if (key === "logout") {
         router.push("/login");
-      } else if (key === "settings") {
-        router.push("/system/settings");
       } else if (key === "profile") {
         router.push("/market/dashboard");
       }

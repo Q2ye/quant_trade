@@ -2698,6 +2698,53 @@ COMMENT ON COLUMN factor_research.result IS '研究结果（JSON格式）';
 COMMENT ON COLUMN factor_research.summary IS '研究总结（JSON格式）';
 COMMENT ON COLUMN factor_research.report IS '详细报告（JSON格式）';
 COMMENT ON COLUMN factor_research.error_message IS '错误信息';
+
+-- ============================================================================
+-- 模型训练任务表（2026-08：LightGBM 模型训练结果闭环，见 training_service）
+-- ============================================================================
+CREATE TABLE model_trainings (
+    id VARCHAR(36) PRIMARY KEY,
+    task_id VARCHAR(64) NOT NULL UNIQUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    progress FLOAT DEFAULT 0.0,
+    label_N INTEGER,
+    label_X FLOAT,
+    label_Y FLOAT,
+    lgb_params JSONB,
+    feature_set_ids JSONB,
+    feature_codes JSONB,
+    etf_pool JSONB,
+    -- 结果
+    result JSONB,
+    model_path TEXT,
+    auc_val FLOAT,
+    auc_test FLOAT,
+    threshold FLOAT,
+    n_samples INTEGER,
+    test_signals INTEGER,
+    test_win_rate FLOAT,
+    feature_importance JSONB,
+    error_message TEXT,
+    user_id VARCHAR(36),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+COMMENT ON TABLE model_trainings IS '模型训练任务表（LightGBM ETF 底部策略离线训练）';
+COMMENT ON COLUMN model_trainings.task_id IS '训练任务ID（对外暴露）';
+COMMENT ON COLUMN model_trainings.status IS '状态：pending, running, completed, failed';
+COMMENT ON COLUMN model_trainings.progress IS '进度（0-1）';
+COMMENT ON COLUMN model_trainings.result IS '训练结果摘要（JSON，含模型路径/指标）';
+COMMENT ON COLUMN model_trainings.model_path IS '保存的模型文件路径';
+COMMENT ON COLUMN model_trainings.auc_val IS '验证集 AUC';
+COMMENT ON COLUMN model_trainings.auc_test IS '测试集 AUC';
+COMMENT ON COLUMN model_trainings.threshold IS '优化后的预测阈值';
+COMMENT ON COLUMN model_trainings.n_samples IS '训练样本数';
+COMMENT ON COLUMN model_trainings.test_signals IS '测试集信号数';
+COMMENT ON COLUMN model_trainings.test_win_rate IS '测试集胜率';
+COMMENT ON COLUMN model_trainings.feature_importance IS '特征重要性（JSON）';
 COMMENT ON COLUMN factor_research.error_stack IS '错误堆栈';
 COMMENT ON COLUMN factor_research.ic_mean IS 'IC均值';
 COMMENT ON COLUMN factor_research.ic_ir IS 'IC信息比率';

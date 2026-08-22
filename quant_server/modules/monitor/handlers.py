@@ -13,9 +13,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.monitor.collectors.system_collector import SystemCollector
 from modules.monitor.services.alert_service import AlertService
+from modules.monitor.services.strategy_health_service import StrategyHealthService
 from modules.monitor.services.system_service import SystemMonitorService
 
 logger = logging.getLogger(__name__)
+
+
+async def get_strategy_health (
+		session: AsyncSession,
+		user_id: str,
+		strategy_id: str = "",
+) -> Dict[str, Any]:
+	"""策略健康度检查（基建设计 §三）：输出 running 策略的 healthy/warning/stop 分级。
+
+	- 不传 strategy_id → 返回全部运行中策略
+	- 传 strategy_id → 返回单个策略
+	"""
+	try:
+		if strategy_id:
+			data = await StrategyHealthService.check_strategy_health(session, strategy_id)
+		else:
+			data = await StrategyHealthService.check_all(session)
+		return {"success": True, "data": data}
+	except Exception as e:
+		logger.error(f"策略健康检查失败: {e}", exc_info=True)
+		return {"success": False, "data": [], "error": str(e)}
 
 
 async def get_system_metrics (

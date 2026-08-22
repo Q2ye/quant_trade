@@ -9,6 +9,7 @@ API 端点: POST /api/strategy/train/lgb
 """
 
 import asyncio
+import json
 import logging
 import os
 import math
@@ -151,6 +152,7 @@ class TrainingService:
         data_start: date = date(2020, 1, 1),
         data_end: date = date(2026, 7, 25),
         progress_callback=None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         执行完整训练流程，返回结果摘要。
@@ -164,6 +166,7 @@ class TrainingService:
             train_end/val_end: 训练/验证集截止日期
             data_start/data_end: 数据日期范围
             progress_callback: callable(step, pct)
+            task_id: 训练任务ID（传入时同步更新 model_trainings 表状态）
 
         Returns:
             Dict: {model_path, auc_val, auc_test, threshold, features_n, ...}
@@ -189,17 +192,25 @@ class TrainingService:
 
         conn = await asyncpg.connect(**self.db_config)
         try:
+            if task_id:
+                await self._update_task(conn, task_id,
+                    status="running", progress=0.05, started_at=datetime.now())
+
             # 1. 加载特征
             if progress_callback:
                 progress_callback("loading_features", 0.1)
             logger.info("加载特征: %d codes × %d ETFs", len(feature_codes), len(etf_pool))
             features = await self.load_features(conn, feature_codes, etf_pool, data_start, data_end)
+            if task_id:
+                await self._update_task(conn, task_id, status="running", progress=0.2)
 
             # 2. 构造标签
             if progress_callback:
                 progress_callback("building_labels", 0.3)
             logger.info("构造标签: N=%d, X=%.0f%%, Y=%.0f%%", label_N, label_X * 100, label_Y * 100)
             labels = await self.load_labels(conn, etf_pool, label_N, label_X, label_Y, data_start, data_end)
+            if task_id:
+                await self._update_task(conn, task_id, status="running", progress=0.4)
 
             # 3. 合并
             feats = features.reset_index()
@@ -232,6 +243,8 @@ class TrainingService:
             # 5. 标准化 + 训练
             if progress_callback:
                 progress_callback("training", 0.6)
+            if task_id:
+                await self._update_task(conn, task_id, status="running", progress=0.55)
             scaler = StandardScaler()
             X_tr_s = scaler.fit_transform(X_tr)
             X_va_s = scaler.transform(X_va)
@@ -258,6 +271,8 @@ class TrainingService:
             # 7. 测试集评估
             if progress_callback:
                 progress_callback("evaluating", 0.9)
+            if task_id:
+                await self._update_task(conn, task_id, status="running", progress=0.8)
             X_te_s = scaler.transform(X_te)
             proba_te = model.predict_proba(X_te_s)[:, 1]
             pred_te = (proba_te >= best_t).astype(int)
@@ -287,7 +302,7 @@ class TrainingService:
             if progress_callback:
                 progress_callback("done", 1.0)
 
-            return {
+            summary = {
                 "model_path": str(model_path),
                 "auc_val": artifact["metadata"]["auc_val"],
                 "auc_test": float(auc_te),
@@ -301,8 +316,42 @@ class TrainingService:
                     model.feature_importances_.tolist() if hasattr(model, "feature_importances_") else [],
                 )),
             }
+            if task_id:
+                await self._update_task(conn, task_id,
+                    status="completed", progress=1.0,
+                    result=summary, model_path=str(model_path),
+                    auc_val=summary["auc_val"], auc_test=summary["auc_test"],
+                    threshold=summary["threshold"], n_samples=summary["n_samples"],
+                    test_signals=summary["test_signals"], test_win_rate=summary["test_win_rate"],
+                    feature_importance=summary["feature_importance"],
+                    completed_at=datetime.now())
+            return summary
+        except Exception as e:
+            if task_id:
+                try:
+                    await self._update_task(conn, task_id, status="failed", error_message=str(e))
+                except Exception:
+                    logger.warning("更新训练任务失败状态出错: %s", task_id, exc_info=True)
+            raise
         finally:
             await conn.close()
+
+    async def _update_task(self, conn: asyncpg.Connection, task_id: str, **fields: Any) -> None:
+        """更新 model_trainings 任务状态（task_id 定位，dict/list 值自动序列化为 JSONB）"""
+        if not fields:
+            return
+        keys = list(fields.keys())
+        values = []
+        for k in keys:
+            v = fields[k]
+            if isinstance(v, (dict, list)):
+                v = json.dumps(v, ensure_ascii=False)
+            values.append(v)
+        set_sql = ", ".join(f"{k} = ${i + 2}" for i, k in enumerate(keys))
+        await conn.execute(
+            f"UPDATE model_trainings SET {set_sql}, updated_at = now() WHERE task_id = $1",
+            task_id, *values,
+        )
 
     async def _load_feature_codes(self, feature_set_ids: List[str]) -> List[str]:
         """从 feature_sets 表加载特征代码"""

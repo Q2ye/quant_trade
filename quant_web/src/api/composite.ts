@@ -47,6 +47,10 @@ export interface RebalanceResult {
 }
 
 export default {
+  // 账户列表（组合共享账户下拉选择用）
+  async getAccounts(): Promise<Array<{ id: string; account_number: string; account_name: string; status?: string }>> {
+    return request.get("/quantTrade/account/list").then(handleResponse);
+  },
   // ---- 组合分组 CRUD ----
   async createGroup(data: {
     name: string;

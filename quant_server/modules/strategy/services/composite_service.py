@@ -55,12 +55,12 @@ class CompositeService:
         if len(strategy_ids) < 2:
             raise ValueError("组合至少需要 2 个策略")
 
-        allocator_config = data.get("allocator_config") or {
-            "REGIME_BASE_ALLOCATION": CapitalAllocator.REGIME_BASE_ALLOCATION,
-            "risk_parity_enabled": False,
-            "rp_blend_strength": 0.3,
-            "rp_rebalance_freq": "monthly",
-        }
+        # 2026-08：未传 allocator_config 时按策略角色生成默认（与回测一致：牛市防守让位）。
+        # 此前用默认 REGIME_BASE_ALLOCATION(etf_bottom/stock_low_high) 与策略 UUID 不匹配 → 等权 fallback。
+        if data.get("allocator_config"):
+            allocator_config = data["allocator_config"]
+        else:
+            allocator_config = await self._default_group_allocator_config(strategy_ids)
 
         stmt = text("""
             INSERT INTO composite_groups (id, name, account_id, strategy_ids, allocator_config,
@@ -89,6 +89,48 @@ class CompositeService:
         await self.session.commit()
         logger.info(f"创建组合成功: {gid} {data.get('name')}, 策略={strategy_ids}")
         return {"id": gid, "name": data.get("name"), "strategy_ids": strategy_ids}
+
+    async def _default_group_allocator_config(
+        self, strategy_ids: list
+    ) -> dict:
+        """按策略角色生成默认组合分配（与回测一致：牛市防守让位进攻）。
+
+        权重：熊 防守0.9/进攻0.1（进攻熊市空仓）、震 0.2/0.8（进攻动量主场）、牛 0/1。
+        key 用 allocator_id（与 CapitalAllocator 查表一致，避免等权 fallback）。
+        """
+        defense_ids, attack_ids = [], []
+        for cfg in strategy_ids:
+            if await self._is_defense_strategy(cfg["strategy_id"]):
+                defense_ids.append(cfg["allocator_id"])
+            else:
+                attack_ids.append(cfg["allocator_id"])
+
+        base = {}
+        for regime, (d_w, a_w) in ((0, (0.9, 0.1)), (1, (0.2, 0.8)), (2, (0.0, 1.0))):
+            alloc = {}
+            if defense_ids:
+                alloc[defense_ids[0]] = d_w
+            if attack_ids:
+                alloc[attack_ids[0]] = a_w
+            base[regime] = alloc
+        return {
+            "REGIME_BASE_ALLOCATION": base,
+            "risk_parity_enabled": False,
+            "rp_blend_strength": 0.3,
+            "rp_rebalance_freq": "monthly",
+        }
+
+    async def _is_defense_strategy(self, sid: str) -> bool:
+        """按策略类名/名称判断是否为防守策略（ETF底部等）。"""
+        try:
+            stmt = text("SELECT class_name, name FROM strategies WHERE id = :sid")
+            row = (await self.session.execute(stmt, {"sid": sid})).first()
+            if not row:
+                return False
+            marker = "{} {}".format(row[0] or "", row[1] or "")
+            return any(k in marker for k in ("Bottom", "bottom", "防守", "底部"))
+        except Exception:
+            return False
 
     async def get_group(self, group_id: str) -> dict:
         """获取组合详情"""
@@ -461,7 +503,13 @@ class CompositeService:
             sid = cfg["strategy_id"]
             aid = cfg["allocator_id"]
             weight = new_allocation.get(aid, 0.0)
-            target = max(10000.0, account_total * weight)
+            # 2026-08 修复：固定 1 万最低保障对小账户超分配（2万账户防守20%被抬到1万→合计>total）。
+            # 改为按账户比例的动态下限（5%，绝对下限 1000），weight=0 保持 0（牛市防守让位）。
+            if weight > 0:
+                min_cap = max(1000.0, account_total * 0.05)
+                target = max(min_cap, account_total * weight)
+            else:
+                target = 0.0
             current = await self._get_strategy_allocated(sid)
 
             if abs(target - current) >= 1000:

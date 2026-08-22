@@ -315,10 +315,11 @@ class MainEngine(EngineBase):
             job = ScheduleJob(
                 job_id="daily_data_sync",
                 name="日终数据同步+策略驱动",
-                schedule_type=ScheduleType.POST_MARKET,
-                schedule_config={"hour": 21, "minute": 26},
+                # 2026-08 修复：POST_MARKET 不校验交易日（周六也跑日终产生候选），改 TRADING_DAY 只在交易日执行
+                schedule_type=ScheduleType.TRADING_DAY,
+                schedule_config={"time": "21:20"},
                 func=_daily_sync_job,
-                description="盘后：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
+                description="盘后（交易日）：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,
             )
             await self._schedule_manager.add_job(job)

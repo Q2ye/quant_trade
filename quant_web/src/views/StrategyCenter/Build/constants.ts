@@ -31,7 +31,6 @@ export const PARAM_STEPS: Record<string, number> = {
 
 export const STRATEGY_TYPE_OPTIONS = [
   { label: "趋势跟踪", value: "trend" },
-  { label: "均值回归", value: "mean_reversion" },
   { label: "套利策略", value: "arbitrage" },
   { label: "市场中性", value: "market_neutral" },
 ];

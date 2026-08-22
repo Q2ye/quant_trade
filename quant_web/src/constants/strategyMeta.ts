@@ -56,50 +56,6 @@ export const BUILTIN_STRATEGIES: Record<string, {
   description: string
   params: Record<string, { label: string; type: string; default: any; min?: number; max?: number }>
 }> = {
-  ma_cross: {
-    name: '双均线策略',
-    type: '技术指标',
-    description: '经典双均线交叉策略，金叉买入、死叉卖出',
-    params: {
-      fast_period: { label: '快线周期', type: 'int', default: 5, min: 2, max: 60 },
-      slow_period: { label: '慢线周期', type: 'int', default: 20, min: 5, max: 120 },
-      position_ratio: { label: '仓位比例', type: 'float', default: 0.1, min: 0.01, max: 1 },
-      stop_loss: { label: '止损比例', type: 'float', default: -0.05, min: -0.2, max: 0 },
-      take_profit: { label: '止盈比例', type: 'float', default: 0.15, min: 0.01, max: 1 },
-    },
-  },
-  macd: {
-    name: 'MACD 策略',
-    type: '技术指标',
-    description: '基于 MACD 金叉死叉的交易策略',
-    params: {
-      fast_period: { label: '快线周期', type: 'int', default: 12, min: 2, max: 60 },
-      slow_period: { label: '慢线周期', type: 'int', default: 26, min: 5, max: 120 },
-      signal_period: { label: '信号周期', type: 'int', default: 9, min: 2, max: 30 },
-      stop_loss: { label: '止损比例', type: 'float', default: -0.05, min: -0.2, max: 0 },
-      take_profit: { label: '止盈比例', type: 'float', default: 0.15, min: 0.01, max: 1 },
-    },
-  },
-  factor: {
-    name: '多因子策略',
-    type: 'Alpha 策略',
-    description: '多因子选股，z-score 标准化打分',
-    params: {
-      stock_pool_size: { label: '持仓数量', type: 'int', default: 10, min: 1, max: 50 },
-      stop_loss: { label: '止损比例', type: 'float', default: -0.05, min: -0.2, max: 0 },
-      take_profit: { label: '止盈比例', type: 'float', default: 0.15, min: 0.01, max: 1 },
-    },
-  },
-  mean_reversion: {
-    name: '均值回归策略',
-    type: 'Alpha 策略',
-    description: '基于 z-score 和 RSI 的均值回归',
-    params: {
-      zscore_threshold: { label: 'Z 分数阈值', type: 'float', default: 2.0, min: 1.0, max: 4.0 },
-      stop_loss: { label: '止损比例', type: 'float', default: -0.05, min: -0.2, max: 0 },
-      take_profit: { label: '止盈比例', type: 'float', default: 0.10, min: 0.01, max: 0.5 },
-    },
-  },
   industry_rotation: {
     name: '行业轮动策略',
     type: '轮动策略',
@@ -122,16 +78,6 @@ export const BUILTIN_STRATEGIES: Record<string, {
       bear_stop_loss: { label: '下跌市止损', type: 'float', default: -0.04, min: -0.2, max: 0 },
     },
   },
-  multi_asset_rotation: {
-    name: '多资产轮动策略',
-    type: '轮动策略',
-    description: '跨资产 ETF 动量轮动，黄金/纳指/日经/港股/债券等 9 个品种',
-    params: {
-      stop_loss: { label: '止损比例', type: 'float', default: -0.09, min: -0.3, max: 0 },
-      intraday_stop_loss: { label: '日内止损比例', type: 'float', default: -0.03, min: -0.1, max: 0 },
-      cooling_period: { label: '止损冷却期(天)', type: 'int', default: 3, min: 1, max: 30 },
-    },
-  },
 }
 
 // 参数名 → 中文标签（全局映射）
@@ -150,8 +96,4 @@ export const PARAM_LABELS: Record<string, string> = {
   bear_stop_loss: '下跌市止损',
   intraday_stop_loss: '日内止损',
   cooling_period: '冷却期(天)',
-  stock_pool_size: '持仓数量',
-  zscore_threshold: 'Z 分数阈值',
-  min_volume: '最小成交量',
-  volume_ma_period: '量均线周期',
 }

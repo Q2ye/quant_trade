@@ -159,6 +159,9 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 		total_result = await self.session.execute(total_query)
 		total = total_result.scalar() or 0
 
+		# 应用排序（最新在前，2026-08-19 修复：此前无 order_by 导致顺序不确定）
+		query = query.order_by(self.model.created_at.desc())
+
 		# 应用分页
 		offset = (page - 1) * page_size
 		query = query.offset(offset).limit(page_size)

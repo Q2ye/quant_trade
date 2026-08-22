@@ -70,6 +70,7 @@ class CapitalAllocator:
         "vol_cap": 2.0,                   # 年化波动率上限
         "rp_blend_strength": 0.3,         # 风险平价混合强度: 0=纯 Regime, 1=纯 RP
         "rp_rebalance_freq": "monthly",   # RP 重算频率: daily/weekly/monthly
+        "regime_gate_band": 0.03,         # CSI500 vs MA250 偏离阈值（±3% 回测验证最优，±1% 致震荡参与减少/组合MDD恶化）
     }
 
     def __init__(
@@ -186,9 +187,10 @@ class CapitalAllocator:
                 closes = [self._csi500_closes[d] for d in dates[-250:]]
                 ma250 = sum(closes) / len(closes)
                 close = closes[-1]
-                if close < ma250 * 0.97:
+                band = float(self._params.get("regime_gate_band", 0.01))
+                if close < ma250 * (1 - band):
                     return 0
-                elif close > ma250 * 1.03:
+                elif close > ma250 * (1 + band):
                     return 2
                 return 1
         return 1  # 默认 RANGE
@@ -252,10 +254,13 @@ class CapitalAllocator:
             n = len(self._strategy_ids)
             return {sid: 1.0 / n for sid in self._strategy_ids}
 
-        clamped = {
-            sid: max(0.05, min(0.95, v / total))
-            for sid, v in weights.items()
-        }
+        clamped = {}
+        for sid, v in weights.items():
+            if v <= 0:
+                # 显式为 0（如牛市防守让位 defense:0）保持 0，不抬到钳制下限 5%
+                clamped[sid] = 0.0
+            else:
+                clamped[sid] = max(0.05, min(0.95, v / total))
         # 再次归一化（钳制后总和可能偏离 1）
         total2 = sum(clamped.values())
         return {sid: v / total2 for sid, v in clamped.items()}

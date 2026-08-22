@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.cache.cache_manager import get_cache_manager
 from shared.database.repositories.system.auth.user_repo import UserRepository
-from modules.system.services.config_service import ConfigService
 from modules.system.services.log_service import LogService
 
 
@@ -25,7 +24,6 @@ class SystemHandler:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.user_repo = UserRepository(db)
-        self.config_service = ConfigService(db)
         self.log_service = LogService(db)
 
     # ==================== 系统状态 ====================
@@ -234,77 +232,27 @@ class SystemHandler:
         except Exception as e:
             return {"success": False, "data": {"error": str(e)}}
 
-    # ==================== 系统日志 ====================
+    # ==================== 审计日志 ====================
 
     async def get_system_logs(self, request, user_id: str) -> Dict[str, Any]:
-        """获取系统日志（分页）"""
-        log_level = getattr(request, 'log_level', None)
-        module = getattr(request, 'module', None)
+        """获取审计日志（分页，2026-08 起读取 audit_logs 表）"""
+        action_type = getattr(request, 'action_type', None)
+        status = getattr(request, 'status', None)
+        username = getattr(request, 'username', None)
         start_date = getattr(request, 'start_date', None)
         end_date = getattr(request, 'end_date', None)
         page = getattr(request, 'page', 1)
         page_size = getattr(request, 'page_size', 20)
 
         return await self.log_service.query_logs(
-            log_level=log_level,
-            module=module,
-            user_id=user_id,
+            action_type=action_type,
+            status=status,
+            username=username,
             start_date=start_date,
             end_date=end_date,
             page=page,
             page_size=page_size,
         )
-
-    # ==================== 系统设置 ====================
-
-    async def get_system_settings(self, _user_id: str) -> Dict[str, Any]:
-        """获取所有系统配置（嵌套结构，匹配前端 SystemSettings 接口）"""
-        configs = await self.config_service.get_all_configs()
-        flat = {c["config_key"]: c["config_value"] for c in configs}
-
-        # 将扁平配置组织为嵌套结构（与前端 SystemSettings 接口对齐）
-        settings = {
-            "data_sync": {
-                "auto_sync": flat.get("data_sync_auto", True),
-                "sync_interval_minutes": flat.get("data_sync_interval", 30),
-                "data_sources": flat.get("data_sources", ["tushare", "baostock"]),
-            },
-            "trading": {
-                "commission_rate": float(flat.get("commission_rate", 0.0003)),
-                "stamp_tax": float(flat.get("stamp_tax", 0.001)),
-                "min_commission": float(flat.get("min_commission", 5.0)),
-                "slippage": float(flat.get("slippage", 0.001)),
-            },
-            "risk": {
-                "max_position_ratio": float(flat.get("max_position_ratio", 0.3)),
-                "max_daily_loss": float(flat.get("max_daily_loss", 0.05)),
-                "max_drawdown": float(flat.get("max_drawdown", 0.2)),
-                "enable_auto_stop": flat.get("enable_auto_stop", True),
-                "filter_st": flat.get("filter_st", True),
-            },
-            "notification": {
-                "dingtalk_enabled": flat.get("dingtalk_enabled", False),
-                "wechat_enabled": flat.get("wechat_enabled", False),
-                "email_enabled": flat.get("email_enabled", False),
-                "risk_alert_enabled": flat.get("risk_alert_enabled", True),
-            },
-        }
-        return {"success": True, "data": settings}
-
-    async def update_system_settings(self, request, user_id: str) -> Dict[str, Any]:
-        """更新系统配置（兼容旧格式 {settings: {...}} 和新格式直接传嵌套结构）"""
-        if hasattr(request, 'settings') and request.settings is not None:
-            # 旧格式：{"settings": {...}}
-            settings_dict = request.settings
-        elif hasattr(request, 'settings') and request.settings is None:
-            # 新格式：直接传 {"security": {...}, "notification": {...}, ...}
-            dumped = request.model_dump(exclude_none=True)
-            dumped.pop("settings", None)
-            settings_dict = dumped
-        else:
-            settings_dict = request.model_dump().get("settings", request.model_dump())
-        results = await self.config_service.update_settings(settings_dict, updated_by=user_id)
-        return {"success": True, "data": {"updated": len(results)}}
 
     # ==================== 工具方法 ====================
 
@@ -333,16 +281,6 @@ async def get_system_status(session: AsyncSession, user_id: str):
 async def get_system_logs(session: AsyncSession, request, user_id: str):
     handler = SystemHandler(session)
     return await handler.get_system_logs(request, user_id)
-
-
-async def get_system_settings(session: AsyncSession, user_id: str):
-    handler = SystemHandler(session)
-    return await handler.get_system_settings(user_id)
-
-
-async def update_system_settings(session: AsyncSession, request, user_id: str):
-    handler = SystemHandler(session)
-    return await handler.update_system_settings(request, user_id)
 
 
 async def get_connection_status(session: AsyncSession, user_id: str):

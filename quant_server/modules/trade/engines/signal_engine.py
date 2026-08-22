@@ -4,6 +4,7 @@ import logging
 import uuid
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
+from shared.utils.time_utils import beijing_now
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ class SignalEngine(EngineBase):
                         "ts_code": signal_data.get("ts_code", ""),
                         "direction": _db_direction,
                         "signal_type": _db_signal_type,
-                        "signal_time": datetime.now(timezone.utc),
+                        "signal_time": beijing_now(),
                         "price": signal_data.get("price", 0.0),
                         "quantity": signal_data.get("quantity", 0),
                         "strength": float(signal_data.get("confidence", signal_data.get("strength", 1.0))),
@@ -193,7 +194,7 @@ class SignalEngine(EngineBase):
             "order_type": signal_data.get("order_type", "limit_range"),
             "parent_id": signal_data.get("parent_id"),  # v3.4: 父信号ID透传（P0 修复：此前重建 dict 缺此键导致追溯链路断裂）
             "strategy_id": signal_data.get("strategy_id", "unknown"),
-            "created_at": datetime.now().isoformat(),
+            "created_at": beijing_now().isoformat(),
             "status": "received",
             "message": "信号已接收"
         }

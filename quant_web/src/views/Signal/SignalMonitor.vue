@@ -3,14 +3,16 @@ import { ref, computed, onMounted, h } from "vue";
 import { useRouter } from "vue-router";
 import {
   NTag, NButton, NProgress, NSpin, NResult, NEmpty,
-  NSelect, NDatePicker, NInput, NSpace, NStatistic, NCard,
+  NSelect, NInput, NSpace, NStatistic, NCard,
   NDataTable, useMessage,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import tradeAPI from "@/api/trade";
+import { formatDateTime } from "@/utils/date";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import TradeRecordModal from "@/components/trade/TradeRecordModal.vue";
 import SignalTraceModal from "@/components/trade/SignalTraceModal.vue";
+import AppDateRangePicker from "@/components/common/AppDateRangePicker.vue";
 
 const message = useMessage();
 const router = useRouter();
@@ -25,7 +27,7 @@ const signals = ref<any[]>([]);
 const filters = ref({
   status: null as string | null,
   signal_type: null as string | null,
-  dateRange: null as [number, number] | null,
+  dateRange: null as [string, string] | null,
   ts_code: "",
 });
 
@@ -203,7 +205,7 @@ const signalTypeLabel: Record<string, string> = {
 const columns: DataTableColumns<any> = [
   {
     title: "时间", key: "signal_time", minWidth: 140,
-    render: (row) => (row.signal_time || "").toString().slice(0, 16).replace("T", " ") || "--",
+    render: (row) => (row.signal_time ? formatDateTime(row.signal_time, "YYYY-MM-DD HH:mm") : "--"),
   },
   {
     title: "股票", key: "ts_code", minWidth: 100,
@@ -361,13 +363,10 @@ onMounted(() => loadSignals());
               style="width: 110px"
               placeholder="类型"
             />
-            <n-date-picker
-              v-model:formatted-value="filters.dateRange as any"
-              type="daterange"
-              size="small"
+            <AppDateRangePicker
+              v-model:formatted="filters.dateRange"
               style="width: 220px"
               placeholder="日期范围"
-              clearable
             />
             <n-input
               v-model:value="filters.ts_code"
@@ -389,6 +388,7 @@ onMounted(() => loadSignals());
             :data="signals"
             :bordered="false"
             size="small"
+            remote
             :row-key="(row: any) => row.signal_id || row.id"
             :pagination="{
               page: pagination.page,

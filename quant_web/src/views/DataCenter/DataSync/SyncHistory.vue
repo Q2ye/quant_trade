@@ -6,7 +6,6 @@ import {
   NAlert,
   NButton,
   NCard,
-  NDatePicker,
   NDescriptions,
   NDescriptionsItem,
   NDrawer,
@@ -23,6 +22,7 @@ import {
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { dataSyncService } from "@/api/data-sync";
 import type { DataTableColumns } from "naive-ui";
+import AppDateRangePicker from "@/components/common/AppDateRangePicker.vue";
 
 const router = useRouter();
 const message = useMessage();
@@ -565,11 +565,9 @@ watch(
               :options="dataTypeOptions"
               @update:show="(val: boolean) => (popupOpen.dataType = val)"
             />
-            <n-date-picker
+            <AppDateRangePicker
               v-model:value="filters.dateRange"
-              type="daterange"
               style="width: 240px"
-              clearable
               @update:show="(val: boolean) => (popupOpen.datePicker = val)"
             />
             <n-button @click="handleReset">重置</n-button>
@@ -599,6 +597,7 @@ watch(
           :columns="columns"
           :data="allRecords"
           v-model:checked-row-keys="checkedRowKeys"
+          remote
           :row-props="
             (row: SyncRecord) => ({
               class: 'clickable-row',

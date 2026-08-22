@@ -263,12 +263,6 @@ export default defineComponent({
             default: () => h(SmartIcon, { name: "DocumentText" }),
           }),
       },
-      {
-        label: "系统设置",
-        key: "settings",
-        icon: () =>
-          h(NIcon, null, { default: () => h(SmartIcon, { name: "Settings" }) }),
-      },
     ];
 
     // =====================================================================
@@ -296,7 +290,6 @@ export default defineComponent({
       "system-dashboard": "/system/dashboard",
       users: "/system/users",
       logs: "/system/logs",
-      settings: "/system/settings",
     };
 
     /** 根据当前 path 反向查找菜单 key */

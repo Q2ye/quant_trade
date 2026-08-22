@@ -475,6 +475,7 @@ onMounted(async () => {
           v-model:checked-row-keys="checkedRowKeys"
           size="small"
           :bordered="false"
+          remote
           max-height="calc(100vh - 360px)"
           :row-props="
             (row: ScreenerStockItem | ScreenerEtfItem) => ({

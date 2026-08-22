@@ -1342,6 +1342,53 @@ class FactorResearch(Base):
         return f"<FactorResearch(id={self.id}, research_id={self.research_id}, factor_code={self.factor_code}, status={self.status})>"
 
 
+# ==================== 模型训练任务 ====================
+
+class ModelTraining(Base):
+    """模型训练任务表（LightGBM ETF 底部策略离线训练，2026-08 结果闭环）"""
+    __tablename__ = 'model_trainings'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='主键ID')
+    task_id = Column(String(64), nullable=False, unique=True, index=True, comment='训练任务ID（对外暴露）')
+    status = Column(String(20), nullable=False, default='pending',
+                    comment='状态：pending, running, completed, failed')
+    progress = Column(Float, default=0.0, comment='进度（0-1）')
+
+    # 训练配置
+    label_N = Column(Integer, comment='标签持有期 N')
+    label_X = Column(Float, comment='标签目标涨幅 X')
+    label_Y = Column(Float, comment='标签回撤容忍 Y')
+    lgb_params = Column(JSON, comment='LightGBM 参数（JSON）')
+    feature_set_ids = Column(JSON, comment='特征集 ID 列表（JSON）')
+    feature_codes = Column(JSON, comment='特征代码列表（JSON）')
+    etf_pool = Column(JSON, comment='ETF 池（JSON）')
+
+    # 结果
+    result = Column(JSON, comment='训练结果摘要（JSON）')
+    model_path = Column(Text, comment='模型文件路径')
+    auc_val = Column(Float, comment='验证集 AUC')
+    auc_test = Column(Float, comment='测试集 AUC')
+    threshold = Column(Float, comment='优化后的预测阈值')
+    n_samples = Column(Integer, comment='训练样本数')
+    test_signals = Column(Integer, comment='测试集信号数')
+    test_win_rate = Column(Float, comment='测试集胜率')
+    feature_importance = Column(JSON, comment='特征重要性（JSON）')
+
+    # 错误与上下文
+    error_message = Column(Text, comment='错误信息')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), index=True, comment='用户ID')
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+    started_at = Column(DateTime(timezone=True), comment='开始时间')
+    completed_at = Column(DateTime(timezone=True), comment='完成时间')
+
+    def __repr__(self):
+        return f"<ModelTraining(id={self.id}, task_id={self.task_id}, status={self.status})>"
+
+
 # ==================== 分析相关 ====================
 
 class AnalysisReport(Base):

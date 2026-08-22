@@ -22,41 +22,6 @@ export interface SystemStatus {
   };
 }
 
-export interface SystemSettings {
-  security?: {
-    session_timeout?: number;
-    max_login_attempts?: number;
-    lockout_minutes?: number;
-    password_min_length?: number;
-  };
-  notification?: {
-    dingtalk_enabled?: boolean;
-    wechat_enabled?: boolean;
-    email_enabled?: boolean;
-    risk_alert_enabled?: boolean;
-  };
-  maintenance?: {
-    audit_retention_days?: number;
-    auto_cleanup?: boolean;
-  };
-  // Legacy fields for backward compatibility
-  data_sync?: {
-    auto_sync?: boolean;
-    sync_interval?: number;
-    data_sources?: string[];
-  };
-  trading?: {
-    commission_rate?: number;
-    tax_rate?: number;
-    min_commission?: number;
-  };
-  risk?: {
-    max_position_ratio?: number;
-    max_daily_loss?: number;
-    enable_auto_stop?: boolean;
-  };
-}
-
 export interface ConnectionStatus {
   database: boolean;
   redis: boolean;
@@ -86,12 +51,13 @@ export interface DatabaseStatus {
 }
 
 export interface SystemLogQueryParams {
-  level?: "INFO" | "WARNING" | "ERROR" | "DEBUG";
-  module?: string;
+  action_type?: string;
+  status?: string;
+  username?: string;
+  start_date?: string;
+  end_date?: string;
   page?: number;
-  limit?: number;
-  start_time?: string;
-  end_time?: string;
+  page_size?: number;
 }
 
 export default {
@@ -146,31 +112,6 @@ export default {
       .get("/quantTrade/data/sync/status")
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data.data);
-  },
-
-  /**
-   * 获取系统配置
-   * @returns 系统配置信息
-   */
-  async getSystemSettings(): Promise<SystemSettings> {
-    return request
-      .get("/quantTrade/system/settings")
-      .then(handleResponse)
-      .then((data: ApiResponse<SystemSettings>) => data.data);
-  },
-
-  /**
-   * 更新系统配置
-   * @param settings 配置更新参数
-   * @returns 更新后的系统配置
-   */
-  async updateSystemSettings(
-    settings: Partial<SystemSettings>,
-  ): Promise<SystemSettings> {
-    return request
-      .put("/quantTrade/system/settings", settings)
-      .then(handleResponse)
-      .then((data: ApiResponse<SystemSettings>) => data.data);
   },
 
   /**

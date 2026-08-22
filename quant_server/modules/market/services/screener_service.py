@@ -5,6 +5,8 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.market.services._latest_date_cache import get_latest_trade_date
+
 logger = logging.getLogger(__name__)
 
 ALLOWED_SORT = {"pct_chg", "pe", "pb", "total_mv", "turnover_rate", "roe", "amount", "close"}
@@ -93,27 +95,20 @@ async def screener(
 
     where_clause = " AND ".join(where) if where else "1=1"
 
-    # 将 MAX(trade_date) 提到 CTE 中避免 LATERAL 内重复求值
-    cte_prefix = """
-        WITH latest_daily AS (SELECT MAX(trade_date) AS dt FROM stock_daily),
-             latest_basic AS (SELECT MAX(trade_date) AS dt FROM stock_daily_basic)
-    """
+    # 修复 2026-08（慢查询）：压缩超表上 SELECT MAX(trade_date) 全量扫描 ~3.4s，
+    # 原 CTE 在 count/page 各执行一次 MAX；改为进程内缓存的最新日期 + 字面日期 JOIN。
+    latest_daily = await get_latest_trade_date(session, "stock_daily")
+    latest_basic = await get_latest_trade_date(session, "stock_daily_basic")
+    params["latest_daily"] = latest_daily
+    params["latest_basic"] = latest_basic
 
     # 计数
-    count_sql = cte_prefix + f"""
+    count_sql = f"""
         SELECT COUNT(*) FROM stock_basic b
+        LEFT JOIN stock_daily q ON q.ts_code = b.ts_code AND q.trade_date = :latest_daily
+        LEFT JOIN stock_daily_basic d ON d.ts_code = b.ts_code AND d.trade_date = :latest_basic
         LEFT JOIN LATERAL (
-            SELECT close, pct_chg, amount, vol FROM stock_daily q2
-            WHERE q2.ts_code = b.ts_code
-            AND q2.trade_date = (SELECT dt FROM latest_daily)
-        ) q ON true
-        LEFT JOIN LATERAL (
-            SELECT pe, pb, total_mv, turnover_rate FROM stock_daily_basic d2
-            WHERE d2.ts_code = b.ts_code
-            AND d2.trade_date = (SELECT dt FROM latest_basic)
-        ) d ON true
-        LEFT JOIN LATERAL (
-            SELECT roe, roa FROM stock_fina_indicators f2
+            SELECT roe FROM stock_fina_indicators f2
             WHERE f2.ts_code = b.ts_code
             ORDER BY f2.end_date DESC LIMIT 1
         ) f ON true
@@ -124,24 +119,16 @@ async def screener(
 
     # 分页查询
     offset = (page - 1) * limit
-    query_sql = cte_prefix + f"""
+    query_sql = f"""
         SELECT b.ts_code, b.name, b.industry, b.list_date,
                q.close, q.pct_chg, q.amount, q.vol,
                d.pe, d.pb, d.total_mv, d.turnover_rate,
                COALESCE(f.roe, NULL) AS roe
         FROM stock_basic b
+        LEFT JOIN stock_daily q ON q.ts_code = b.ts_code AND q.trade_date = :latest_daily
+        LEFT JOIN stock_daily_basic d ON d.ts_code = b.ts_code AND d.trade_date = :latest_basic
         LEFT JOIN LATERAL (
-            SELECT close, pct_chg, amount, vol FROM stock_daily q2
-            WHERE q2.ts_code = b.ts_code
-            AND q2.trade_date = (SELECT dt FROM latest_daily)
-        ) q ON true
-        LEFT JOIN LATERAL (
-            SELECT pe, pb, total_mv, turnover_rate FROM stock_daily_basic d2
-            WHERE d2.ts_code = b.ts_code
-            AND d2.trade_date = (SELECT dt FROM latest_basic)
-        ) d ON true
-        LEFT JOIN LATERAL (
-            SELECT roe, roa FROM stock_fina_indicators f2
+            SELECT roe FROM stock_fina_indicators f2
             WHERE f2.ts_code = b.ts_code
             ORDER BY f2.end_date DESC LIMIT 1
         ) f ON true
@@ -211,6 +198,11 @@ async def _screener_etf(
         params["ft"] = fund_type
     where_clause = " AND ".join(where)
 
+    # 修复 2026-08（慢查询）：原 LATERAL 内 SELECT MAX(trade_date) 全量扫描压缩超表，
+    # 改用缓存的最新日期（见 latest_date_cache）
+    latest_etf = await get_latest_trade_date(session, "etf_daily")
+    params["latest_etf"] = latest_etf
+
     sort_col = _ETF_SORT.get(sort_by, "q.amount")
     sort_dir = sort_dir if sort_dir in ALLOWED_DIR else "desc"
     dir_sql = "ASC" if sort_dir == "asc" else "DESC"
@@ -220,7 +212,7 @@ async def _screener_etf(
         LEFT JOIN LATERAL (
             SELECT close, pct_chg, amount FROM etf_daily q2
             WHERE q2.ts_code = b.ts_code
-            AND q2.trade_date = (SELECT MAX(trade_date) FROM etf_daily)
+            AND q2.trade_date = :latest_etf
         ) q ON true
         WHERE {where_clause}
     """
@@ -236,7 +228,7 @@ async def _screener_etf(
         LEFT JOIN LATERAL (
             SELECT close, pct_chg, amount FROM etf_daily q2
             WHERE q2.ts_code = b.ts_code
-            AND q2.trade_date = (SELECT MAX(trade_date) FROM etf_daily)
+            AND q2.trade_date = :latest_etf
         ) q ON true
         WHERE {where_clause}
         ORDER BY {sort_col} {dir_sql} NULLS LAST

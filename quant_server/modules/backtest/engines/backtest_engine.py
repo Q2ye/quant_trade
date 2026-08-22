@@ -177,7 +177,10 @@ class BacktestResult:
 
 		Returns:
 			扁平字典，monthly_returns / benchmark_curve 兜底为空列表。
+			含增强指标（calmar_ratio / yearly_returns / max_drawdown_period /
+			max_consecutive_losses / avg_holding_days），纯新增，不影响既有字段。
 		"""
+		_extra = _calc_extra_metrics(self)
 		return {
 			"task_id": self.task_id,
 			"strategy_id": self.strategy_id,
@@ -199,6 +202,12 @@ class BacktestResult:
 		"daily_turnover": self._sanitize_json(self.daily_turnover or []),
 		"excess_metrics": self.excess_metrics or {},
 			"risk_violations": self._sanitize_json(self.risk_violations or []),
+			# ---- 增强指标（基建设计 §二，纯新增） ----
+			"calmar_ratio": self._sanitize_float(_extra["calmar_ratio"]),
+			"yearly_returns": _extra["yearly_returns"],
+			"max_drawdown_period": _extra["max_drawdown_period"],
+			"max_consecutive_losses": _extra["max_consecutive_losses"],
+			"avg_holding_days": self._sanitize_float(_extra["avg_holding_days"]),
 		}
 
 	@staticmethod
@@ -222,6 +231,162 @@ class BacktestResult:
 		if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
 			return 0.0
 		return v
+
+
+# =============================================================================
+# 回测增强指标（基建设计 §二 — 纯新增，不修改既有字段）
+# =============================================================================
+
+
+def _calc_yearly_returns(equity_curve: List[Dict]) -> List[Dict]:
+	"""分年度收益 + 年内最大回撤。
+
+	输入 equity_curve: [{trade_date, total_assets, cumulative_return}, ...]
+	输出 [{year, return, max_drawdown}, ...]；收益 = 年末累计收益差 / (1 + 年初累计收益)。
+	"""
+	if not equity_curve:
+		return []
+	rows = []
+	for e in equity_curve:
+		d = str(e.get("trade_date", ""))[:10]
+		if not d:
+			continue
+		rows.append({
+			"date": d,
+			"cum_return": float(e.get("cumulative_return", 0) or 0),
+			"total_assets": float(e.get("total_assets", 0) or 0),
+		})
+	if not rows:
+		return []
+	rows.sort(key=lambda r: r["date"])
+	years: Dict[str, List[Dict]] = {}
+	for r in rows:
+		years.setdefault(r["date"][:4], []).append(r)
+
+	out = []
+	for y in sorted(years):
+		pts = years[y]
+		start_cr = pts[0]["cum_return"]
+		end_cr = pts[-1]["cum_return"]
+		ret = (end_cr - start_cr) / (1 + start_cr) if (1 + start_cr) != 0 else 0.0
+		# 年内最大回撤（逐年重新计算峰值）
+		peak = pts[0]["total_assets"]
+		mdd = 0.0
+		for p in pts:
+			ta = p["total_assets"]
+			if ta > peak:
+				peak = ta
+			if peak > 0:
+				mdd = max(mdd, (peak - ta) / peak)
+		out.append({"year": y, "return": round(ret, 6), "max_drawdown": round(mdd, 6)})
+	return out
+
+
+def _calc_max_drawdown_period(drawdown_curve: List[Dict]) -> Dict:
+	"""最大回撤区间：最深点 + 前峰日 + 修复日。
+
+	输入 drawdown_curve: [{trade_date, drawdown}, ...]（逐点当前回撤）。
+	输出 {start, end, depth}；start = 最深点前最后一次回撤归零日，end = 最深点后首次修复日（未修复则取最后一日）。
+	"""
+	if not drawdown_curve:
+		return {"start": None, "end": None, "depth": 0.0}
+	worst = max(drawdown_curve, key=lambda x: float(x.get("drawdown", 0) or 0))
+	depth = float(worst.get("drawdown", 0) or 0)
+	wdate = str(worst.get("trade_date", ""))[:10]
+
+	start = None
+	for d in drawdown_curve:
+		if float(d.get("drawdown", 0) or 0) <= 1e-9:
+			start = str(d.get("trade_date", ""))[:10]
+		if str(d.get("trade_date", ""))[:10] == wdate:
+			break
+
+	end = None
+	seen_worst = False
+	for d in drawdown_curve:
+		if str(d.get("trade_date", ""))[:10] == wdate:
+			seen_worst = True
+		if seen_worst and float(d.get("drawdown", 0) or 0) <= 1e-9:
+			end = str(d.get("trade_date", ""))[:10]
+			break
+	if end is None and drawdown_curve:
+		end = str(drawdown_curve[-1].get("trade_date", ""))[:10]
+
+	return {"start": start, "end": end, "depth": round(depth, 6)}
+
+
+def _calc_max_consecutive_losses(monthly_returns: List[Dict]) -> int:
+	"""最长连续负收益月数（月度收益为负值的连续月数）。"""
+	if not monthly_returns:
+		return 0
+	cur = best = 0
+	for m in sorted(monthly_returns, key=lambda x: str(x.get("month", ""))):
+		if float(m.get("return", 0) or 0) < 0:
+			cur += 1
+			best = max(best, cur)
+		else:
+			cur = 0
+	return best
+
+
+def _calc_avg_holding_days(trades: List[Dict]) -> float:
+	"""平均持仓自然日：按 ts_code FIFO 配对（买入→卖出），与 _calculate_trade_pnls_fifo 同口径。
+
+	trades 字段：ts_code / direction（"LONG" 为买入，其余为卖出）/ quantity / trade_date。
+	"""
+	if not trades:
+		return 0.0
+	from collections import defaultdict
+	by_stock: Dict[str, List[Dict]] = defaultdict(list)
+	for t in trades:
+		ts = t.get("ts_code", "")
+		if ts:
+			by_stock[ts].append(t)
+
+	total_days = 0.0
+	pairs = 0
+	for stock_trades in by_stock.values():
+		stock_trades.sort(key=lambda x: str(x.get("trade_date", "") or x.get("datetime", "")))
+		buy_queue: List[tuple] = []  # [(date_str, qty)]
+		for t in stock_trades:
+			direction = str(t.get("direction", ""))
+			qty = int(t.get("quantity", 0) or 0)
+			d = str(t.get("trade_date", "") or t.get("datetime", ""))[:10]
+			if direction == "LONG":
+				if qty > 0:
+					buy_queue.append((d, qty))
+				continue
+			remaining = qty
+			while remaining > 0 and buy_queue:
+				bd, bq = buy_queue[0]
+				match_qty = min(remaining, bq)
+				if bd and d:
+					try:
+						from datetime import datetime as _dt
+						bd_obj = _dt.strptime(bd, "%Y-%m-%d").date()
+						d_obj = _dt.strptime(d, "%Y-%m-%d").date()
+						total_days += (d_obj - bd_obj).days
+						pairs += 1
+					except Exception:
+						pass
+				if bq > match_qty:
+					buy_queue[0] = (bd, bq - match_qty)
+				else:
+					buy_queue.pop(0)
+				remaining -= match_qty
+	return round(total_days / pairs, 1) if pairs else 0.0
+
+
+def _calc_extra_metrics(result: "BacktestResult") -> Dict[str, Any]:
+	"""计算回测增强指标（基建设计 §二 的 5 项，纯新增）。"""
+	return {
+		"calmar_ratio": round(result.annual_return / abs(result.max_drawdown), 4)
+		if abs(result.max_drawdown) >= 1e-6 else 0.0,
+		"yearly_returns": _calc_yearly_returns(result.equity_curve),
+		"max_drawdown_period": _calc_max_drawdown_period(result.drawdown_curve),
+		"max_consecutive_losses": _calc_max_consecutive_losses(result.monthly_returns),
+		"avg_holding_days": _calc_avg_holding_days(result.trades),
+	}
 
 
 # =============================================================================

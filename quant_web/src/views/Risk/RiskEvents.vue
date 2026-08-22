@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, h } from "vue";
+import { ref, computed, onMounted, h, watch } from "vue";
 import { useStore } from "vuex";
 import { NTag, NButton, NSpin, NResult, useMessage } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import { usePagedList } from "@/composables/usePagedList";
 
 const store = useStore();
 const message = useMessage();
@@ -13,8 +14,6 @@ const searchKeyword = ref("");
 const filterLevel = ref("");
 const detailEvent = ref<any>(null);
 const showDetail = ref(false);
-const currentPage = ref(1);
-const pageSize = ref(20);
 
 const levelOptions = [
   { label: "严重", value: "critical" },
@@ -39,6 +38,19 @@ const filteredEvents = computed(() => {
     result = result.filter((e: any) => e.level === filterLevel.value);
   }
   return result;
+});
+
+// 客户端分页：表格展示切片后的当前页
+const {
+  page: currentPage,
+  pageSize,
+  itemCount: eventTotal,
+  pagedData: pagedEvents,
+} = usePagedList(filteredEvents, 20);
+
+// 搜索/级别筛选变化时回到第一页
+watch([searchKeyword, filterLevel], () => {
+  currentPage.value = 1;
 });
 
 const todayCount = computed(
@@ -196,7 +208,7 @@ onMounted(() => fetchEvents());
           <n-spin :show="loading">
             <n-data-table
               :columns="columns"
-              :data="filteredEvents"
+              :data="pagedEvents"
               :bordered="false"
               size="small"
             >
@@ -209,7 +221,7 @@ onMounted(() => fetchEvents());
               <n-pagination
                 v-model:page="currentPage"
                 v-model:page-size="pageSize"
-                :item-count="filteredEvents.length"
+                :item-count="eventTotal"
                 :page-sizes="[10, 20, 50]"
                 show-size-picker
               />

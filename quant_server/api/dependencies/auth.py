@@ -102,11 +102,15 @@ class AuthDependencies:
 				# 修复 2026-08（B5）：明文密码 → 随机 bcrypt 哈希
 				dev_id = str(uuid.uuid4())
 				try:
-					from modules.system.auth.password_manager import get_password_manager
+					# 修复 2026-08：原 import 路径 modules.system.auth.password_manager 不存在，
+					# 导致此处永远回退明文；种子密码需满足强度校验（大写/小写/数字/特殊字符），
+					# 开发模式（AUTH_ENABLED=false）登录不校验密码，仅保证存储为 bcrypt 哈希
+					from shared.security.password import get_password_manager
 					_seed_pwd = get_password_manager().encrypt_password(
-						"dev-seed-" + uuid.uuid4().hex[:16]
+						"DevSeed!" + uuid.uuid4().hex[:16]
 					)
-				except Exception:
+				except Exception as e:
+					logger.warning(f"种子用户密码加密失败，回退随机明文存储: {e}")
 					_seed_pwd = "dev-seed-" + uuid.uuid4().hex[:16]
 				dev_user = SysUser(
 					id=dev_id,

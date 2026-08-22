@@ -342,6 +342,12 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("@/views/MonitorCenter/AlertCenter.vue"),
     meta: { menu: "monitor-alerts", layout: "main", title: "报警中心" },
   },
+  {
+    path: "/monitor/strategies-health",
+    name: "StrategyHealth",
+    component: () => import("@/views/MonitorCenter/StrategyHealth.vue"),
+    meta: { menu: "monitor-strategy-health", layout: "main", title: "策略健康" },
+  },
 
   // 风险监控
   {
@@ -434,12 +440,6 @@ export const routes: RouteRecordRaw[] = [
     name: "SystemLogs",
     component: () => import("@/views/System/LogViewer.vue"),
     meta: { menu: "logs", layout: "main", title: "系统日志" },
-  },
-  {
-    path: "/system/settings",
-    name: "SystemSettings",
-    component: () => import("@/views/System/Settings.vue"),
-    meta: { menu: "settings", layout: "main", title: "系统设置" },
   },
 
   // 重定向路由

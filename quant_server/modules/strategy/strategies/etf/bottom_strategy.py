@@ -9,6 +9,7 @@ P3: 量能确认 + 智能时间止损
 import logging
 import uuid
 from datetime import date, datetime
+from shared.utils.time_utils import BEIJING_TZ, beijing_now
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -38,13 +39,14 @@ class LightGBMBottomStrategy(BaseStrategy):
         "cooling_days": 2,
         "min_warmup_bars": 60,
         "feature_list": [],
+        # 2026-08-20：过滤创业板/科创板 ETF（159 开头创业板类 9 只已剔除，
+        # 暂未接入科创板权限）。保留沪市主板 + 行业 + 跨境 + 黄金 + 债，共 16 只。
         "etf_pool": [
-            "510050.SH","510300.SH","510500.SH","159919.SZ","510880.SH",
+            "510050.SH","510300.SH","510500.SH","510880.SH",
             "512880.SH","512660.SH","512800.SH","512100.SH",
-            "159915.SZ","159949.SZ","518880.SH","513100.SH","513050.SH",
-            "511010.SH","511260.SH","510310.SH","159865.SZ","159825.SZ",
-            "159781.SZ","512170.SH","159806.SZ","516510.SH",
-            "159840.SZ","512400.SH",
+            "518880.SH","513100.SH","513050.SH",
+            "511010.SH","511260.SH","510310.SH",
+            "512170.SH","516510.SH","512400.SH",
         ],
         "vol_filter_enabled": True,
         "vol_filter_atr_min": 0.015,
@@ -53,7 +55,8 @@ class LightGBMBottomStrategy(BaseStrategy):
         # P2-1 (修正甲): 熊市升阈值(0.60 只接高赔率底)、震荡中性(0.54 守空仓站位)、牛市升阈值(0.60 不追假底)。
         # 2026-08 实测：震荡降阈值(0.48) 使策略在牛市夹杂震荡段不再严格空仓(前向 -1.96%)，故改中性
         "regime_threshold_adj": {0: 0.06, 1: 0.0, 2: 0.06},
-        "regime_max_positions":  {0: 5, 1: 3, 2: 4},
+        # 2026-08-20：候选/持仓上限降为 2 只（此前熊5/震3/牛4 太多，分散稀释）
+        "regime_max_positions":  {0: 2, 1: 2, 2: 2},
         "regime_stop_loss":     {0: -0.08, 1: -0.06, 2: -0.07},
         "regime_trail_act":     {0: 0.06, 1: 0.04, 2: 0.05},
         "regime_trail_dist":    {0: 0.10, 1: 0.06, 2: 0.08},
@@ -62,6 +65,10 @@ class LightGBMBottomStrategy(BaseStrategy):
         "vol_confirm_enabled": True,
         # v9: 大盘 regime 目标仓位（防守策略：熊/震生效，牛市空仓让位进攻）
         "use_market_gate": True,
+        # regime 判定带宽（CSI500 vs MA250 偏离阈值，2026-08 参数化）：
+        # ±3% 回测验证最优（防守 +30.7%/组合 MDD -23%）；±1% 实测致震荡参与减少→组合 MDD -27% 恶化。
+        # 组合中牛市防守让位由 allocator 处理（牛市 defense 0），无需收窄带宽。
+        "regime_gate_band": 0.03,
         "market_target_position": {0: 0.55, 1: 0.75, 2: 0.0},
         # DB
         "db_host": "localhost", "db_port": 5432,
@@ -105,7 +112,7 @@ class LightGBMBottomStrategy(BaseStrategy):
             "no_model": 0, "cooling": 0, "in_position": 0,
             "max_positions": 0, "p4_pending": 0, "p4_confirmed": 0,
             "proba_none": 0, "proba_below": 0, "vol_filter": 0,
-            "weight_zero": 0, "p4_buffered": 0, "entry_generated": 0,
+            "vol_confirm": 0, "weight_zero": 0, "p4_buffered": 0, "entry_generated": 0,
             "top_probas": [],  # [(ts_code, proba, regime), ...]
         }
 
@@ -344,9 +351,10 @@ class LightGBMBottomStrategy(BaseStrategy):
             return 1
         ma250 = sum(closes[-250:]) / 250.0
         close = closes[-1]
-        if close < ma250 * 0.97:
+        band = float(self.parameters.get("regime_gate_band", 0.01))
+        if close < ma250 * (1 - band):
             return 0
-        elif close > ma250 * 1.03:
+        elif close > ma250 * (1 + band):
             return 2
         return 1
     def _get_factor_value(self, ts_code: str, trade_date_val, factor_code: str) -> Optional[float]:
@@ -472,7 +480,8 @@ class LightGBMBottomStrategy(BaseStrategy):
                         _td = None
                 elif hasattr(_td, "date"):
                     _td = _td.date()
-                _sig_time = datetime.combine(_td, datetime.min.time()) if _td else datetime.now()
+                # 2026-08-19 修复：时刻用 beijing_now().time()（此前 00:00 固定，前端无具体时间）
+                _sig_time = datetime.combine(_td, beijing_now().time(), tzinfo=BEIJING_TZ) if _td else beijing_now()
                 data = {
                     "strategy_id": sid,
                     "ts_code": code,
@@ -530,6 +539,15 @@ class LightGBMBottomStrategy(BaseStrategy):
                                 continue
                         except (ValueError, TypeError):
                             pass
+                    # 2026-08-19 修复：牛市空仓让位——恢复候选时若当前大盘 regime=2（牛市），
+                    # 历史滞留候选直接标记 expired，不再恢复进 _p4_buffer。
+                    # 此前 L656 牛市门控只拦截"确认"不清理"候选"，导致 8-16 产生的候选
+                    # 在牛市永久滞留 pending_confirm（前端一直显示，每次重启重复恢复）。
+                    if self.use_market_gate and self._market_regime(date.today()) == 2:
+                        await self._mark_candidate_status(r.id, "expired", "牛市空仓让位，候选放弃")
+                        if getattr(self, "verbose_logging", False):
+                            logger.info(f"[{self.name}] 牛市恢复候选放弃: {r.ts_code}（让位进攻）")
+                        continue
                     _proba = float(r.strength or self.parameters["threshold"])
                     self._p4_buffer[r.ts_code] = {
                         "proba": _proba,
@@ -672,6 +690,9 @@ class LightGBMBottomStrategy(BaseStrategy):
                 if self.parameters.get("vol_confirm_enabled", True):
                     vr = self._get_factor_value(ts_code, bar.trade_date, "volume_ma20_ratio")
                     if vr is not None and vr < 1.0:
+                        # 2026-08 修复：量能确认拦截此前静默无痕，现计数+日志便于诊断
+                        d["vol_confirm"] += 1
+                        logger.info("[%s] %s 量能确认拦截 vol_ratio=%.2f<1.0", self.name, ts_code, vr)
                         return signals
                 d["p4_confirmed"] += 1
                 # v6.x: 候选转正（promoted）+ 买入信号关联 parent_id（与进攻实盘候选一致）
@@ -709,6 +730,12 @@ class LightGBMBottomStrategy(BaseStrategy):
             if weight <= 0.0:
                 d["weight_zero"] += 1; return signals
             if self.parameters.get("confirm_enabled", False):
+                # 2026-08-20：候选入池上限 = regime_max_positions（2 只）。
+                # 此前候选无上限，多只累积导致信号列表候选过多。达到上限不再入新候选。
+                rmax = self.parameters.get("regime_max_positions", {}).get(regime, 2)
+                if len(self._p4_buffer) >= rmax:
+                    d["max_positions"] += 1
+                    return signals
                 d["p4_buffered"] += 1
                 # v6.x: 候选 signal_id + 落库（与进攻实盘候选一致），跨重启保留
                 _sid = str(uuid.uuid4())
@@ -768,7 +795,7 @@ class LightGBMBottomStrategy(BaseStrategy):
             weight=weight,
             quantity=quantity,
             amount=amount,
-            timestamp=bar.trade_time if bar.trade_time else datetime.now())
+            timestamp=beijing_now())
         if parent_id:
             sig.parent_id = parent_id  # v6.x: 候选→买入信号 链路关联
         return sig
@@ -830,7 +857,7 @@ class LightGBMBottomStrategy(BaseStrategy):
             ts_code=ts_code, signal_type=signal_type,
             direction=SignalDirection.CLOSE_LONG, price=bar.close,
             confidence=1.0, reason=reason, weight=0.0,
-            timestamp=bar.trade_time if bar.trade_time else datetime.now())
+            timestamp=beijing_now())
 
     def get_parameters(self) -> Dict[str, Any]:
         return dict(self.parameters)

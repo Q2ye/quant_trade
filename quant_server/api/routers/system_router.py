@@ -19,8 +19,6 @@ from api.dependencies.database import get_db_session
 from modules.system.handlers import (
 	get_system_status,
 	get_system_logs,
-	get_system_settings,
-	update_system_settings,
 	get_connection_status,
 	get_system_resources,
 	get_database_status,
@@ -60,8 +58,6 @@ from modules.system.schemas import (
 	SystemStatusResponse,
 	SystemLogsRequest,
 	SystemLogsResponse,
-	SystemSettingsResponse,
-	SystemSettingsUpdateRequest,
 	ConnectionStatusResponse,
 	SystemResourcesResponse,
 	DatabaseStatusResponse,
@@ -292,88 +288,6 @@ async def get_system_logs_api (
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"获取系统日志失败: {'服务器内部错误'}"
-		)
-
-
-# ==================== 系统设置接口 ====================
-
-@router.get("/settings", response_model=SystemSettingsResponse)
-async def get_settings_api (
-		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
-) -> SystemSettingsResponse:
-	"""
-	获取系统设置
-
-	Args:
-		current_user: 当前登录用户
-		db_session: 数据库会话
-
-	Returns:
-		SystemSettingsResponse: 系统设置响应
-	"""
-	try:
-		logger.info(f"用户 {current_user.get('username')} 请求系统设置")
-
-		result = await get_system_settings(
-			session=db_session,
-			user_id=current_user.get("id")
-		)
-
-		return result
-
-	except HTTPException:
-		raise
-	except Exception as e:
-		logger.error(f"获取系统设置失败: {'服务器内部错误'}", exc_info=True)
-		raise HTTPException(
-			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取系统设置失败: {'服务器内部错误'}"
-		)
-
-
-@router.put("/settings", response_model=SystemSettingsResponse)
-async def update_settings_api (
-		request: SystemSettingsUpdateRequest,
-		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
-) -> SystemSettingsResponse:
-	"""
-	更新系统设置
-
-	Args:
-		request: 系统设置更新请求
-		current_user: 当前登录用户
-		db_session: 数据库会话
-
-	Returns:
-		SystemSettingsResponse: 更新后的系统设置响应
-	"""
-	try:
-		logger.info(f"用户 {current_user.get('username')} 更新系统设置")
-
-		# 检查用户是否为管理员角色
-		if current_user.get("role") not in ("admin", "super_admin", "superadmin"):
-			raise HTTPException(
-				status_code=status.HTTP_403_FORBIDDEN,
-				detail="只有管理员可以更新系统设置"
-			)
-
-		result = await update_system_settings(
-			session=db_session,
-			request=request,
-			user_id=current_user.get("id")
-		)
-
-		return result
-
-	except HTTPException:
-		raise
-	except Exception as e:
-		logger.error(f"更新系统设置失败: {'服务器内部错误'}", exc_info=True)
-		raise HTTPException(
-			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"更新系统设置失败: {'服务器内部错误'}"
 		)
 
 

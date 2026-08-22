@@ -53,6 +53,8 @@
             <StatCard title="波动率" :value="`${(report.summary.volatility * 100).toFixed(1)}%`" />
             <StatCard title="盈亏比" :value="report.summary.profitFactor ? report.summary.profitFactor.toFixed(2) : '--'" />
             <StatCard title="平均单笔" :value="report.summary.avgTradeReturn ? `${(report.summary.avgTradeReturn * 100).toFixed(2)}%` : '--'" />
+            <StatCard title="卡玛比率" :value="report.summary.calmarRatio ? report.summary.calmarRatio.toFixed(2) : '--'" />
+            <StatCard title="平均持仓" :value="report.summary.avgHoldingDays ? `${report.summary.avgHoldingDays.toFixed(1)} 天` : '--'" />
           </div>
           <!-- 口径标注（2026-08 C4：绩效口径统一） -->
           <div class="metric-footnote">
@@ -135,6 +137,47 @@
             <h3>月度收益</h3>
             <MonthlyReturnChart v-if="report.monthlyReturns.length > 0" :data="report.monthlyReturns" />
             <n-empty v-else description="暂无月度收益数据" />
+          </div>
+          <div class="metric-card">
+            <h3>分年度表现</h3>
+            <table v-if="report.yearlyReturns.length > 0" class="yearly-table">
+              <thead>
+                <tr><th>年份</th><th>收益</th><th>最大回撤</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="y in report.yearlyReturns" :key="y.year">
+                  <td>{{ y.year }}</td>
+                  <td :style="{ color: y.return >= 0 ? 'var(--n-error-color)' : 'var(--n-success-color)' }">
+                    {{ (y.return * 100).toFixed(1) }}%
+                  </td>
+                  <td>{{ (y.max_drawdown * 100).toFixed(1) }}%</td>
+                </tr>
+              </tbody>
+            </table>
+            <n-empty v-else description="样本不足（回测区间不足一年）" :size="'small'" />
+          </div>
+          <div class="metric-card">
+            <h3>回撤区间与连续亏损</h3>
+            <template v-if="report.maxDrawdownPeriod.start">
+              <p class="drawdown-info-line">
+                最大回撤区间：{{ report.maxDrawdownPeriod.start }} ~ {{ report.maxDrawdownPeriod.end }}
+                （{{ (report.maxDrawdownPeriod.depth * 100).toFixed(1) }}%）
+              </p>
+              <p class="drawdown-info-line">连续亏损月份：{{ report.maxConsecutiveLosses }} 个月</p>
+              <p class="drawdown-info-line">
+                正收益月：{{ monthlyWinMonths }} 个（{{ monthlyWinPct }}%）｜负收益月：{{ monthlyLossMonths }} 个
+              </p>
+              <n-progress
+                type="line"
+                :percentage="monthlyWinPct"
+                :show-indicator="false"
+                :height="8"
+                color="var(--n-error-color)"
+                rail-color="var(--n-success-color)"
+                style="margin-top: 8px"
+              />
+            </template>
+            <n-empty v-else description="样本不足" :size="'small'" />
           </div>
         </div>
 
@@ -449,6 +492,8 @@ const report = ref({
     tradesCount: 0,
     avgTradeReturn: 0,
     volatility: 0,
+    calmarRatio: 0,
+    avgHoldingDays: 0,
   },
   equityCurve: [] as any[],
   benchmark: [] as any[],
@@ -460,6 +505,22 @@ const report = ref({
   trades: [] as any[],
   excessMetrics: null as Record<string, any> | null,
   riskViolations: [] as any[],
+  // 增强指标（基建设计 §二，旧数据缺失时兜底为空）
+  yearlyReturns: [] as Array<{ year: string; return: number; max_drawdown: number }>,
+  maxDrawdownPeriod: { start: "", end: "", depth: 0 } as Record<string, any>,
+  maxConsecutiveLosses: 0,
+});
+
+// 月度盈亏分布统计（增强指标，基建设计 §2.3）
+const monthlyWinMonths = computed(() =>
+  report.value.monthlyReturns.filter((m: any) => m.return >= 0).length,
+);
+const monthlyLossMonths = computed(() =>
+  report.value.monthlyReturns.filter((m: any) => m.return < 0).length,
+);
+const monthlyWinPct = computed(() => {
+  const total = monthlyWinMonths.value + monthlyLossMonths.value;
+  return total > 0 ? Math.round((monthlyWinMonths.value / total) * 100) : 0;
 });
 
 const strategy = computed(
@@ -507,6 +568,8 @@ const loadReport = async () => {
         tradesCount: r.num_trades ?? tr.length,
         avgTradeReturn: r.avg_trade_return ?? 0,
         volatility: r.volatility ?? 0,
+        calmarRatio: r.calmar_ratio ?? 0,
+        avgHoldingDays: r.avg_holding_days ?? 0,
       },
       equityCurve: rawEq.map((p: any) => ({
         date: p.trade_date || p.date,
@@ -558,6 +621,12 @@ const loadReport = async () => {
         };
       }),
       riskViolations: Array.isArray(r.risk_violations) ? r.risk_violations : [],
+      // 增强指标（旧任务 result 缺失 → 兜底为空，不报错）
+      yearlyReturns: Array.isArray(r.yearly_returns) ? r.yearly_returns : [],
+      maxDrawdownPeriod: r.max_drawdown_period && typeof r.max_drawdown_period === "object"
+        ? r.max_drawdown_period
+        : { start: "", end: "", depth: 0 },
+      maxConsecutiveLosses: r.max_consecutive_losses ?? 0,
     };
 
     // 回测区间标签（页头副标题）
@@ -682,6 +751,31 @@ onUnmounted(() => {
 .metric-card h3 {
   color: var(--n-text-color-1);
   margin-bottom: 16px;
+}
+
+/* 增强指标（基建设计 §二） */
+.yearly-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.yearly-table th,
+.yearly-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--n-border-color);
+  color: var(--n-text-color-2);
+}
+.yearly-table th {
+  color: var(--n-text-color-3);
+  font-weight: 500;
+  font-size: 12px;
+}
+.drawdown-info-line {
+  font-size: 13px;
+  color: var(--n-text-color-2);
+  line-height: 1.9;
+  margin: 0;
 }
 
 .report-footer {

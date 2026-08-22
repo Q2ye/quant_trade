@@ -741,3 +741,29 @@ body {
     transform: translateY(0);
   }
 }
+
+/* ==========================================================================
+   弹层定位补偿 — 兼容 html { zoom: 0.8 }（不可移除，见 index.html / _variables.scss）
+   --------------------------------------------------------------------------
+   根因：vueuc Follower（Naive UI 所有弹层的定位器：select 下拉、date-picker 面板、
+   pagination 的 page-size 选择器、dropdown、tooltip、popover、cascader 等）通过
+   getBoundingClientRect() 获取触发元素坐标 —— 该 API 返回的是「视觉坐标」（已被
+   zoom 缩放），随后用 transform: translate() 定位弹层 —— 而 transform 是「布局坐标」，
+   渲染时还会再被 zoom ×0.8。两者相差 0.8 因子，导致弹层整体向视口左上角偏移，
+   且越靠近右下角偏移越大。
+
+   修复思路（三层结构，互不干扰）：
+   - .v-binder-follower-container（absolute, 0,0，弹层定位原点）
+     → zoom: 1.25（= 1/0.8），把内部 transform 位移重新放大回视觉坐标；
+   - .v-binder-follower-content 上的 transform 不动（由 vueuc 内联设置）；
+   - 弹层实际内容（container 的子元素）
+     → zoom: 0.8，恢复 80% 缩放，使弹层尺寸与应用 UI 一致。
+   说明：zoom 与 transform 位于不同元素，组成顺序无歧义；弹层滚动跟随/翻转仍由
+   vueuc 用同一套坐标计算，补偿系数恒定，滚动场景同样正确。
+   ========================================================================== */
+.v-binder-follower-container {
+  zoom: 1.25; /* 1 / 0.8 — 抵消 html zoom 0.8 造成的弹层位移偏差 */
+}
+.v-binder-follower-container > .v-binder-follower-content > * {
+  zoom: 0.8; /* 弹层内容恢复 0.8 缩放，与应用 UI 外观尺寸一致 */
+}

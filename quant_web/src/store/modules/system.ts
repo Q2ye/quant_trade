@@ -417,52 +417,6 @@ const systemModule: Module<SystemState, RootState> = {
     },
 
     /**
-     * 获取系统配置
-     */
-    async getSystemConfig({ commit }) {
-      commit("SET_LOADING", { key: "config", value: true });
-      try {
-        const config = await api.getSystemSettings();
-        // 将系统设置转换为SystemSetting格式
-        const systemSettings: SystemSetting[] = Object.entries(config).map(
-          ([key, value]) => ({
-            id: key,
-            key,
-            value,
-            type: typeof value as any,
-            description: "",
-            category: "system",
-            is_public: false,
-            editable: true,
-            created_at: "",
-            updated_at: "",
-          }),
-        );
-        commit("SET_CONFIG", systemSettings);
-        return config;
-      } catch (error) {
-        console.error("获取系统配置失败:", error);
-        throw error;
-      } finally {
-        commit("SET_LOADING", { key: "config", value: false });
-      }
-    },
-
-    /**
-     * 更新系统配置
-     */
-    async updateSystemConfig({ commit }, config) {
-      try {
-        const updatedConfig = await api.updateSystemSettings(config);
-        commit("SET_CONFIG", updatedConfig);
-        return updatedConfig;
-      } catch (error) {
-        console.error("更新系统配置失败:", error);
-        throw error;
-      }
-    },
-
-    /**
      * 重启系统服务
      */
     async restartService(_, serviceName: string) {

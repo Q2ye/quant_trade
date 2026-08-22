@@ -233,7 +233,11 @@ async def initialize (
 					async def _sync_one(dt):
 						async with _sem:
 							try:
-								result = await svc.sync_market_data(dt, start_date=None, end_date=today)
+								# 2026-08 修复：每个同步用独立 session（gather 并发共享 session
+								# 报 "concurrent operations not permitted" → etf_daily 同步失败）
+								async with sm.get_session() as _sess:
+									_svc = DataSyncService(session=_sess)
+									result = await _svc.sync_market_data(dt, start_date=None, end_date=today)
 								logger.info("日终同步 %s 完成: records=%s",
 									dt.value,
 									result.get("records_processed", 0) if isinstance(result, dict) else "?",

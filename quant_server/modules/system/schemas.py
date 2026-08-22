@@ -15,10 +15,14 @@ class SystemStatusResponse(BaseModel):
 
 
 class SystemLogsRequest(BaseModel):
-	"""系统日志请求"""
-	log_level: Optional[str] = Field(default=None, description="日志级别")
-	start_date: Optional[str] = Field(default=None, description="开始日期")
-	end_date: Optional[str] = Field(default=None, description="结束日期")
+	"""审计日志查询请求（2026-08：由 system_logs 改为 audit_logs 审计日志）"""
+	action_type: Optional[str] = Field(default=None, description="操作类型：login/logout/create/update/delete/config_change/security_event/system_event")
+	status: Optional[str] = Field(default=None, description="操作状态：success/failed/partial")
+	username: Optional[str] = Field(default=None, description="用户名（模糊搜索）")
+	start_date: Optional[str] = Field(default=None, description="开始时间（ISO 格式）")
+	end_date: Optional[str] = Field(default=None, description="结束时间（ISO 格式）")
+	page: int = Field(default=1, ge=1, description="页码")
+	page_size: int = Field(default=20, ge=1, le=200, description="每页条数")
 
 
 class SystemLogsResponse(BaseModel):
@@ -38,21 +42,6 @@ class DataSyncResponse(BaseModel):
 	"""数据同步响应"""
 	success: bool = Field(default=True)
 	data: Optional[Dict[str, Any]] = Field(default=None)
-
-
-class SystemSettingsResponse(BaseModel):
-	"""系统设置响应"""
-	success: bool = Field(default=True)
-	data: Dict[str, Any] = Field(default_factory=dict)
-
-
-class SystemSettingsUpdateRequest(BaseModel):
-	"""系统设置更新请求 — 兼容两种格式：
-	1. 旧格式: {"settings": {所有配置项}}
-	2. 新格式: {"security": {...}, "notification": {...}, ...}（直接传嵌套结构）
-	"""
-	model_config = {"extra": "allow"}
-	settings: Optional[Dict[str, Any]] = Field(default=None, description="设置内容（旧格式兼容）")
 
 
 class ConnectionStatusResponse(BaseModel):

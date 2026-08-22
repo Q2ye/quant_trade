@@ -321,6 +321,8 @@ async def get_feature_sets_api(
 
 from pydantic import BaseModel, Field
 from modules.strategy.services.training_service import TrainingService
+from shared.database.models.business_models import ModelTraining
+from shared.database.repositories.strategy.management.model_training_repo import ModelTrainingRepository
 
 class LgbTrainRequest(BaseModel):
     feature_set_ids: list = Field(default_factory=list)
@@ -962,22 +964,70 @@ async def trigger_strategy_api(
 
 
 @router.post("/train/lgb")
-async def train_lgb_model_api(request: LgbTrainRequest, background_tasks: BackgroundTasks, current_user = Depends(get_current_user)):
-    """训练 LightGBM ETF 底部策略模型"""
+async def train_lgb_model_api(request: LgbTrainRequest, background_tasks: BackgroundTasks, current_user = Depends(get_current_user), db_session: AsyncSession = Depends(get_db_session)):
+    """训练 LightGBM ETF 底部策略模型 — 创建任务记录后异步执行，前端轮询状态"""
+    import uuid as _uuid
+    task_id = f"train_{_uuid.uuid4().hex[:12]}"
+    training = ModelTraining(
+        task_id=task_id,
+        status="pending",
+        progress=0.0,
+        label_N=request.label_N, label_X=request.label_X, label_Y=request.label_Y,
+        lgb_params={
+            "num_leaves": request.num_leaves, "max_depth": request.max_depth,
+            "learning_rate": request.learning_rate, "n_estimators": request.n_estimators,
+            "reg_alpha": request.reg_alpha, "reg_lambda": request.reg_lambda,
+        },
+        feature_set_ids=request.feature_set_ids or None,
+        feature_codes=request.feature_codes or None,
+        etf_pool=request.etf_pool or None,
+        user_id=current_user.get("id"),
+    )
+    db_session.add(training)
+    await db_session.commit()
+
     svc = TrainingService()
     async def _train():
-        result = await svc.run(
-            feature_set_ids=request.feature_set_ids or None,
-            feature_codes=request.feature_codes or None,
-            etf_pool=request.etf_pool or None,
-            label_N=request.label_N, label_X=request.label_X, label_Y=request.label_Y,
-            lgb_params={"num_leaves": request.num_leaves, "max_depth": request.max_depth,
-                "learning_rate": request.learning_rate, "n_estimators": request.n_estimators,
-                "reg_alpha": request.reg_alpha, "reg_lambda": request.reg_lambda,
-                "objective": "binary", "metric": "auc", "boosting_type": "gbdt",
-                "verbosity": -1, "subsample": 0.8, "colsample_bytree": 0.7, "random_state": 42},
-        )
-        logger.info(f"训练完成: {result['model_path']} AUC={result['auc_test']:.4f}")
-        return result
+        try:
+            result = await svc.run(
+                task_id=task_id,
+                feature_set_ids=request.feature_set_ids or None,
+                feature_codes=request.feature_codes or None,
+                etf_pool=request.etf_pool or None,
+                label_N=request.label_N, label_X=request.label_X, label_Y=request.label_Y,
+                lgb_params={"num_leaves": request.num_leaves, "max_depth": request.max_depth,
+                    "learning_rate": request.learning_rate, "n_estimators": request.n_estimators,
+                    "reg_alpha": request.reg_alpha, "reg_lambda": request.reg_lambda,
+                    "objective": "binary", "metric": "auc", "boosting_type": "gbdt",
+                    "verbosity": -1, "subsample": 0.8, "colsample_bytree": 0.7, "random_state": 42},
+            )
+            logger.info(f"训练完成: {result['model_path']} AUC={result['auc_test']:.4f}")
+        except Exception as e:
+            logger.error(f"训练失败: {e}", exc_info=True)
     background_tasks.add_task(_train)
-    return success_response(data={"status": "training_started"}, message="训练任务已提交")
+    return success_response(data={"task_id": task_id, "status": "pending"}, message="训练任务已提交")
+
+
+@router.get("/train/lgb/{task_id}")
+async def get_train_status_api(task_id: str, current_user = Depends(get_current_user), db_session: AsyncSession = Depends(get_db_session)):
+    """查询模型训练任务状态与结果（前端轮询）"""
+    repo = ModelTrainingRepository(db_session)
+    t = await repo.get_by_task_id(task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail=f"训练任务不存在: {task_id}")
+    return success_response(data={
+        "task_id": t.task_id,
+        "status": t.status,
+        "progress": t.progress,
+        "result": t.result,
+        "model_path": t.model_path,
+        "auc_val": t.auc_val,
+        "auc_test": t.auc_test,
+        "threshold": t.threshold,
+        "n_samples": t.n_samples,
+        "test_signals": t.test_signals,
+        "test_win_rate": t.test_win_rate,
+        "feature_importance": t.feature_importance,
+        "error_message": t.error_message,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    }, message="训练状态查询成功")

@@ -18,7 +18,6 @@ from .reference import (
     StockLowHighStrategy,
 )
 from .rotation import (
-    GlobalRotationV2AggressiveStrategy,
     HighVolMomentumStrategy,
 )
 
@@ -34,6 +33,5 @@ __all__ = [
     # 参考策略移植
     "StockLowHighStrategy",
     # 轮动策略
-    "GlobalRotationV2AggressiveStrategy",
     "HighVolMomentumStrategy",
 ]

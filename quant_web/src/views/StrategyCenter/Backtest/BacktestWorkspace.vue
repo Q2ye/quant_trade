@@ -87,6 +87,9 @@
             <div class="param-row">
               <n-select v-model:value="benchmark" :options="benchmarkOptions" size="small" style="flex:1" placeholder="基准" />
             </div>
+            <div class="param-row" v-if="isComposite">
+              <n-checkbox v-model:checked="compositeBullStandAside" size="small">组合：牛市防守让位进攻</n-checkbox>
+            </div>
             <n-button type="primary" block @click="runBacktestAll" :loading="isRunning" class="run-btn">{{ isRunning ? `回测中 ${progress}%` : '▶ 开始回测' }}</n-button>
           </n-collapse-item>
 
@@ -128,15 +131,19 @@
                 </n-space>
               </div>
 
-              <!-- 指标卡片行 -->
+              <!-- 指标卡片行（收益类红涨绿跌，A股习惯） -->
               <div class="metrics-row">
                 <div class="metric-item">
+                  <span class="metric-label">总收益</span>
+                  <span class="metric-value" :class="activeSummary.totalReturn >= 0 ? 'text-rise' : 'text-fall'">{{ (activeSummary.totalReturn * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="metric-item">
                   <span class="metric-label">年化收益</span>
-                  <span class="metric-value" :class="activeSummary.annualReturn >= 0 ? 'text-up' : 'text-down'">{{ (activeSummary.annualReturn * 100).toFixed(1) }}%</span>
+                  <span class="metric-value" :class="activeSummary.annualReturn >= 0 ? 'text-rise' : 'text-fall'">{{ (activeSummary.annualReturn * 100).toFixed(1) }}%</span>
                 </div>
                 <div class="metric-item">
                   <span class="metric-label">基准收益</span>
-                  <span class="metric-value" :class="benchmarkReturn >= 0 ? 'text-up' : 'text-down'">{{ (benchmarkReturn * 100).toFixed(1) }}%</span>
+                  <span class="metric-value" :class="benchmarkReturn >= 0 ? 'text-rise' : 'text-fall'">{{ (benchmarkReturn * 100).toFixed(1) }}%</span>
                 </div>
                 <div class="metric-item">
                   <span class="metric-label">夏普比率</span>
@@ -180,7 +187,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { NCard, NSelect, NDatePicker, NInputNumber, NButton, NSpin, NEmpty, NTabs, NTabPane, NTag, NInput, NRadioGroup, NRadioButton, NCollapse, NCollapseItem, NSpace, useMessage } from "naive-ui";
+import { NCard, NSelect, NDatePicker, NInputNumber, NButton, NSpin, NEmpty, NTabs, NTabPane, NTag, NInput, NRadioGroup, NRadioButton, NCollapse, NCollapseItem, NSpace, NCheckbox, useMessage } from "naive-ui";
 import TradeTable from "@/components/data/TradeTable.vue";
 import MonthlyReturnChart from "@/components/charts/MonthlyReturnChart.vue";
 import BacktestSubplots from "@/components/charts/BacktestSubplots.vue";
@@ -302,6 +309,7 @@ const { start: startBatchPolling, stop: stopBatchPolling } = useBatchBacktestPol
           items.push({
             name: task.name || task.strategy_name || taskId.slice(0, 8),
             taskId,
+            totalReturn: r.total_return || 0,
             annualReturn: r.annual_return || 0,
             sharpeRatio: r.sharpe_ratio || 0,
             maxDrawdown: r.max_drawdown || 0,
@@ -328,7 +336,7 @@ const { start: startBatchPolling, stop: stopBatchPolling } = useBatchBacktestPol
   { maxAttempts: 240 },
 );
 
-interface CompareItem { name: string; taskId: string; annualReturn: number; sharpeRatio: number; maxDrawdown: number; winRate: number; tradesCount: number; }
+interface CompareItem { name: string; taskId: string; totalReturn: number; annualReturn: number; sharpeRatio: number; maxDrawdown: number; winRate: number; tradesCount: number; }
 const compareResults = ref<CompareItem[]>([]);
 const activeCompareTaskId = ref("");
 const compareSelectOptions = computed(() => compareResults.value.map(r => ({ label: r.name, value: r.taskId })));
@@ -353,7 +361,7 @@ const bmPct = computed(() => {
 
 const activeTaskId = ref("");
 const activeTaskName = ref("");
-const activeSummary = ref({ annualReturn: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, tradesCount: 0 });
+const activeSummary = ref({ totalReturn: 0, annualReturn: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, tradesCount: 0 });
 
 function openReport(taskId: string) {
   if (taskId) router.push(`/backtest/report/${taskId}`);
@@ -475,6 +483,19 @@ const loadOptions = async () => {
   if (qStock) stockPool.value = qStock.split(",").map(s => s.trim()).filter(Boolean);
 };
 
+// ---- 组合 allocator 配置（2026-08: 牛市防守让位进攻） ----
+const compositeBullStandAside = ref(true);
+const DEFAULT_COMPOSITE_ALLOC = {
+  REGIME_BASE_ALLOCATION: {
+    0: { defense: 0.9, attack: 0.1 },  // 熊市防守为主（7.1 年线门熊市空仓，资金不浪费给进攻）
+    1: { defense: 0.2, attack: 0.8 },  // 震荡 7.1 主场（动量在震荡市赚钱能力 > 防守抄底）
+    2: { defense: 0, attack: 1 },       // 牛市防守让位
+  },
+};
+function isDefenseStrategyName(name: string): boolean {
+  return /防守|底部|Bottom|bottom/.test(name);
+}
+
 // ---- 回测执行 ----
 const isComposite = computed(() => selectedStrategyIds.value.length >= 2);
 
@@ -498,12 +519,21 @@ const runBacktestAll = async () => {
         .join('+');
       const res = await backtestAPI.createCompositeTask({
         name: `组合_${labels}_${start}`,
-        strategy_configs: selectedStrategyIds.value.map(sid => ({ strategy_id: sid })),
+        strategy_configs: selectedStrategyIds.value.map(sid => ({
+          strategy_id: sid,
+          // 2026-08: 显式传 allocator_id（按策略角色），与 allocator_params 匹配，
+          // 避免默认配置(etf_bottom/stock_low_high)与策略UUID不匹配导致等权 fallback
+          allocator_id: isDefenseStrategyName(
+            strategySelectOptions.value.find((s: any) => s.value === sid)?.label || sid,
+          ) ? 'defense' : 'attack',
+        })),
         start_date: start, end_date: end,
         initial_capital: initialCapital.value,
         symbols: effectiveStocks.length > 0 ? effectiveStocks : undefined,
         benchmark: benchmark.value || undefined,
         // v6.14: 不传 force_regime → 后端按 CSI500 历史动态判定 regime
+        // 组合资金分配：牛市防守让位进攻（可开关）
+        allocator_params: compositeBullStandAside.value ? DEFAULT_COMPOSITE_ALLOC : undefined,
       });
       if (res?.task_id) ids.push(res.task_id);
       msg.success(`组合回测已提交 (${selectedStrategyIds.value.length}个策略共享资金池)`);
@@ -547,6 +577,7 @@ const loadResultDetails = async (taskId: string) => {
     activeTaskId.value = taskId;
     activeTaskName.value = taskList.value.find((t: any) => t.task_id === taskId)?.name || taskId?.slice(0, 8) || "";
     activeSummary.value = {
+      totalReturn: r.total_return ?? 0,
       annualReturn: r.annual_return ?? 0,
       sharpeRatio: r.sharpe_ratio ?? 0,
       maxDrawdown: r.max_drawdown ?? 0,
@@ -639,10 +670,10 @@ onMounted(async () => {
 }
 .chip-summary { font-size: 11px; color: var(--color-text-tertiary); text-align: right; }
 
-.metrics-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 12px; }
-.metric-item { background: var(--color-bg-secondary, rgba(255,255,255,0.06)); border-radius: 6px; padding: 8px 6px; text-align: center;
+.metrics-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 12px; }
+.metric-item { background: var(--color-bg-secondary, rgba(255,255,255,0.06)); border-radius: 6px; padding: 6px 4px; text-align: center;
   .metric-label { font-size: 10px; color: var(--color-text-tertiary); display: block; margin-bottom: 2px; }
-  .metric-value { font-size: 15px; font-weight: 700; color: var(--color-text-primary); }
+  .metric-value { font-size: 14px; font-weight: 700; color: var(--color-text-primary); }
 }
 
 .compare-table { overflow-x: auto; margin-bottom: 12px;
@@ -673,5 +704,8 @@ onMounted(async () => {
 }
 .text-up { color: #18a058 !important; }
 .text-down { color: #d03050 !important; }
+/* A股习惯：收益红涨绿跌 */
+.text-rise { color: #d03050 !important; }
+.text-fall { color: #18a058 !important; }
 .metric-footnote { margin: 2px 0 10px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6; }
 </style>

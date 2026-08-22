@@ -4,12 +4,13 @@ import { useRouter } from "vue-router";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import VChart from "vue-echarts";
 import {
-  NCard, NButton, NSelect, NDatePicker, NDataTable, NTabs, NTabPane,
+  NCard, NButton, NSelect, NDataTable, NTabs, NTabPane,
   NGrid, NGridItem, NStatistic, NSpace, NSpin, NResult, NEmpty, NSkeleton, useMessage,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import { tokens } from "@/styles/design-tokens";
 import performanceAPI from "@/api/performance";
+import AppDateRangePicker from "@/components/common/AppDateRangePicker.vue";
 
 interface PerformancePoint {
   date: string;
@@ -441,7 +442,7 @@ onMounted(async () => {
           <n-space>
             <span class="filter-label">周期</span>
             <n-select v-model:value="selectedPeriod" style="width:100px" :options="periodOptions" @update:value="onPeriodChange" size="small" />
-            <n-date-picker v-model:formatted-value="dateRange" type="daterange" clearable size="small" @update:formatted-value="loadPerformanceData" />
+            <AppDateRangePicker v-model:formatted="dateRange" @update:formatted="loadPerformanceData" />
           </n-space>
         </div>
 

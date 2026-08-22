@@ -509,6 +509,18 @@ class BacktestService:
 					"parameters": cfg.parameters,
 				})
 
+			# 组合分配（2026-08 修复）：用户未指定 allocator_params 时，
+			# 按策略角色生成默认 REGIME_BASE_ALLOCATION（牛市防守让位进攻）。
+			# 此前 allocator_id=策略UUID 与默认配置(etf_bottom/stock_low_high)不匹配
+			# → fallback 等权 → 进攻策略牛市只拿 50% 资金，收益减半。
+			allocator_params = request.allocator_params
+			if not allocator_params:
+				allocator_params = await self._default_composite_allocator_params(resolved_configs)
+				logger.info(
+					f"创建组合回测: 生成默认 allocator_params "
+					f"(熊0.7/0.3 震0.5/0.5 牛0/1) → {allocator_params}"
+				)
+
 			config_dict = {
 				"start_date": request.start_date,
 				"end_date": request.end_date,
@@ -519,7 +531,7 @@ class BacktestService:
 				"slippage_rate": request.slippage_rate,
 				"strategy_configs": resolved_configs,
 				"force_regime": request.force_regime,
-				"allocator_params": request.allocator_params,
+				"allocator_params": allocator_params,
 			}
 
 			task = await self.task_repo.create({
@@ -564,6 +576,48 @@ class BacktestService:
 		except Exception:
 			pass
 		return sid
+
+	async def _default_composite_allocator_params(
+		self, configs: List[Dict[str, Any]]
+	) -> Dict[str, Any]:
+		"""按策略角色生成默认组合分配 REGIME_BASE_ALLOCATION（牛市防守让位进攻）。
+
+		防守策略（ETF底部等）承担熊/震荡防御、牛市让位进攻；
+		进攻策略在牛市获得全部资金。
+		权重：0(BEAR) 防守0.7/进攻0.3；1(RANGE) 0.5/0.5；2(BULL) 防守0/进攻1。
+		key 用 allocator_id（与 CapitalAllocator 查表一致，避免 fallback 等权）。
+		"""
+		defense_ids, attack_ids = [], []
+		for cfg in configs:
+			if await self._is_defense_strategy(cfg["strategy_id"]):
+				defense_ids.append(cfg["allocator_id"])
+			else:
+				attack_ids.append(cfg["allocator_id"])
+
+		base: Dict[int, Dict[str, float]] = {}
+		# 优化 2026-08：熊市 7.1 年线门空仓→防守90%；震荡 7.1 动量主场→7.1 80%
+		for regime, (d_w, a_w) in ((0, (0.9, 0.1)), (1, (0.2, 0.8)), (2, (0.0, 1.0))):
+			alloc: Dict[str, float] = {}
+			if defense_ids:
+				alloc[defense_ids[0]] = round(d_w / len(defense_ids), 4)
+			if attack_ids:
+				alloc[attack_ids[0]] = round(a_w / len(attack_ids), 4)
+			base[regime] = alloc
+		return {"REGIME_BASE_ALLOCATION": base}
+
+	async def _is_defense_strategy(self, sid: str) -> bool:
+		"""按策略类名/名称判断是否为防守策略（ETF底部等）。"""
+		try:
+			strategy = await self.strategy_repo.get_by_id(sid)
+			if not strategy:
+				return False
+			marker = "{} {}".format(
+				getattr(strategy, "class_name", "") or "",
+				getattr(strategy, "name", "") or "",
+			)
+			return any(k in marker for k in ("Bottom", "bottom", "防守", "底部"))
+		except Exception:
+			return False
 
 	async def run_composite_backtest(self, task_id: str) -> None:
 		"""

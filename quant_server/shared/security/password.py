@@ -176,6 +176,11 @@ class PasswordManager:
         return True, []
 
 
+# 模块级单例（由下方 get_password_manager / get_password_crypto 惰性初始化；
+# 修复 2026-08：重构时初始化语句丢失导致 NameError）
+_password_manager: Optional["PasswordManager"] = None
+_password_crypto: Optional["PasswordCrypto"] = None
+
 
 def get_password_manager(config: Optional[dict] = None) -> PasswordManager:
     """获取全局 PasswordManager"""

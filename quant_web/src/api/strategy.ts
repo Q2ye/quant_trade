@@ -311,4 +311,12 @@ export default {
       .post("/quantTrade/strategy/train/lgb", params)
       .then(handleResponse);
   },
+
+  /** 查询模型训练任务状态与结果（轮询） */
+  async getTrainStatus(taskId: string): Promise<any> {
+    return request
+      .get(`/quantTrade/strategy/train/lgb/${taskId}`)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
 };

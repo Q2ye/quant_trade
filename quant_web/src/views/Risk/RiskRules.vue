@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, h } from "vue";
+import { ref, computed, onMounted, h, watch } from "vue";
 import { useStore } from "vuex";
 import {
   NTag, NSwitch, NButton, NSpin, NResult,
@@ -7,6 +7,7 @@ import {
   useMessage,
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import { usePagedList } from "@/composables/usePagedList";
 
 const store = useStore();
 const message = useMessage();
@@ -15,8 +16,6 @@ const loading = ref(false);
 const error = ref(false);
 const searchKeyword = ref("");
 const filterRuleType = ref("");
-const currentPage = ref(1);
-const pageSize = ref(20);
 const drawerVisible = ref(false);
 const selectedRule = ref<any>(null);
 const editingParams = ref<Record<string, any>>({});
@@ -74,6 +73,19 @@ const filteredRules = computed(() => {
   if (filterRuleType.value)
     result = result.filter((r: any) => r.type === filterRuleType.value);
   return result;
+});
+
+// 客户端分页：表格展示切片后的当前页
+const {
+  page: currentPage,
+  pageSize,
+  itemCount: ruleTotal,
+  pagedData: pagedRules,
+} = usePagedList(filteredRules, 20);
+
+// 搜索/分类筛选变化时回到第一页
+watch([searchKeyword, filterRuleType], () => {
+  currentPage.value = 1;
 });
 
 const columns = [
@@ -191,13 +203,13 @@ onMounted(() => fetchRules());
           </template>
 
           <n-spin :show="loading">
-            <n-data-table :columns="columns" :data="filteredRules" :bordered="false" size="small">
+            <n-data-table :columns="columns" :data="pagedRules" :bordered="false" size="small">
               <template #empty><n-empty description="暂无风控规则" /></template>
             </n-data-table>
 
             <div class="pagination-container">
               <n-pagination v-model:page="currentPage" v-model:page-size="pageSize"
-                :item-count="filteredRules.length" :page-sizes="[10, 20, 50]" show-size-picker />
+                :item-count="ruleTotal" :page-sizes="[10, 20, 50]" show-size-picker />
             </div>
           </n-spin>
         </n-card>

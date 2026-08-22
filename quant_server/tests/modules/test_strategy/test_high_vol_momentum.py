@@ -200,11 +200,16 @@ class TestConfirmBuy:
         assert any(sig.ts_code == "600030.SH" and sig.direction.name == "LONG" for sig in sigs)
 
     def test_reject_when_close_below_signal(self):
+        """v8.0：收盘低于确认价（信号价×(1-容差)）时拒绝买入。
+
+        原 7.1 阈值是 signal_price=100；v8.0 加入 2% 容差 → 确认价=98。
+        close=95（-5%）明确低于确认价 → 仍应拒绝。
+        """
         cls = _load_strategy_class()
         s = cls(name="test")
         s._buy_pending["600030.SH"] = {"signal_price": 100.0, "weight": 0.5,
                                        "signal_date": "2021-01-01"}
-        closes = [100.0] * 20 + [98.0]
+        closes = [100.0] * 20 + [95.0]
         _seed_history(s, "600030.SH", closes)
         s._last_trade_date = s._bar_dates["600030.SH"]
         s.context = type("C", (), {"initial_capital": 100000})()

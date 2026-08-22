@@ -131,7 +131,12 @@
           <n-input v-model:value="createForm.name" placeholder="如：进攻防御组合" />
         </n-form-item>
         <n-form-item label="共享账户">
-          <n-input v-model:value="createForm.account_id" placeholder="账户 ID（可留空，默认用第一个账户）" />
+          <n-select
+            v-model:value="createForm.account_id"
+            :options="accountOptions"
+            clearable
+            placeholder="选择共享账户（可留空用默认）"
+          />
         </n-form-item>
         <n-form-item label="选择策略（至少 2 个）">
           <n-select
@@ -210,6 +215,21 @@ const openAdd = ref(false);
 const creating = ref(false);
 const adding = ref(false);
 const createForm = ref({ name: "", account_id: "", strategy_ids: [] as string[] });
+
+// 共享账户下拉（2026-08: 从账户列表选择，过滤已关闭）
+const accounts = ref<Array<{ id: string; account_number: string; account_name: string; status?: string }>>([]);
+async function loadAccounts() {
+  try {
+    const res: any = await compositeAPI.getAccounts();
+    const list = Array.isArray(res) ? res : (res?.data || res?.accounts || []);
+    accounts.value = list.filter((a: any) => a.status !== "closed");
+  } catch {
+    accounts.value = [];
+  }
+}
+const accountOptions = computed(() =>
+  accounts.value.map((a) => ({ label: `${a.account_name} (${a.account_number})`, value: a.id })),
+);
 const addForm = ref({ strategy_id: "", allocator_id: "", w0: 0.2, w1: 0.5, w2: 0.3 });
 
 const regimeMeta = (r: number) =>
@@ -249,9 +269,10 @@ async function loadStrategies() {
 // 可选策略：排除已在当前组合中的；创建组合时（selected 为空）显示全部
 const availableStrategies = computed(() => {
   const inGroup = new Set((selected.value?.strategy_ids || []).map((c: any) => c.strategy_id));
+  // 2026-08: 只显示运行中的策略（组合 rebalance 只给 running 策略分配资金）
   return strategies.value
-    .filter((s) => !inGroup.has(s.id))
-    .map((s) => ({ label: `${s.name} (${s.status})`, value: s.id }));
+    .filter((s) => s.status === "running" && !inGroup.has(s.id))
+    .map((s) => ({ label: s.name, value: s.id }));
 });
 
 async function loadGroups() {
@@ -360,6 +381,21 @@ async function removeMember(strategyId: string) {
   }
 }
 
+// 组合 allocator 配置（2026-08: 按策略角色，牛市防守让位进攻，与回测一致）
+function findStrategyName(sid: string): string {
+  return strategies.value.find((s: any) => s.id === sid)?.name || sid;
+}
+function isDefenseStrategyName(name: string): boolean {
+  return /防守|底部|Bottom|bottom/.test(name);
+}
+const COMPOSITE_DEFAULT_ALLOC = {
+  REGIME_BASE_ALLOCATION: {
+    0: { defense: 0.9, attack: 0.1 },  // 熊市防守为主（进攻年线门空仓）
+    1: { defense: 0.2, attack: 0.8 },  // 震荡进攻动量主场
+    2: { defense: 0, attack: 1 },       // 牛市防守让位
+  },
+};
+
 async function createGroup() {
   if (!createForm.value.name || createForm.value.strategy_ids.length < 2) {
     msg.warning("请填写名称并选择至少 2 个策略");
@@ -370,7 +406,11 @@ async function createGroup() {
     await compositeAPI.createGroup({
       name: createForm.value.name,
       account_id: createForm.value.account_id || undefined,
-      strategy_configs: createForm.value.strategy_ids.map((sid) => ({ strategy_id: sid })),
+      strategy_configs: createForm.value.strategy_ids.map((sid) => ({
+        strategy_id: sid,
+        allocator_id: isDefenseStrategyName(findStrategyName(sid)) ? 'defense' : 'attack',
+      })),
+      allocator_config: COMPOSITE_DEFAULT_ALLOC,
     });
     msg.success("组合已创建");
     openCreate.value = false;
@@ -431,6 +471,7 @@ function todayLocal() {
 onMounted(() => {
   loadGroups();
   loadStrategies();
+  loadAccounts();
 });
 </script>
 

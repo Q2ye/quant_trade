@@ -173,8 +173,6 @@ defineProps<{
 const getCategoryTag = (category: string) => {
   const map: Record<string, "success" | "warning" | "info" | "error"> = {
     trend: "success",
-    mean_reversion: "warning",
-    factor: "info",
     ml: "error",
   };
   return map[category] || "default";
@@ -183,8 +181,6 @@ const getCategoryTag = (category: string) => {
 const getCategoryLabel = (category: string) => {
   const map: Record<string, string> = {
     trend: "趋势跟踪",
-    mean_reversion: "均值回归",
-    factor: "因子策略",
     ml: "机器学习",
   };
   return map[category] || category;
@@ -216,13 +212,6 @@ const getTemplateFeatures = (template: StrategyTemplate) => {
       "止损机制完善",
       "信号明确易于执行",
     ],
-    mean_reversion: [
-      "利用价格回归特性",
-      "适合震荡市场环境",
-      "高胜率策略",
-      "需要严格风控",
-    ],
-    factor: ["多因子组合", "系统化投资", "风险分散", "适合机构投资者"],
     ml: [
       "机器学习模型驱动",
       "自适应市场变化",
@@ -236,8 +225,6 @@ const getTemplateFeatures = (template: StrategyTemplate) => {
 const getScenarioDescription = (category: string) => {
   const map: Record<string, string> = {
     trend: "适用于有明显趋势的牛市或熊市行情",
-    mean_reversion: "适用于震荡市或区间波动的市场环境",
-    factor: "适用于多因子选股和系统化投资",
     ml: "适用于大数据分析和复杂模式识别场景",
   };
   return map[category] || "适用于多种市场环境";
@@ -246,8 +233,6 @@ const getScenarioDescription = (category: string) => {
 const getHoldingPeriod = (category: string) => {
   const map: Record<string, string> = {
     trend: "中长线",
-    mean_reversion: "短线",
-    factor: "中长线",
     ml: "灵活调整",
   };
   return map[category] || "中线";

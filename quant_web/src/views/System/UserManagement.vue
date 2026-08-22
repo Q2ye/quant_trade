@@ -106,6 +106,11 @@ const fetchUsers = async () => {
   }
 }
 
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchUsers()
+}
+
 const handleAdd = () => {
   editingUser.value = null
   resetForm()
@@ -272,7 +277,7 @@ onMounted(() => {
               size="small"
               clearable
               style="width: 240px"
-              @keyup.enter="fetchUsers"
+              @keyup.enter="handleSearch"
             />
           </div>
         </template>
@@ -288,6 +293,16 @@ onMounted(() => {
             :single-line="true"
           />
         </n-spin>
+        <!-- 分页（服务端分页，翻页重新请求） -->
+        <div v-if="total > pageSize" class="pagination-container">
+          <n-pagination
+            v-model:page="currentPage"
+            :page-size="pageSize"
+            :item-count="total"
+            size="small"
+            @update:page="fetchUsers"
+          />
+        </div>
       </n-card>
 
       <!-- 添加/编辑弹窗 -->
@@ -358,5 +373,10 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+}
+.pagination-container {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

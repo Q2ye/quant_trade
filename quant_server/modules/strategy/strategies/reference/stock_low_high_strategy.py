@@ -32,6 +32,7 @@ import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime, date, timedelta
+from shared.utils.time_utils import BEIJING_TZ, beijing_now
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.engines.types.entities import BarData
@@ -316,7 +317,8 @@ class StockLowHighStrategy(BaseStrategy):
                         _td = None
                 elif hasattr(_td, "date"):
                     _td = _td.date()
-                _sig_time = datetime.combine(_td, datetime.min.time()) if _td else datetime.now()
+                # 2026-08-19 修复：时刻用 beijing_now().time()（此前 00:00 固定，前端无具体时间）
+                _sig_time = datetime.combine(_td, beijing_now().time(), tzinfo=BEIJING_TZ) if _td else beijing_now()
                 data = {
                     "strategy_id": sid,
                     "ts_code": code,
@@ -940,7 +942,7 @@ class StockLowHighStrategy(BaseStrategy):
                 amount=amount,
                 confidence=0.75,
                 reason=f"低吸轮动买入(收盘确认): {code} 收盘{price:.2f} > 信号价{signal_price:.2f}",
-                timestamp=datetime.now(),
+                timestamp=beijing_now(),
                 order_mode="close",
             )
             sig.weight = weight
@@ -1997,7 +1999,7 @@ class StockLowHighStrategy(BaseStrategy):
             amount=0.0,
             confidence=0.80,
             reason=reason,
-            timestamp=datetime.now(),
+            timestamp=beijing_now(),
             order_mode=order_mode,
             trigger_price=trigger_price,
         )

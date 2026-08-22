@@ -684,16 +684,25 @@ class TradeHandler:
 			result = await signal_repo.session.execute(query)
 			signals = result.scalars().all()
 
-			# 批量查股票中文名（一次 SQL，避免 N+1）
+			# 批量查中文名（一次 SQL，避免 N+1）
+			# 2026-08-20 修复：ETF 信号名称不显示——此前只查 StockBasic（股票表），
+			# ETF 代码（159/512/510 等）不在该表，名称查不到。改为股票 + ETF 双表合并。
 			_ts_codes = list({s.ts_code for s in signals if s.ts_code})
 			name_map = {}
 			if _ts_codes:
 				from sqlalchemy import select as _select
-				from shared.database.models.data_models import StockBasic
+				from shared.database.models.data_models import StockBasic, EtfBasic
 				_r = await self.db.execute(
 					_select(StockBasic.ts_code, StockBasic.name).where(StockBasic.ts_code.in_(_ts_codes))
 				)
-				name_map = {row[0]: row[1] for row in _r.all()}
+				name_map.update({row[0]: row[1] for row in _r.all()})
+				# ETF 名称（股票表查不到的补充）
+				_missing = [c for c in _ts_codes if c not in name_map]
+				if _missing:
+					_r2 = await self.db.execute(
+						_select(EtfBasic.ts_code, EtfBasic.name).where(EtfBasic.ts_code.in_(_missing))
+					)
+					name_map.update({row[0]: row[1] for row in _r2.all()})
 
 			signal_data = []
 			for s in signals:

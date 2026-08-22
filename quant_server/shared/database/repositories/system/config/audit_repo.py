@@ -141,6 +141,67 @@ class AuditRepository(BaseRepository):
 		except Exception as e:
 			raise Exception(f"获取审计日志失败: {str(e)}")
 
+	async def search_audit_logs(
+			self,
+			start_time: Optional[datetime] = None,
+			end_time: Optional[datetime] = None,
+			action_type: Optional[str] = None,
+			resource_type: Optional[str] = None,
+			status: Optional[str] = None,
+			username: Optional[str] = None,
+			page: int = 1,
+			page_size: int = 20,
+	) -> Dict[str, Any]:
+		"""
+		搜索审计日志（分页 + 总数），支持用户名模糊搜索。
+
+		Args:
+			start_time / end_time: 时间范围
+			action_type: 操作类型（login/logout/create/update/delete/...）
+			resource_type: 资源类型
+			status: 操作状态（success/failed/partial）
+			username: 用户名模糊搜索（ilike %kw%）
+			page: 页码（1 起）
+			page_size: 每页条数
+
+		Returns:
+			{"total": int, "logs": List[AuditLog]}
+		"""
+		try:
+			filters = []
+			if start_time:
+				filters.append(AuditLog.created_at >= start_time)
+			if end_time:
+				filters.append(AuditLog.created_at <= end_time)
+			if action_type:
+				filters.append(AuditLog.action_type == action_type)
+			if resource_type:
+				filters.append(AuditLog.resource_type == resource_type)
+			if status:
+				filters.append(AuditLog.status == status)
+			if username:
+				filters.append(AuditLog.username.ilike(f"%{username}%"))
+
+			query = select(AuditLog)
+			if filters:
+				query = query.where(*filters)
+
+			# 总数
+			total = await self.session.execute(
+				select(func.count()).select_from(query.subquery())
+			)
+			total_count = total.scalar() or 0
+
+			# 分页
+			offset = (page - 1) * page_size
+			result = await self.session.execute(
+				query.order_by(desc(AuditLog.created_at)).offset(offset).limit(page_size)
+			)
+			logs = result.scalars().all()
+			return {"total": total_count, "logs": logs}
+		except Exception as e:
+			raise Exception(f"搜索审计日志失败: {str(e)}")
+
 	async def get_audit_statistics(
 			self,
 			start_time: datetime,

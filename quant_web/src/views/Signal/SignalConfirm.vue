@@ -3,6 +3,7 @@ import { ref, onMounted, h } from "vue";
 import { useRouter } from "vue-router";
 import { NTag, NButton, NModal, NForm, NFormItem, NInput, NInputNumber, NSpace, NDataTable, NCard, NEmpty, useMessage } from "naive-ui";
 import strategyAPI from "@/api/strategy";
+import { formatDateTime } from "@/utils/date";
 import SignalTraceModal from "@/components/trade/SignalTraceModal.vue";
 
 const router = useRouter();
@@ -38,7 +39,7 @@ const directionMap: Record<string, string> = {
 
 const columns = [
   { title: "时间", key: "signal_time", width: 150,
-    render: (row: any) => (row.signal_time || row.created_at || "").toString().slice(0, 16).replace("T", " ") },
+    render: (row: any) => formatDateTime(row.signal_time || row.created_at || "", "YYYY-MM-DD HH:mm") },
   { title: "股票", key: "ts_code", width: 110 },
   { title: "方向", key: "direction", width: 70,
     render: (row: any) => h(NTag, {

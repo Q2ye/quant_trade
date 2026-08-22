@@ -6,6 +6,7 @@ import * as echarts from "echarts";
 import riskAPI from "@/api/risk";
 import type { RiskAlert, RiskMetricsData } from "@/api/risk";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import { usePagedList } from "@/composables/usePagedList";
 
 const store = useStore();
 const message = useMessage();
@@ -16,7 +17,6 @@ const pageError = ref(false);
 const trendPeriod = ref("today");
 const riskTrendChart = ref<HTMLDivElement | null>(null);
 const riskTypeChart = ref<HTMLDivElement | null>(null);
-const currentPage = ref(1);
 
 // 从 store 读取的实时指标
 const metricsData = ref<RiskMetricsData | null>(null);
@@ -54,6 +54,21 @@ const filteredAlerts = computed(() => {
     result = result.filter((a) => a.level === alertFilter.level);
   return result;
 });
+
+// 客户端分页：表格展示切片后的当前页
+const {
+  page: currentPage,
+  itemCount: alertTotal,
+  pagedData: pagedAlerts,
+} = usePagedList(filteredAlerts, 10);
+
+// 告警级别筛选变化时回到第一页
+watch(
+  () => alertFilter.level,
+  () => {
+    currentPage.value = 1;
+  },
+);
 
 const alertColumns = [
   {
@@ -468,7 +483,7 @@ onUnmounted(() => {
         <n-spin :show="loading">
           <n-data-table
             :columns="alertColumns"
-            :data="filteredAlerts"
+            :data="pagedAlerts"
             :bordered="false"
             size="small"
           >
@@ -480,7 +495,7 @@ onUnmounted(() => {
           <div class="pagination-container">
             <n-pagination
               v-model:page="currentPage"
-              :item-count="filteredAlerts.length"
+              :item-count="alertTotal"
               :page-size="10"
             />
           </div>

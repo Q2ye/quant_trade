@@ -235,6 +235,11 @@ const handleSave = async () => {
       const res = await dataAPI.createFactorDefinition(payload);
       if (res.success) {
         message.success("因子定义创建成功");
+        // 提示：仅创建元数据，需后端注册计算器后才能计算/研究
+        message.warning(
+          "新建因子需在 quant_server/modules/data/factor_calculators.py 中用 @register_factor 注册同名计算器后，才能执行因子计算与研究",
+          { duration: 8000 },
+        );
         emit("save", { ...formData });
         handleClose();
       } else {

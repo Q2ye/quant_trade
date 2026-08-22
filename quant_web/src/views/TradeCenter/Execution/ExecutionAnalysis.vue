@@ -84,12 +84,8 @@
               <div class="card-header">
                 <span>交易执行记录</span>
                 <div class="header-controls">
-                  <n-date-picker
+                  <AppDateRangePicker
                     v-model:value="dateRange"
-                    type="daterange"
-                    size="small"
-                    start-placeholder="开始日期"
-                    end-placeholder="结束日期"
                     style="width: 220px"
                   />
                   <n-button size="small" type="primary" @click="exportData"
@@ -101,7 +97,7 @@
 
             <n-data-table
               :columns="columns"
-              :data="executionRecords"
+              :data="pagedRecords"
               :bordered="false"
               size="small"
             >
@@ -132,14 +128,13 @@ import * as echarts from "echarts";
 import { useMessage, NTag, NSpin, NResult, NButton } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import tradeAPI from "@/api/trade";
+import { usePagedList } from "@/composables/usePagedList";
+import AppDateRangePicker from "@/components/common/AppDateRangePicker.vue";
 
 const message = useMessage();
 const loading = ref(false);
 const error = ref(false);
 const dateRange = ref<any>(null);
-const currentPage = ref(1);
-const pageSize = ref(20);
-const total = ref(150);
 const priceChartRef = ref<HTMLElement>();
 const timeChartRef = ref<HTMLElement>();
 const impactChartRef = ref<HTMLElement>();
@@ -155,6 +150,14 @@ const executionStats = ref([
 ]);
 
 const executionRecords = ref<any[]>([]);
+
+// 客户端分页：表格展示切片后的当前页
+const {
+  page: currentPage,
+  pageSize,
+  itemCount: total,
+  pagedData: pagedRecords,
+} = usePagedList(executionRecords, 20);
 
 const getStatusType = (status: string) =>
   (
@@ -463,7 +466,6 @@ const loadData = async () => {
       executionTime: t.filled_at ?? t.executed_at ?? t.created_at ?? "",
       status: t.status ?? "",
     }));
-    total.value = executionRecords.value.length;
 
     initCharts();
   } catch {

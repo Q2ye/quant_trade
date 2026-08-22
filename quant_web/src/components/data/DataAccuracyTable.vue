@@ -42,7 +42,7 @@
 
     <NSpin :show="loading">
       <NDataTable
-        :data="tableData"
+        :data="pagedData"
         :columns="columns"
         :bordered="false"
         :default-sort="{ prop: 'accuracyRate', order: 'descending' }"
@@ -52,13 +52,11 @@
 
     <div class="pagination-container">
       <NPagination
-        :page="pagination.currentPage"
-        :page-size="pagination.pageSize"
+        v-model:page="currentPage"
+        v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        :item-count="pagination.total"
+        :item-count="total"
         show-size-picker
-        @update:page="handleCurrentChange"
-        @update:page-size="handleSizeChange"
       />
     </div>
   </div>
@@ -82,6 +80,7 @@ import {
 import { Icon } from "@iconify/vue";
 import type { DataTableColumn } from "naive-ui";
 import type { QualityMetric } from "@/api/data-sync";
+import { usePagedList } from "@/composables/usePagedList";
 
 const message = useMessage();
 
@@ -105,7 +104,13 @@ const filterParams = reactive({
   accuracyStatus: "",
   verificationType: "",
 });
-const pagination = reactive({ currentPage: 1, pageSize: 20, total: 0 });
+// 客户端分页：表格展示切片后的当前页
+const {
+  page: currentPage,
+  pageSize,
+  itemCount: total,
+  pagedData,
+} = usePagedList(tableData, 20);
 
 const accuracyStatusOptions = [
   { label: "准确", value: "accurate" },
@@ -224,7 +229,6 @@ const loadTableData = async () => {
       status: m.status,
     }));
     tableData.value = data;
-    pagination.total = data.length;
   } catch (error) {
     message.error("数据加载失败");
   } finally {
@@ -233,7 +237,7 @@ const loadTableData = async () => {
 };
 
 const handleFilter = () => {
-  pagination.currentPage = 1;
+  currentPage.value = 1;
   loadTableData();
 };
 const handleReset = () => {
@@ -244,19 +248,11 @@ const handleReset = () => {
   });
   handleFilter();
 };
-const handleSizeChange = (size: number) => {
-  pagination.pageSize = size;
-  loadTableData();
-};
-const handleCurrentChange = (page: number) => {
-  pagination.currentPage = page;
-  loadTableData();
-};
 
 watch(
   () => props.metrics,
   () => {
-    pagination.currentPage = 1;
+    currentPage.value = 1;
     loadTableData();
   },
   { immediate: false },

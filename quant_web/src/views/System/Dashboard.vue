@@ -3,7 +3,7 @@
   <div class="dashboard bg-gradient-mesh bg-noise">
     <div class="page-header">
       <div class="header-content">
-        <div class="title-section"><h1 class="page-title">系统仪表盘</h1><p class="page-description">CPU、内存、磁盘、服务连接状态与资源趋势总览</p></div>
+        <div class="title-section"><h1 class="page-title">系统仪表盘</h1><p class="page-description">系统资源、服务连接、资源趋势与快捷入口总览</p></div>
         <div class="header-actions">
           <span class="refresh-time">更新于 {{ lastRefresh }}</span>
           <n-button class="action-btn" @click="refreshAll" quaternary><template #icon><Icon icon="mdi:refresh" /></template></n-button>
@@ -37,7 +37,7 @@
                   <div class="stat-line"><span class="stat-k">核心数</span><span class="stat-v">{{ cpuCores }}</span></div>
                   <div class="stat-line"><span class="stat-k">状态</span><span class="stat-v" :style="{color:cpuColor}">{{ cpuLevel }}</span></div>
                   <div class="stat-line"><span class="stat-k">运行</span><span class="stat-v">{{ sysUptime }}</span></div>
-                  <div class="stat-line"><span class="stat-k">进程</span><span class="stat-v">--</span></div>
+                  <div class="stat-line"><span class="stat-k">网络</span><span class="stat-v">{{ networkIo }}</span></div>
                 </div>
               </div>
             </n-card>
@@ -113,23 +113,97 @@
           </n-grid-item>
         </n-grid>
 
-        <!-- ===== Row 3: 最近日志 ===== -->
-        <n-card :class="[tokens.surface.card, tokens.motion.stagger]" title="最近日志" size="small" style="margin-top:16px">
-          <template #header-extra><n-button text size="tiny" @click="$router.push('/system/logs')">查看全部</n-button></template>
-          <n-empty v-if="recentLogs.length===0" description="暂无日志" size="small" />
-          <n-data-table v-else :columns="logColumns" :data="recentLogs.slice(0,10)" :row-key="(_row: any, i: number) => i" size="small" :bordered="false" :single-line="true" />
-        </n-card>
+        <!-- ===== Row 3: 风险监控 + 最近审计 ===== -->
+        <n-grid :x-gap="16" :y-gap="16" :cols="2" class="row-equal" style="margin-top: 16px">
+          <!-- 风险监控概览 -->
+          <n-grid-item>
+            <n-card :class="[tokens.surface.card, tokens.motion.stagger, 'card-fill']" size="small" title="风险监控">
+              <template #header-extra>
+                <n-button text size="tiny" @click="router.push('/risk/monitor')">查看全部</n-button>
+              </template>
+              <div class="risk-summary">
+                <div class="risk-badge-row">
+                  <n-tag :type="riskLevelTag" size="small" :bordered="false">风控等级: {{ riskLevelText }}</n-tag>
+                  <n-tag :type="alertCount > 0 ? 'warning' : 'default'" size="small" :bordered="false">告警 {{ alertCount }} 条</n-tag>
+                </div>
+                <div class="risk-metrics">
+                  <div class="risk-metric"><span class="rm-k">仓位比例</span><span class="rm-v">{{ fmtPct(riskMetrics.position_ratio) }}</span></div>
+                  <div class="risk-metric"><span class="rm-k">最大回撤</span><span class="rm-v" :style="{color: riskMetrics.drawdown < -0.15 ? '#f44747' : 'inherit'}">{{ fmtPct(riskMetrics.drawdown) }}</span></div>
+                  <div class="risk-metric"><span class="rm-k">违规次数</span><span class="rm-v">{{ riskMetrics.breach_count ?? '--' }}</span></div>
+                </div>
+                <n-empty v-if="recentAlerts.length === 0" description="暂无风险告警" size="small" style="padding: 8px 0" />
+                <div v-else class="risk-alerts">
+                  <div v-for="a in recentAlerts" :key="a.id || a.created_at" class="risk-alert-item">
+                    <n-tag size="tiny" :type="a.level === 'critical' ? 'error' : a.level === 'warning' ? 'warning' : 'info'" :bordered="false">
+                      {{ a.level === 'critical' ? '严重' : a.level === 'warning' ? '警告' : '信息' }}
+                    </n-tag>
+                    <span class="ra-title">{{ a.title || a.message }}</span>
+                    <span class="ra-time">{{ fmtShortTime(a.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </n-card>
+          </n-grid-item>
+
+          <!-- 最近审计 -->
+          <n-grid-item>
+            <n-card :class="[tokens.surface.card, tokens.motion.stagger, 'card-fill']" size="small" title="最近审计">
+              <template #header-extra>
+                <n-button text size="tiny" @click="router.push('/system/logs')">查看全部</n-button>
+              </template>
+              <n-empty v-if="recentAudit.length === 0" description="暂无审计记录" size="small" style="padding: 24px 0" />
+              <div v-else class="audit-list">
+                <div v-for="log in recentAudit" :key="log.id" class="audit-item">
+                  <span class="au-time">{{ fmtShortTime(log.created_at) }}</span>
+                  <n-tag size="tiny" :bordered="false" :type="auditActionType(log.action_type)">
+                    {{ ACTION_LABELS[log.action_type] || log.action_type || '-' }}
+                  </n-tag>
+                  <span class="au-user">{{ log.username || 'system' }}</span>
+                  <span class="au-res">{{ log.resource_type || '-' }}{{ log.resource_id ? '/' + log.resource_id : '' }}</span>
+                  <span class="au-status" :class="'au-' + (log.status || 'success')">
+                    {{ log.status === 'failed' ? '失败' : log.status === 'partial' ? '部分' : '成功' }}
+                  </span>
+                </div>
+              </div>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
+
+        <!-- ===== Row 4: 快捷入口 ===== -->
+        <n-grid :x-gap="16" :y-gap="16" :cols="4" class="row-equal" style="margin-top: 16px">
+          <n-grid-item v-for="link in quickLinks" :key="link.route">
+            <n-card
+              :class="[tokens.surface.card, tokens.motion.stagger, 'card-fill', 'quick-link-card']"
+              size="small"
+              @click="router.push(link.route)"
+            >
+              <div class="quick-link">
+                <div class="ql-icon" :style="{ color: link.color, background: link.bg }">
+                  <Icon :icon="link.icon" style="font-size: 26px" />
+                </div>
+                <div class="ql-body">
+                  <div class="ql-name">{{ link.name }}</div>
+                  <div class="ql-desc">{{ link.desc }}</div>
+                </div>
+                <Icon icon="mdi:chevron-right" style="color: var(--n-text-color-3); font-size: 18px" />
+              </div>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, h } from "vue"
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue"
+import { useRouter } from "vue-router"
 import { tokens } from "@/styles/design-tokens"
 import systemAPI from "@/api/system"
-import type { DataTableColumn } from "naive-ui"
+import riskAPI from "@/api/risk"
 import { createChart, ColorType, LineSeries } from "lightweight-charts"
+
+const router = useRouter()
 
 const loading = ref(false)
 const error = ref(false)
@@ -140,7 +214,10 @@ const resourceUsage = ref<any>(null)
 const connectionStatus = ref<any>(null)
 const systemStatus = ref<any>(null)
 const dbStatus = ref<any>(null)
-const recentLogs = ref<any[]>([])
+
+const riskMetrics = ref<any>({})
+const recentAlerts = ref<any[]>([])
+const recentAudit = ref<any[]>([])
 
 const cpuhistory = ref<{ time: string; cpu: number; mem: number }[]>([])
 const trendChartRef = ref<HTMLDivElement | null>(null)
@@ -164,6 +241,47 @@ const memColor = computed(() => thresholdColor(memPercent.value))
 const railColor = 'var(--n-color-embedded)'
 
 const cpuLevel = computed(() => cpuPercent.value >= 80 ? '繁忙' : cpuPercent.value >= 50 ? '正常' : '空闲')
+
+const networkIo = computed(() => {
+  const io = resourceUsage.value?.network_io
+  if (!io) return "--"
+  const recv = io.bytes_recv ?? 0
+  const sent = io.bytes_sent ?? 0
+  if (!recv && !sent) return "--"
+  return `↓${fmtBytes(recv)} ↑${fmtBytes(sent)}`
+})
+
+const quickLinks = [
+  { name: "审计日志", desc: "用户操作与安全事件审计", icon: "mdi:file-document-clock-outline", route: "/system/logs", color: "#3B82F6", bg: "rgba(59,130,246,.12)" },
+  { name: "用户管理", desc: "账号、角色与权限管理", icon: "mdi:account-group", route: "/system/users", color: "#8B5CF6", bg: "rgba(139,92,246,.12)" },
+  { name: "数据同步", desc: "行情与基础数据同步任务", icon: "mdi:database-sync", route: "/data/sync", color: "#10B981", bg: "rgba(16,185,129,.12)" },
+  { name: "风控监控", desc: "实时告警与规则状态", icon: "mdi:shield-alert", route: "/risk/monitor", color: "#F59E0B", bg: "rgba(245,158,11,.12)" },
+]
+
+// ---- 风险监控 / 审计概览 ----
+const ACTION_LABELS: Record<string, string> = {
+  login: "登录", logout: "登出", create: "创建", update: "更新", delete: "删除",
+  read: "查看", execute: "执行", config_change: "配置变更",
+  security_event: "安全事件", system_event: "系统事件",
+}
+const riskLevelText = computed(() => {
+  const lv = riskMetrics.value?.overall_risk_level || "normal"
+  return ({ low: "低", normal: "正常", general: "关注", high: "较高", severe: "严重" } as Record<string, string>)[lv] || lv
+})
+const riskLevelTag = computed<"success" | "warning" | "error">(() => {
+  const lv = riskMetrics.value?.overall_risk_level || "normal"
+  if (lv === "severe" || lv === "high") return "error"
+  if (lv === "general") return "warning"
+  return "success"
+})
+const alertCount = computed(() => recentAlerts.value.length)
+
+function auditActionType(a: string): "success" | "error" | "warning" | "info" | "default" {
+  if (a === "login" || a === "create") return "success"
+  if (a === "delete" || a === "security_event") return "error"
+  if (a === "update" || a === "config_change") return "warning"
+  return "info"
+}
 
 const connections = computed(() => {
   const c = connectionStatus.value || {}
@@ -189,30 +307,30 @@ const healthLabel = computed(() => healthScore.value >= 95 ? '优秀' : healthSc
 const sysInfo = computed(() => { const s=systemStatus.value||{}; const u=s.users||{}; return {version:s.version||'--',uptime:s.uptime||'--',activeUsers:u.active||0,totalUsers:u.total||0} })
 const dbInfo = computed(() => dbStatus.value || {})
 
-const logColumns: DataTableColumn[] = [
-  { title:"时间", key:"time", width:155, render:(_,r:any)=>fmtTime(r.created_at) },
-  { title:"级别", key:"level", width:60, render:(_,r:any)=>{const lv=(r.log_level||r.level||'info').toLowerCase();return h('span',{class:`log-lv log-lv-${lv}`},lv.toUpperCase())} },
-  { title:"消息", key:"msg", ellipsis:true, render:(_,r:any)=>r.details||r.action||r.message||'' },
-]
-
 // ---- methods ----
 function thresholdColor(p:number){return p>=80?'#EF4444':p>=50?'#F59E0B':'#22C55E'}
 function fmtBytes(b?:number):string{if(!b)return'0 B';return b>=1<<30?(b/(1<<30)).toFixed(1)+' GB':b>=1<<20?(b/(1<<20)).toFixed(1)+' MB':(b/1024).toFixed(0)+' KB'}
 function fmtNum(n?:number):string{return n!=null?n.toLocaleString():'--'}
-function fmtTime(ts?:string):string{if(!ts)return'--';return ts.replace('T',' ').slice(0,19)}
+function fmtPct(v?:number):string{return v!=null?(v*100).toFixed(1)+'%':'--'}
+function fmtShortTime(ts?:string):string{if(!ts)return'--';return ts.replace('T',' ').slice(5,16)}
 
 async function refreshAll(){
   loading.value=true;error.value=false
   try{
-    const[resRes,connRes,sysRes,dbRes,logRes]=await Promise.all([
+    const[resRes,connRes,sysRes,dbRes,riskRes,alertRes,auditRes]=await Promise.all([
       systemAPI.getResources().catch(()=>null),
       systemAPI.getConnections().catch(()=>null),
       systemAPI.getSystemStatus().catch(()=>null),
       systemAPI.getDatabaseStatus().catch(()=>null),
-      systemAPI.getSystemLogs({limit:10}).catch(()=>({logs:[]})),
+      riskAPI.getRiskMetrics().catch(()=>null),
+      riskAPI.getRiskAlerts().catch(()=>[]),
+      systemAPI.getSystemLogs({ page_size: 5 }).catch(()=>({data:[]})),
     ])
     resourceUsage.value=resRes;connectionStatus.value=connRes;systemStatus.value=sysRes;dbStatus.value=dbRes
-    recentLogs.value=(logRes as any)?.data||(logRes as any)?.logs||[]
+    riskMetrics.value=riskRes||{}
+    const alertsRaw=(alertRes as any)?.data||(alertRes as any)?.alerts||(Array.isArray(alertRes)?alertRes:[])
+    recentAlerts.value=alertsRaw.slice(0,3)
+    recentAudit.value=(auditRes as any)?.data||(auditRes as any)?.logs||[]
     const r: any = resRes || {}; const now = new Date()
     cpuhistory.value.push({time:`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`,cpu:r.cpu_percent??0,mem:r.memory_percent??0})
     if(cpuhistory.value.length>30)cpuhistory.value.shift()
@@ -291,7 +409,7 @@ onUnmounted(()=>{if(_timer)clearInterval(_timer);window.removeEventListener('res
 .hl-cval{color:var(--n-text-color-3);margin-left:auto}
 
 /* trend */
-.trend-chart{width:100%;height:170px}
+.trend-chart{width:100%;height:210px}
 
 /* kv */
 .kv-list{display:flex;flex-direction:column;gap:10px}
@@ -299,11 +417,37 @@ onUnmounted(()=>{if(_timer)clearInterval(_timer);window.removeEventListener('res
 .kv-key{font-size:12px;color:var(--n-text-color-3)}
 .kv-val{font-size:13px;font-weight:500;color:var(--n-text-color-1)}
 
-:deep(.log-lv){font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px}
-:deep(.log-lv-info){color:#3794ff;background:rgba(55,148,255,.12)}
-:deep(.log-lv-warning){color:#d7ba7d;background:rgba(215,186,125,.12)}
-:deep(.log-lv-error){color:#f44747;background:rgba(244,71,71,.12)}
-:deep(.log-lv-debug){color:#999;background:rgba(153,153,153,.12)}
+/* 风险监控 */
+.risk-summary{display:flex;flex-direction:column;gap:10px}
+.risk-badge-row{display:flex;gap:8px}
+.risk-metrics{display:flex;gap:16px;padding:6px 0;border-bottom:1px solid var(--n-border-color)}
+.risk-metric{display:flex;flex-direction:column;gap:2px;min-width:72px}
+.rm-k{font-size:11px;color:var(--n-text-color-3)}
+.rm-v{font-size:16px;font-weight:600;color:var(--n-text-color-1);font-variant-numeric:tabular-nums}
+.risk-alerts{display:flex;flex-direction:column;gap:6px}
+.risk-alert-item{display:flex;align-items:center;gap:8px;font-size:12px}
+.ra-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--n-text-color-2)}
+.ra-time{font-size:11px;color:var(--n-text-color-3);white-space:nowrap}
+
+/* 最近审计 */
+.audit-list{display:flex;flex-direction:column;gap:8px}
+.audit-item{display:flex;align-items:center;gap:8px;font-size:12px}
+.au-time{color:var(--n-text-color-3);white-space:nowrap;min-width:76px}
+.au-user{color:var(--n-text-color-2);min-width:56px;overflow:hidden;text-overflow:ellipsis}
+.au-res{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--n-text-color-3)}
+.au-status{font-size:11px;font-weight:600}
+.au-success{color:#67c23a}
+.au-failed{color:#f44747}
+.au-partial{color:#e6a23c}
+
+/* 快捷入口 */
+.quick-link-card{cursor:pointer;transition:all .2s var(--n-bezier)}
+.quick-link-card:hover{transform:translateY(-2px);box-shadow:var(--n-box-shadow-2)}
+.quick-link{display:flex;align-items:center;gap:12px;padding:6px 2px}
+.ql-icon{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:10px;flex-shrink:0}
+.ql-body{flex:1;min-width:0}
+.ql-name{font-size:14px;font-weight:600;color:var(--n-text-color-1)}
+.ql-desc{font-size:12px;color:var(--n-text-color-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .stagger-enter-active{transition:all .4s var(--n-bezier)}
 .stagger-enter-from{opacity:0;transform:translateY(24px)}

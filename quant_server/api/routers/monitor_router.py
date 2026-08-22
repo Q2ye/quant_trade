@@ -9,7 +9,7 @@
 import logging
 from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
@@ -26,6 +26,7 @@ from modules.monitor.handlers import (
     trigger_manual_alert,
     get_health_status,
     get_performance_stats,
+    get_strategy_health,
     check_monitor_module_health,
 )
 from modules.monitor.schemas import (
@@ -129,6 +130,30 @@ async def get_health_status_api(
 
 
 # ==================== 业务监控接口 ====================
+
+
+@router.get("/strategies/health")
+async def get_strategy_health_api(
+    strategy_id: str = Query(default="", description="策略ID，不传则检查全部运行中策略"),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """策略健康度检查（基建设计 §三）：healthy / warning / stop 分级 + 预警原因"""
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求策略健康检查")
+        return await get_strategy_health(
+            session=db_session,
+            user_id=current_user.get("id"),
+            strategy_id=strategy_id,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取策略健康状态失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取策略健康状态失败",
+        )
 
 
 @router.get("/business/metrics", response_model=BusinessMetricsResponse)

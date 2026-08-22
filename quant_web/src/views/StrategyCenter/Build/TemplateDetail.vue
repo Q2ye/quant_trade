@@ -175,44 +175,6 @@ const overrideParams = ref<Record<string, any>>({});
 
 // v3.0: 内置策略中文映射（class_name → 中文名+描述+参数标签）
 const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record<string, string> }> = {
-  MACrossStrategy: {
-    name: '双均线策略', desc: '短期均线上穿长期均线买入，下穿卖出。经典趋势跟踪。',
-    params: {
-      fast_period: '快线周期',
-      slow_period: '慢线周期',
-      volume_ma_period: '成交量均线周期',
-      min_volume: '最小成交量(万)',
-      position_ratio: '每次开仓比例'
-    }
-  },
-  MACDStrategy: {
-    name: 'MACD 策略', desc: '基于 MACD 金叉死叉，结合 DIF/DEA/柱状图判断趋势。',
-    params: {
-      fast_period: '快线周期',
-      slow_period: '慢线周期',
-      signal_period: '信号线周期',
-      position_ratio: '每次开仓比例'
-    }
-  },
-  FactorStrategy: {
-    name: '多因子策略', desc: '多因子模型选股，动量、价值、质量等因子综合打分。',
-    params: {
-      rebalance_freq: '调仓频率(天)',
-      top_n: '持仓数量',
-      momentum_weight: '动量因子权重',
-      value_weight: '价值因子权重',
-      quality_weight: '质量因子权重'
-    }
-  },
-  MeanReversionStrategy: {
-    name: '均值回归策略', desc: '基于均值回归原理，适合震荡市，偏离均值时反向操作。',
-    params: {
-      lookback_period: '回看周期',
-      entry_threshold: '入场阈值',
-      exit_threshold: '出场阈值',
-      position_ratio: '每次开仓比例'
-    }
-  },
   MLStrategy: {
     name: '机器学习策略', desc: '基于随机森林、XGBoost 等传统 ML 算法的交易策略。',
     params: {
@@ -291,25 +253,6 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
       stop_loss: '止损比例',
       rebalance_threshold: '再平衡浮盈阈值',
       regime_source: '行情判定来源',
-      verbose_logging: '详细日志',
-    }
-  },
-  MultiAssetRotationStrategy: {
-    name: '多资产ETF轮动',
-    desc: 'A股宽基+跨境+商品+债券 ETF轮动，对数线性回归动量×R²选最强ETF，全仓持有一只。',
-    params: {
-      etf_pool: 'ETF候选池',
-      momentum_days: '动量回归窗口(天)',
-      rsrs_window: 'RSRS计算窗口',
-      rsrs_lookback: 'RSRS Beta回溯天数',
-      rsrs_beta_window: 'RSRS Beta滚动窗口',
-      volume_check_days: '量异常检测周期(天)',
-      volume_threshold: '量异常阈值(倍)',
-      rebalance_frequency: '调仓频率(天)',
-      top_n: '持仓数量',
-      stop_loss: '止损比例',
-      intraday_stop_loss: '日内止损比例',
-      cooling_period: '止损冷却期(天)',
       verbose_logging: '详细日志',
     }
   },
@@ -437,15 +380,13 @@ const FLAT_PARAM_LABELS: Record<string, string> = {
 
 const builtinTypeLabel = (type: string) => {
   const m: Record<string, string> = {
-    technical: '趋势跟踪', alpha: 'Alpha', multi_factor: '多因子',
-    mean_reversion: '均值回归', ml: '机器学习', dl: '深度学习', rotation: '行业轮动',
+    technical: '趋势跟踪', alpha: 'Alpha', ml: '机器学习', dl: '深度学习', rotation: '行业轮动',
   };
   return m[type] || type || '未知';
 };
 const builtinTypeTag = (type: string) => {
   const m: Record<string, string> = {
-    technical: 'success', alpha: 'info', multi_factor: 'warning',
-    mean_reversion: 'info', ml: 'error', dl: 'error', rotation: 'warning',
+    technical: 'success', alpha: 'info', ml: 'error', dl: 'error', rotation: 'warning',
   };
   return m[type] || 'default';
 };

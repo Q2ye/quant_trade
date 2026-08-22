@@ -153,8 +153,9 @@
                   @update:value="(v: string) => loadBacktestResult(v as string)" />
               </template>
               <div class="metrics-row">
-                <div class="metric-item"><span class="metric-label">年化收益</span><span class="metric-value" :class="btSummary.annualReturn >= 0 ? 'text-up' : 'text-down'">{{ (btSummary.annualReturn * 100).toFixed(1) }}%</span></div>
-                <div class="metric-item"><span class="metric-label">基准收益</span><span class="metric-value" :class="benchmarkReturn >= 0 ? 'text-up' : 'text-down'">{{ (benchmarkReturn * 100).toFixed(1) }}%</span></div>
+                <div class="metric-item"><span class="metric-label">总收益</span><span class="metric-value" :class="btSummary.totalReturn >= 0 ? 'text-rise' : 'text-fall'">{{ (btSummary.totalReturn * 100).toFixed(1) }}%</span></div>
+                <div class="metric-item"><span class="metric-label">年化收益</span><span class="metric-value" :class="btSummary.annualReturn >= 0 ? 'text-rise' : 'text-fall'">{{ (btSummary.annualReturn * 100).toFixed(1) }}%</span></div>
+                <div class="metric-item"><span class="metric-label">基准收益</span><span class="metric-value" :class="benchmarkReturn >= 0 ? 'text-rise' : 'text-fall'">{{ (benchmarkReturn * 100).toFixed(1) }}%</span></div>
                 <div class="metric-item"><span class="metric-label">夏普比率</span><span class="metric-value">{{ btSummary.sharpeRatio.toFixed(2) }}</span></div>
                 <div class="metric-item"><span class="metric-label">最大回撤</span><span class="metric-value text-down">{{ (btSummary.maxDrawdown * 100).toFixed(1) }}%</span></div>
                 <div class="metric-item"><span class="metric-label">胜率</span><span class="metric-value">{{ (btSummary.winRate * 100).toFixed(1) }}%</span></div>
@@ -509,12 +510,12 @@ onBeforeUnmount(() => { clearPolling(); });
 }
 
 /* ---- 指标行 ---- */
-.metrics-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 12px; }
+.metrics-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 12px; }
 .metric-item {
   background: var(--color-bg-secondary, rgba(255,255,255,0.06));
-  border-radius: 6px; padding: 8px 6px; text-align: center;
+  border-radius: 6px; padding: 6px 4px; text-align: center;
   .metric-label { font-size: 10px; color: var(--color-text-tertiary); display: block; margin-bottom: 2px; }
-  .metric-value { font-size: 15px; font-weight: 700; color: var(--color-text-primary); }
+  .metric-value { font-size: 14px; font-weight: 700; color: var(--color-text-primary); }
 }
 
 /* ---- 图表工具栏 ---- */
@@ -527,6 +528,9 @@ onBeforeUnmount(() => { clearPolling(); });
 
 .text-up { color: #18a058 !important; }
 .text-down { color: #d03050 !important; }
+/* A股习惯：收益红涨绿跌 */
+.text-rise { color: #d03050 !important; }
+.text-fall { color: #18a058 !important; }
 .metric-footnote { margin: 2px 0 10px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6; }
 
 /* ---- 实盘运行时网格 ---- */

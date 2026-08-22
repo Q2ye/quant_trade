@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.market.services._latest_date_cache import get_latest_trade_date
+
 logger = logging.getLogger(__name__)
 
 
@@ -178,9 +180,8 @@ async def _timed(name: str, coro):
 
 
 async def _get_latest_date(session):
-    """预计算最新交易日，带缓存"""
-    row = await _first(session, "SELECT MAX(trade_date) AS d FROM stock_daily", {})
-    return row["d"] if row else None
+    """预计算最新交易日（进程内 TTL 缓存，避免压缩超表 MAX 全量扫描 ~3.4s）"""
+    return await get_latest_trade_date(session, "stock_daily")
 
 
 # 修复 2026-08（B12）：dashboard 概览结果缓存（60s），减少 8-session 并发查询频次

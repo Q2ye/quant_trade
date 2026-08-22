@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.market.services.market_temperature_service import percentile_rank
 from modules.market.services._swr_cache import SwrCache
+from modules.market.services._latest_date_cache import get_latest_trade_date
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +131,10 @@ async def _query_streak_up(session: AsyncSession, ld, start) -> list:
 # ==================== 主入口（SWR：过期返回旧值 + 后台重算） ====================
 
 async def _compute_breadth_leaders(session: AsyncSession) -> Dict[str, Any]:
-    latest = await _first(session, "SELECT MAX(trade_date) AS d FROM stock_daily", {})
-    if not latest or not latest.get("d"):
+    # 修复 2026-08（慢查询）：压缩超表 MAX(trade_date) 全量扫描 ~3.4s，改用 TTL 缓存
+    ld = await get_latest_trade_date(session, "stock_daily")
+    if not ld:
         return {"data_date": None, "new_highs": [], "new_lows": [], "streak_up": []}
-    ld = latest["d"]
     start = ld - timedelta(days=_HISTORY_DAYS)
 
     new_highs = await _query_new_highs(session, ld, start)
@@ -231,15 +232,15 @@ async def _compute_breadth_metrics(session: AsyncSession) -> Dict[str, Any]:
             "volatility": {"value_20d": 18.3, "percentile": 42.1},  # 沪深300 20日年化波动% + 750日分位
         }
     """
-    latest = await _first(session, "SELECT MAX(trade_date) AS d FROM stock_daily", {})
-    if not latest or not latest.get("d"):
+    # 修复 2026-08（慢查询）：压缩超表 MAX(trade_date) 全量扫描 ~3.4s，改用 TTL 缓存
+    ld = await get_latest_trade_date(session, "stock_daily")
+    if not ld:
         return {
             "data_date": None, "new_highs": None, "new_lows": None,
             "above_ma20_market": None, "above_ma60_market": None,
             "above_ma20_hs300": None, "above_ma60_hs300": None,
             "volatility": {"value_20d": None, "percentile": None},
         }
-    ld = latest["d"]
     start20 = ld - timedelta(days=45)
     start60 = ld - timedelta(days=100)
 

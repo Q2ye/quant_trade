@@ -548,7 +548,9 @@ class EventEngine(EngineBase):
 					priority = getattr(event, 'priority', PriorityLevel.NORMAL.value)
 				# 引擎内部事件和进度轮询事件降级为 DEBUG，仅关键业务事件保持 INFO
 				_et = str(event_type)
-				_log = logger.debug if _et.startswith('engine.') or _et.endswith('.progress') else logger.info
+				# 高频指标/引擎内部/进度事件降级为 DEBUG（risk.metrics.updated 每 3 秒一次，避免刷屏）
+				_is_high_freq = _et.startswith('engine.') or _et.endswith('.progress') or _et == 'risk.metrics.updated'
+				_log = logger.debug if _is_high_freq else logger.info
 				_log("事件入队: %s | 来源: %s | 优先级: %s", event_type, source, priority)
 			except AttributeError as e:
 				logger.warning(f"无法获取事件属性: {e}, 使用默认值")
