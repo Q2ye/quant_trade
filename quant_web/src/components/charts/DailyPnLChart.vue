@@ -6,8 +6,8 @@ import VChart from "vue-echarts";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { BarChart } from "echarts/charts";
-import { TooltipComponent, GridComponent } from "echarts/components";
-use([CanvasRenderer, BarChart, TooltipComponent, GridComponent]);
+import { TooltipComponent, GridComponent, DataZoomComponent } from "echarts/components";
+use([CanvasRenderer, BarChart, TooltipComponent, GridComponent, DataZoomComponent]);
 
 export interface DailyPnLPoint {
   trade_date: string;
@@ -55,6 +55,10 @@ const chartOption = computed(() => {
         return `${props.data[idx]?.trade_date ?? ""}<br/>盈亏: ${val > 0 ? "+" : ""}${(val / 1e4).toFixed(2)}万<br/>收益率: ${(ret * 100).toFixed(2)}%`;
       },
     },
+    // 2026-08: 缩放 + 最小可见范围限制
+    dataZoom: [
+      { type: "inside" as const, xAxisIndex: 0, start: 0, end: 100, minSpan: 5 },
+    ],
     series: [
       {
         type: "bar" as const,

@@ -37,6 +37,7 @@ class OrderCreateRequest(BaseModel):
 	price: float = Field(..., description="价格")
 	quantity: int = Field(..., description="数量")
 	order_type: str = Field(default="limit", description="订单类型: limit/market")
+	account_id: Optional[str] = Field(default=None, description="目标账户ID（指定则用该账户，否则用户默认账户）")
 
 
 class OrderResponse(BaseModel):

@@ -155,6 +155,11 @@ class PerformanceService:
                 "total_return": round(total_return, 6),
                 "max_drawdown": round(max_dd, 6),
                 "sharpe_ratio": round(sharpe, 6) if sharpe is not None else None,
+                # 2026-08 修复（A30 补完）：total_assets 必须落库——
+                # 此前 perf dict 不带该字段导致 total_assets 列恒 NULL，
+                # 次日绩效 prev.total_assets 恒缺 → daily_return 每次相对 run_initial 重算
+                # （与 total_return 恒相等），日收益曲线失真。
+                "total_assets": round(total_assets, 2),
                 "created_at": datetime.now(),
             }
         except Exception as e:

@@ -73,8 +73,7 @@ const performanceMetrics = reactive({
   calmarRatio: 0,
   maxDrawdown: 0,
   volatility: 0,
-  winRate: 0,
-  profitFactor: 0,
+  var95: 0,
   totalAsset: 0,
   dailyPnl: 0,
   dailyReturn: 0,
@@ -82,16 +81,22 @@ const performanceMetrics = reactive({
 });
 
 // ---- Metric card display data ----
-const metricCards = computed(() => [
+// 核心 6 卡（一行）：收益 + 风险调整收益
+const coreMetricCards = computed(() => [
   { label: "累计收益", value: fmtPct(performanceMetrics.totalReturn), color: performanceMetrics.totalReturn >= 0 ? "text-up" : "text-down" },
   { label: "年化收益", value: fmtPct(performanceMetrics.annualizedReturn), color: performanceMetrics.annualizedReturn >= 0 ? "text-up" : "text-down" },
   { label: "夏普比率", value: performanceMetrics.sharpeRatio.toFixed(2), color: "" },
   { label: "最大回撤", value: fmtPct(performanceMetrics.maxDrawdown), color: "text-down" },
   { label: "Sortino比率", value: performanceMetrics.sortinoRatio.toFixed(2), color: "" },
   { label: "Calmar比率", value: performanceMetrics.calmarRatio.toFixed(2), color: "" },
+]);
+// 辅助 3 卡（第二行）：波动率 / 成交笔数 / VaR
+// 说明：账户绩效不含胜率/利润因子（trades 表无 pnl 列，盈亏由持仓/结算层计算），
+// 以可准确统计的「区间成交笔数」「95% VaR」替代，避免展示恒 0 的误导数据。
+const extraMetricCards = computed(() => [
   { label: "年化波动率", value: fmtPct(performanceMetrics.volatility), color: "" },
-  { label: "胜率", value: fmtPct(performanceMetrics.winRate), color: "" },
-  { label: "利润因子", value: performanceMetrics.profitFactor.toFixed(2), color: "" },
+  { label: "区间成交笔数", value: performanceMetrics.totalTrades > 0 ? String(performanceMetrics.totalTrades) : "--", color: "" },
+  { label: "95% VaR", value: fmtPct(performanceMetrics.var95), color: performanceMetrics.var95 < 0 ? "text-down" : "" },
 ]);
 
 const fmtPct = (v: number) => {
@@ -184,7 +189,10 @@ const equityDrawdownOption = computed(() => {
         },
       },
     ],
-    dataZoom: dates.length > 60 ? [{ type: "inside" }, { type: "slider", bottom: 20 }] : undefined,
+    dataZoom: dates.length > 60 ? [
+      { type: "inside", minSpan: 5 },
+      { type: "slider", bottom: 20, minSpan: 5 },
+    ] : undefined,
   };
 });
 
@@ -222,7 +230,8 @@ const heatmapOption = computed(() => {
     visualMap: {
       min: -maxAbs, max: maxAbs, calculable: true,
       orient: "horizontal", left: "center", bottom: "0%",
-      inRange: { color: ["#d03050", "#f6a6a0", "#fafafa", "#a3d9b1", "#18a058"] },
+      // A 股红涨绿跌：左端（负收益）绿、右端（正收益）红
+      inRange: { color: ["#18a058", "#a3d9b1", "#fafafa", "#f6a6a0", "#d03050"] },
       textStyle: { color: "#a0a0a0" },
     },
     series: [{
@@ -285,16 +294,16 @@ const positionColumns: DataTableColumns<Position> = [
     title: "盈亏", key: "pnl", width: 110,
     render: (row) => {
       const v = row.pnl || 0;
-      const c = v >= 0 ? "var(--n-success-color)" : "var(--n-error-color)";
-      return h("span", { style: { color: c } }, `${v >= 0 ? "+" : ""}¥${v.toFixed(2)}`);
+      const c = v >= 0 ? "text-up" : "text-down";
+      return h("span", { class: c }, `${v >= 0 ? "+" : ""}¥${v.toFixed(2)}`);
     },
   },
   {
     title: "盈亏率", key: "pnl_ratio", width: 90,
     render: (row) => {
       const v = row.pnl_ratio || 0;
-      const c = v >= 0 ? "var(--n-success-color)" : "var(--n-error-color)";
-      return h("span", { style: { color: c } }, `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`);
+      const c = v >= 0 ? "text-up" : "text-down";
+      return h("span", { class: c }, `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`);
     },
   },
   { title: "权重", key: "weight", width: 80, render: (row) => `${((row.weight || 0) * 100).toFixed(1)}%` },
@@ -321,8 +330,7 @@ const loadPerformanceData = async () => {
       performanceMetrics.calmarRatio = data.calmar_ratio ?? 0;
       performanceMetrics.maxDrawdown = data.max_drawdown ?? 0;
       performanceMetrics.volatility = data.volatility ?? 0;
-      performanceMetrics.winRate = data.win_rate ?? 0;
-      performanceMetrics.profitFactor = data.profit_factor ?? 0;
+      performanceMetrics.var95 = data.var_95 ?? 0;
       performanceMetrics.totalTrades = data.total_trades ?? 0;
       performanceMetrics.dailyPnl = data.daily_pnl ?? 0;
       performanceMetrics.dailyReturn = data.daily_return ?? 0;
@@ -412,7 +420,12 @@ onMounted(async () => {
       <!-- Loading -->
       <template v-if="loading">
         <div class="metric-cards">
-          <n-card v-for="i in 9" :key="i" :class="tokens.surface.card" size="small">
+          <n-card v-for="i in 6" :key="i" :class="tokens.surface.card" size="small">
+            <n-skeleton text :repeat="2" />
+          </n-card>
+        </div>
+        <div class="metric-cards metric-cards-secondary">
+          <n-card v-for="i in 3" :key="i" :class="tokens.surface.card" size="small">
             <n-skeleton text :repeat="2" />
           </n-card>
         </div>
@@ -470,16 +483,22 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Metric cards: 3x3 grid -->
+        <!-- Metric cards: 核心 6 卡一行 + 辅助 3 卡一行 -->
         <div class="metric-cards">
-          <div v-for="(card, idx) in metricCards" :key="idx" class="metric-card card-surface">
+          <div v-for="(card, idx) in coreMetricCards" :key="idx" class="metric-card card-surface">
+            <span class="mc-label">{{ card.label }}</span>
+            <span class="mc-value" :class="card.color">{{ card.value }}</span>
+          </div>
+        </div>
+        <div class="metric-cards metric-cards-secondary">
+          <div v-for="(card, idx) in extraMetricCards" :key="idx" class="metric-card card-surface">
             <span class="mc-label">{{ card.label }}</span>
             <span class="mc-value" :class="card.color">{{ card.value }}</span>
           </div>
         </div>
         <!-- 口径标注（2026-08 C4：绩效口径统一） -->
         <div class="metric-footnote">
-          口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+          口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）；95% VaR 为日频收益 5% 分位（负值表示单日潜在亏损比例）。账户层不含胜率/利润因子（成交记录无逐笔盈亏，盈亏由持仓/结算层计算），以区间成交笔数与 VaR 替代。
         </div>
 
         <!-- Equity + Drawdown dual-axis chart -->
@@ -595,11 +614,15 @@ onMounted(async () => {
   color: var(--color-text-primary);
 }
 
-/* Metric cards: 3x3 grid */
+/* Metric cards: 核心 6 卡一行 + 辅助 3 卡一行 */
 .metric-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 10px;
+}
+.metric-cards-secondary {
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 10px;
 }
 .metric-card {
   padding: 14px 18px;
@@ -627,6 +650,7 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .metric-cards { grid-template-columns: repeat(2, 1fr); }
+  .metric-cards-secondary { grid-template-columns: repeat(2, 1fr); }
   .dual-row { flex-direction: column; }
 }
 </style>

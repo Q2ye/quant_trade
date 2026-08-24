@@ -687,6 +687,18 @@ class BacktestService:
 				_warmup_end = config.get("start_date") and datetime.strptime(config["start_date"], "%Y-%m-%d").date()
 				await self.strategy_manager.start_strategy(sid, context, warmup_end_date=_warmup_end)
 
+				# 2026-08 修复：回测市场数据预加载 — 对声明 BACKTEST_PRELOAD_STATE 的策略
+				# （恐慌抄底/微盘等纯数据预加载型）调用 load_live_state，注入恐慌指数/指数/市值等
+				# 回测所需数据（否则状态机第一道门被空映射拦截 → 全程 0 信号）。
+				_sat_obj = self.strategy_manager.get_strategy_object(sid)
+				if _sat_obj and getattr(_sat_obj, "BACKTEST_PRELOAD_STATE", False):
+					_bt_start = config.get("start_date")
+					await _sat_obj.load_live_state(self.db, strategy_id=str(sid), start_date=_bt_start)
+					logger.info(
+						f"回测 {task_id}: {_sat_obj.name} 市场数据预加载完成 "
+						f"(回测窗口 start_date={_bt_start})"
+					)
+
 			# ---- Step 5: 解析股票池 ----
 			symbols = config.get("symbols", [])
 			if not symbols:
@@ -1143,7 +1155,9 @@ class BacktestService:
 				raise ValueError("无权限访问该回测任务")
 			# ---- 2. 返回结果（completed=绩效, failed=错误信息, 其他=进行中状态） ----
 			if task.status == "completed":
-				return task.result or {}
+				result = task.result or {}
+				# 基建设计 §二：旧任务 result 无增强指标 → 用 result 内既有数据补算（无需重跑回测）
+				return self._enrich_extra_metrics(result)
 			if task.status == "failed":
 				return task.result or {"error": "回测执行失败，未获取到错误详情"}
 			# 任务进行中（running/pending/cancelled 等），正常返回状态信息，不抛异常
@@ -1155,6 +1169,35 @@ class BacktestService:
 		except Exception as e:
 			logger.error(f"获取回测结果失败: {str(e)}")
 			raise
+
+	def _enrich_extra_metrics(self, result: Dict[str, Any]) -> Dict[str, Any]:
+		"""基建设计 §二：旧任务 result 补算 5 个增强指标（数据在 result 内，无需重跑回测）。
+
+		新回测（BacktestResult.to_dict() 已含新字段）直接返回；旧任务缺字段时，
+		复用 backtest_engine 的纯计算函数从 equity_curve / drawdown_curve /
+		monthly_returns / trades 计算填充。
+		"""
+		if not isinstance(result, dict) or "calmar_ratio" in result:
+			return result
+		try:
+			from modules.backtest.engines.backtest_engine import (
+				_calc_avg_holding_days,
+				_calc_max_consecutive_losses,
+				_calc_max_drawdown_period,
+				_calc_yearly_returns,
+			)
+			out = dict(result)
+			annual = float(result.get("annual_return", 0) or 0)
+			mdd = abs(float(result.get("max_drawdown", 0) or 0))
+			out["calmar_ratio"] = round(annual / mdd, 4) if mdd >= 1e-6 else 0.0
+			out["yearly_returns"] = _calc_yearly_returns(result.get("equity_curve") or [])
+			out["max_drawdown_period"] = _calc_max_drawdown_period(result.get("drawdown_curve") or [])
+			out["max_consecutive_losses"] = _calc_max_consecutive_losses(result.get("monthly_returns") or [])
+			out["avg_holding_days"] = _calc_avg_holding_days(result.get("trades") or [])
+			return out
+		except Exception as e:
+			logger.warning(f"旧任务 result 补算增强指标失败（返回原始结果）: {e}")
+			return result
 
 	# =========================================================================
 	# 回测执行核心
@@ -1378,6 +1421,18 @@ class BacktestService:
 			)
 			_warmup_end = config.get('start_date') and datetime.strptime(config['start_date'], "%Y-%m-%d").date()
 			await self.strategy_manager.start_strategy(task.strategy_id, context, warmup_end_date=_warmup_end)
+
+			# 2026-08 修复：回测市场数据预加载 — 对声明 BACKTEST_PRELOAD_STATE 的策略
+			# （恐慌抄底/微盘等纯数据预加载型）调用 load_live_state，注入恐慌指数/指数/市值等
+			# 回测所需数据（否则状态机第一道门被空映射拦截 → 全程 0 信号）。
+			_sat_obj = self.strategy_manager.get_strategy_object(task.strategy_id)
+			if _sat_obj and getattr(_sat_obj, "BACKTEST_PRELOAD_STATE", False):
+				_bt_start = config.get('start_date')
+				await _sat_obj.load_live_state(self.db, strategy_id=str(task.strategy_id), start_date=_bt_start)
+				logger.info(
+					f"回测 {task_id}: {_sat_obj.name} 市场数据预加载完成 "
+					f"(回测窗口 start_date={_bt_start})"
+				)
 
 			# =================================================================
 			# Step 7: 解析股票池（三级优先级降级策略）

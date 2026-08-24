@@ -1,13 +1,20 @@
-<!-- TradeRecordChart.vue — 成交记录图：收盘价折线 + 买卖标记 -->
+<!-- TradeRecordChart.vue — 成交记录图（lightweight-charts）
+     价格参考线（每日均价）+ 买卖标记（SignalMarkerPrimitive）+ 悬停明细 -->
 <script setup lang="ts">
-import { computed } from "vue";
+import { watch, onMounted, onBeforeUnmount, nextTick, computed, ref } from "vue";
 import { NSkeleton, NEmpty, NResult, NButton } from "naive-ui";
-import VChart from "vue-echarts";
-import { use } from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
-import { LineChart, ScatterChart } from "echarts/charts";
-import { TooltipComponent, GridComponent, LegendComponent } from "echarts/components";
-use([CanvasRenderer, LineChart, ScatterChart, TooltipComponent, GridComponent, LegendComponent]);
+import {
+  LineSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type ISeriesPrimitive,
+  type LineData,
+  type Time,
+} from "lightweight-charts";
+import { useChartLifecycle } from "@/composables/useChartLifecycle";
+import { usePrimitiveManager } from "@/composables/usePrimitiveManager";
+import { SignalMarkerPrimitive } from "./primitives/SignalMarker";
+import type { SignalMarkerData } from "./primitives/types";
 
 export interface TradeRecord {
   id: string;
@@ -21,92 +28,172 @@ export interface TradeRecord {
 const props = withDefaults(
   defineProps<{
     trades: TradeRecord[];
-    closePrices?: Array<{ date: string; price: number }>;
     height?: number;
     loading?: boolean;
     error?: boolean;
     title?: string;
     symbol: string;
   }>(),
-  { trades: () => [], closePrices: () => [], height: 300, loading: false, error: false, title: "成交记录", symbol: "" },
+  { trades: () => [], height: 300, loading: false, error: false, title: "成交记录", symbol: "" },
 );
 
 const emit = defineEmits<{ retry: [] }>();
 const hasData = computed(() => props.trades.length > 0);
 
-const chartOption = computed(() => {
-  const trades = props.trades;
+const {
+  chartContainer,
+  createChartInstance,
+  destroyChart,
+  handleResize,
+  bindGlobalEvents,
+  unbindGlobalEvents,
+  getChart,
+} = useChartLifecycle({ height: props.height, timeScale: { timeVisible: false } });
 
-  // 从成交记录中提取日期→均价作为参考价格线
-  const priceByDate = new Map<string, number[]>();
-  trades.forEach((t) => {
+const primitiveManager = usePrimitiveManager();
+let chart: IChartApi | null = null;
+let priceSeries: ISeriesApi<"Line", Time> | null = null;
+// 悬停明细（2026-08：显示当日成交）
+const tradeTooltip = ref<{ x: number; y: number; date: string; lines: string[]; visible: boolean } | null>(null);
+let _tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+let _dayTradesCache = new Map<string, TradeRecord[]>();
+
+function toTimeEpoch(dateStr: string): Time {
+  const s = (dateStr?.slice(0, 10) || dateStr);
+  return (Math.floor(new Date(s + "T00:00:00Z").getTime() / 1000)) as Time;
+}
+
+/** 每日均价参考线 + 当日成交明细缓存 + 买卖标记 */
+function buildData() {
+  const byDay = new Map<string, TradeRecord[]>();
+  props.trades.forEach((t) => {
     const d = t.date?.slice(0, 10) || "";
-    if (!priceByDate.has(d)) priceByDate.set(d, []);
-    priceByDate.get(d)!.push(t.price);
+    if (!d) return;
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d)!.push(t);
   });
-  const allDates = [...priceByDate.keys()].sort();
-  const lineData = allDates.map((d) => {
-    const prices = priceByDate.get(d)!;
-    return prices.reduce((a, b) => a + b, 0) / prices.length;
+  const dates = [...byDay.keys()].sort();
+  _dayTradesCache = byDay;
+
+  const lineData: LineData[] = dates.map((d) => {
+    const trades = byDay.get(d)!;
+    const avg = trades.reduce((a, t) => a + t.price, 0) / trades.length;
+    return { time: toTimeEpoch(d), value: Number(avg.toFixed(4)) };
   });
 
-  const buyTrades = trades.filter((t) => t.direction === "buy");
-  const sellTrades = trades.filter((t) => t.direction === "sell");
+  // 买卖标记（2026-08 修复：轻量图标记替代 echarts 散点，buy 信息明确展示）
+  const markers: ISeriesPrimitive<Time>[] = props.trades.map((t, i) => {
+    const d = t.date?.slice(0, 10) || "";
+    const day = byDay.get(d);
+    const refPrice = day ? day.reduce((a, x) => a + x.price, 0) / day.length : t.price;
+    const isBuy = t.direction === "buy";
+    const data: SignalMarkerData = {
+      id: `tr-marker-${i}`,
+      type: "signalMarker",
+      time: toTimeEpoch(d) as Time,
+      price: refPrice,
+      direction: isBuy ? "buy" : "sell",
+      shape: isBuy ? "arrowUp" : "arrowDown",
+      color: isBuy ? "#ef5350" : "#26a69a",
+      text: `${isBuy ? "买" : "卖"} ${t.symbol || ""} x${t.quantity}`,
+    };
+    return new SignalMarkerPrimitive(data);
+  });
 
-  const buyCoords = buyTrades.map((t) => {
-    const idx = allDates.indexOf(t.date?.slice(0, 10));
-    return idx >= 0 ? [idx, t.price] : null;
-  }).filter(Boolean) as [number, number][];
+  return { lineData, markers };
+}
 
-  const sellCoords = sellTrades.map((t) => {
-    const idx = allDates.indexOf(t.date?.slice(0, 10));
-    return idx >= 0 ? [idx, t.price] : null;
-  }).filter(Boolean) as [number, number][];
+function renderChart() {
+  const el = chartContainer.value;
+  if (!el) return;
+  const w = el.clientWidth;
+  if (!w || w <= 0 || !props.trades.length) return;
 
-  const maxInterval = Math.floor(allDates.length / 6);
+  const isNew = !chart;
+  if (isNew) {
+    // 时间轴配置经 useChartLifecycle options 传入（createChartInstance 不接受参数）
+    chart = createChartInstance();
+    if (!chart) return;
 
-  return {
-    grid: { top: 25, right: 10, bottom: 25, left: 55 },
-    legend: { top: 2, textStyle: { fontSize: 10, color: "#a0a0a0" }, data: ["收盘价", "买入", "卖出"] },
-    xAxis: {
-      type: "category" as const, data: allDates,
-      axisLabel: { fontSize: 9, interval: maxInterval > 0 ? maxInterval : 1 },
-    },
-    yAxis: {
-      type: "value" as const,
-      axisLabel: { fontSize: 10 },
-      splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
-    },
-    tooltip: {
-      trigger: "axis" as const,
-      formatter: (params: any) => {
-        const items = Array.isArray(params) ? params : [params];
-        return items.map((p: any) => {
-          if (p.seriesName === "收盘价") return `${allDates[p.dataIndex]}<br/>均价: ${p.value?.toFixed(2) ?? "-"}`;
-          if (p.seriesName === "买入" || p.seriesName === "卖出") return `${p.seriesName}: ${p.value?.[1]?.toFixed?.(2) ?? "-"}`;
-          return "";
-        }).join("<br/>");
-      },
-    },
-    series: [
-      {
-        name: "收盘价", type: "line" as const, data: lineData,
-        connectNulls: true, symbol: "none",
-        lineStyle: { color: "#7C3AED", width: 1.5 },
-      },
-      {
-        name: "买入", type: "scatter" as const, data: buyCoords,
-        symbolSize: 10, itemStyle: { color: "#ef5350" },
-        symbol: "triangle",
-      },
-      {
-        name: "卖出", type: "scatter" as const, data: sellCoords,
-        symbolSize: 10, itemStyle: { color: "#26a69a" },
-        symbol: "triangle",
-        symbolRotate: 180,
-      },
-    ],
-  };
+    priceSeries = chart.addSeries(LineSeries, {
+      color: "#7C3AED",
+      lineWidth: 2 as const,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 3,
+      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+    }) as ISeriesApi<"Line", Time>;
+
+    primitiveManager.bind(priceSeries, () => {
+      if (chart) {
+        const r = chart.timeScale().getVisibleLogicalRange();
+        if (r) chart.timeScale().setVisibleLogicalRange(r);
+      }
+    });
+
+    // 悬停明细：显示当日全部成交（买入信息完整展示）
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || param.point === undefined) {
+        tradeTooltip.value = null;
+        return;
+      }
+      const dateStr = new Date((param.time as number) * 1000).toISOString().slice(0, 10);
+      const dayTrades = _dayTradesCache.get(dateStr);
+      if (dayTrades && dayTrades.length > 0) {
+        const lines = dayTrades.map((t) =>
+          `${t.direction === "buy" ? "买入" : "卖出"} ${t.symbol || ""} ${t.quantity}股 @${t.price.toFixed(2)}`,
+        );
+        tradeTooltip.value = { x: param.point.x, y: param.point.y, date: dateStr, lines, visible: true };
+        if (_tooltipTimer) clearTimeout(_tooltipTimer);
+        _tooltipTimer = setTimeout(() => { tradeTooltip.value = null; }, 3000);
+      }
+    });
+  }
+
+  const { lineData, markers } = buildData();
+  priceSeries!.setData(lineData);
+  const items = markers.map((m) => {
+    const dataId = (m as any).getData?.()?.id || (m as any)._data?.id;
+    return { id: dataId || `tr-p-${Math.random().toString(36).slice(2, 8)}`, primitive: m };
+  });
+  primitiveManager.syncPrimitives(items);
+
+  if (lineData.length > 0) {
+    chart!.timeScale().setVisibleRange({ from: lineData[0].time, to: lineData[lineData.length - 1].time });
+  }
+}
+
+watch(
+  () => props.trades,
+  async (val) => {
+    if (!val?.length) {
+      primitiveManager.detachAll();
+      destroyChart();
+      chart = null;
+      priceSeries = null;
+      return;
+    }
+    await nextTick();
+    renderChart();
+  },
+  { deep: true, immediate: true },
+);
+
+onMounted(() => bindGlobalEvents());
+
+onBeforeUnmount(() => {
+  primitiveManager.dispose();
+  if (_tooltipTimer) clearTimeout(_tooltipTimer);
+  destroyChart();
+  chart = null;
+  priceSeries = null;
+  unbindGlobalEvents();
+});
+
+defineExpose({
+  resize() { handleResize(); },
+  getChart,
 });
 </script>
 
@@ -118,11 +205,35 @@ const chartOption = computed(() => {
       <template #footer><n-button type="primary" size="small" @click="emit('retry')">重试</n-button></template>
     </n-result>
     <n-empty v-else-if="!hasData" description="暂无成交记录" style="padding: 30px" />
-    <v-chart v-else :option="chartOption" autoresize :style="{ height: height + 'px', width: '100%' }" />
+    <div
+      v-show="hasData && !loading && !error"
+      ref="chartContainer"
+      class="trade-chart"
+      :style="{ height: height + 'px' }"
+    />
+    <!-- 悬停明细 -->
+    <div
+      v-if="tradeTooltip?.visible"
+      class="trade-tooltip"
+      :style="{ left: tradeTooltip.x + 10 + 'px', top: tradeTooltip.y + 8 + 'px' }"
+    >
+      <div class="tt-date">{{ tradeTooltip.date }}</div>
+      <div v-for="(ln, i) in tradeTooltip.lines" :key="i" class="tt-line">{{ ln }}</div>
+    </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
 .trade-record-container { width: 100%; position: relative; zoom: 1.25; }
 .chart-title-bar h5 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.trade-chart { width: 100%; }
+.trade-tooltip {
+  position: absolute; z-index: 10; pointer-events: none;
+  background: var(--color-bg-card, rgba(18, 24, 40, 0.95));
+  border: 1px solid var(--color-primary, #448aff); border-radius: 6px;
+  padding: 6px 10px; font-size: 11px; line-height: 1.7; white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+.tt-date { font-weight: 600; color: var(--color-primary, #448aff); margin-bottom: 3px; font-size: 12px; }
+.tt-line { color: var(--color-text-secondary, #8898b8); font-variant-numeric: tabular-nums; }
 </style>

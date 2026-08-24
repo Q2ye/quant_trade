@@ -227,6 +227,11 @@ async def initialize (
 						DataType.ETF_DAILY, DataType.FUND_ADJ_FACTOR,
 						DataType.INDEX_DAILY, DataType.INDEX_DAILYBASIC,
 						DataType.DAILY_LIMIT, DataType.SUSPEND,
+						# 2026-08 修复（Fix3）：补齐此前未纳入日终的类型。
+						# moneyflow 曾停更 08-17、stock_hsgt 停更 06-25（不在日终列表 → 无自愈）。
+						# moneyflow 逐股约 11min/日；hsgt/hsgt_flow/sw_daily 均为轻量全量。
+						DataType.MONEYFLOW, DataType.STOCK_HSGT,
+						DataType.MONEYFLOW_HSGT, DataType.INDEX_SW_DAILY,
 					)
 					import asyncio as _asyncio
 					_sem = _asyncio.Semaphore(3)
@@ -253,6 +258,42 @@ async def initialize (
 				if not sync_ok:
 					logger.warning("日终数据同步部分失败，仍尝试驱动策略")
 
+			async def _task_coverage_validate(today):
+				"""覆盖度校验（2026-08 Fix7）：以 stock_daily 为日期基准，检查关键日频表
+				近 60 日的股票覆盖；发现覆盖不足股票则 WARNING（纯可观测，不阻断策略驱动）。
+
+				背景：max(trade_date) 无法发现内部空洞（两端有数据、中间缺失），
+				唯有与完整日线基准对比覆盖度才能发现。此前 stock_daily_basic 4 年
+				深市主板空洞即因此漏检。
+				"""
+				try:
+					from shared.database.session import get_session_manager
+					from sqlalchemy import text as _text
+					from datetime import timedelta as _td
+					sm = get_session_manager()
+					_ws = today - _td(days=60)
+					# moneyflow 排除北交所：Tushare 资金流向接口不含 920xxx.BJ（数据源限制）
+					_bj_exclude = {"stock_daily_basic": "", "stock_moneyflow": " AND s.ts_code NOT LIKE '%.BJ'"}
+					async with sm.get_session() as _s:
+						for _tbl in ("stock_daily_basic", "stock_moneyflow"):
+							_r = await _s.execute(_text(
+								"SELECT s.ts_code FROM stock_daily s "
+								"LEFT JOIN {t} x ON x.ts_code = s.ts_code AND x.trade_date = s.trade_date "
+								"WHERE s.trade_date >= :ws {bj} GROUP BY s.ts_code "
+								"HAVING COUNT(DISTINCT x.trade_date) < COUNT(DISTINCT s.trade_date) * 0.9 "
+								"AND COUNT(DISTINCT s.trade_date) - COUNT(DISTINCT x.trade_date) >= 20".format(
+									t=_tbl, bj=_bj_exclude[_tbl])),
+								{"ws": _ws})
+							_n = len(_r.fetchall())
+							if _n > 0:
+								logger.warning(
+									"覆盖度校验: %s 近60日 %d 只股票覆盖不足"
+									"（建议 scripts/backfill_coverage_gaps.py 回填）", _tbl, _n)
+							else:
+								logger.info("覆盖度校验: %s 近60日覆盖正常", _tbl)
+				except Exception as _ce:
+					logger.warning("覆盖度校验异常（非致命）: %s", _ce)
+
 			async def _task_market_state(today):
 				try:
 					from modules.data.services.market_state_classifier import (
@@ -273,6 +314,7 @@ async def initialize (
 					logger.warning("日终 ETF 因子计算失败（非致命）: %s", factor_err)
 
 			await main_engine.register_daily_task("sync_daily", _task_sync_daily, phase="pre_gate", order=10)
+			await main_engine.register_daily_task("coverage_validate", _task_coverage_validate, phase="pre_gate", order=15)
 			await main_engine.register_daily_task("market_state_update", _task_market_state, phase="pre_gate", order=20)
 			await main_engine.register_daily_task("etf_factor", _task_etf_factor, phase="pre_gate", order=30)
 		return success

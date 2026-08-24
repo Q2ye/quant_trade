@@ -133,8 +133,6 @@
 
     <div class="user-section">
       <n-dropdown
-        :show="userMenuVisible"
-        :on-update:show="(v) => userMenuVisible = v"
         placement="bottom-end"
         :options="userMenuOptions"
         @select="handleCommand"
@@ -194,7 +192,8 @@ export default defineComponent({
     });
 
     // 用户菜单可见性
-    const userMenuVisible = ref(false);
+    // 2026-08: 移除受控 :show（Naive UI Dropdown 受控会触发 Binder slot 渲染外调用警告）
+    // 菜单由组件内部管理可见性，选中/外部点击自动关闭
 
     // 信号统计
     const signalStats = ref({
@@ -332,7 +331,6 @@ export default defineComponent({
     });
 
     const handleCommand = (key) => {
-      userMenuVisible.value = false;
       if (key === "logout") {
         router.push("/login");
       } else if (key === "profile") {
@@ -348,7 +346,6 @@ export default defineComponent({
       orderStats,
       riskLevel,
       userMenuOptions,
-      userMenuVisible,
       handleCommand,
       getHealthText,
       getRiskDescription,

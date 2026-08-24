@@ -239,6 +239,12 @@ export default defineComponent({
         icon: () =>
           h(NIcon, null, { default: () => h(SmartIcon, { name: "Ban" }) }),
       },
+      {
+        label: "健康与报警",
+        key: "risk-strategy-health",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Pulse" }) }),
+      },
     ];
 
     /** 系统管理菜单 — 4 项 */
@@ -287,6 +293,7 @@ export default defineComponent({
       blacklist: "/risk/blacklist",
       "account-performance": "/performance/account",
       "performance-hub": "/performance",
+      "risk-strategy-health": "/risk/strategy-health-alerts",
       "system-dashboard": "/system/dashboard",
       users: "/system/users",
       logs: "/system/logs",

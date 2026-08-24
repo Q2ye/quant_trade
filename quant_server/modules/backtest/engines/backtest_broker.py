@@ -728,6 +728,18 @@ class BacktestBroker(EngineBase):
         """
         fill_amount = fill_price * order.quantity
 
+        # ---- 2026-08 修复：卖出前校验实际持仓 ----
+        # 策略在信号层记录持仓（发买入信号即记 _holdings），但 broker 撮合可能拒单
+        # （如涨停买不进/资金不足）→ broker 实际无持仓。此后策略发卖出信号 → 无持仓可卖
+        # 原逻辑在 _update_position 抛 ValueError 致整个回测崩溃。改为订单作废：
+        # 不结算现金/不更新持仓/不记录成交，与 LONG 资金不足作废逻辑一致。
+        if order.direction == "SHORT" and order.ts_code not in self.positions:
+            logger.warning(
+                f"[{order.ts_code}] 无持仓可卖，卖出订单作废（策略信号与实际持仓不一致）"
+            )
+            order.status = "cancelled"
+            return None
+
         # ---- 计算交易费用 ----
         commission = max(
             fill_amount * self.config.commission_rate,

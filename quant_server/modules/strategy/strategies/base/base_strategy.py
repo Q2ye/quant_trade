@@ -87,6 +87,12 @@ class BaseStrategy(ABC):
 		signals: 产生的信号列表
 	"""
 
+	# 回测预加载标记（2026-08 阶段 4b/4c）：纯「市场数据预加载」型策略（如恐慌抄底/
+	# 微盘，load_live_state 不恢复实盘持仓）设为 True，回测服务据此在 start_strategy 后
+	# 调用 load_live_state 注入恐慌指数/指数/市值等数据。默认 False：避免误调主策略
+	# （ETF底部/高波动）的 load_live_state —— 它们会从 positions 表恢复实盘持仓，污染回测。
+	BACKTEST_PRELOAD_STATE = False
+
 	def __init__ (
 			self,
 			name: str,

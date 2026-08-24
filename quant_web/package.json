@@ -52,6 +52,9 @@
       "prettier --write"
     ]
   },
+  "overrides": {
+    "@antv/matrix-util": "3.0.4"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",

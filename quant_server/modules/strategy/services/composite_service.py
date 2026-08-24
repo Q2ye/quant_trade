@@ -539,23 +539,19 @@ class CompositeService:
                 "account_total": account_total, "capital_changes": capital_changes}
 
     async def _compute_regime(self) -> int:
-        """CSI500 收盘 vs MA250 → 0=熊, 1=震荡, 2=牛"""
+        """统一 regime：以 market_state_daily（系统分类器权威）为准。
+
+        2026-08 修复：此前用 CSI500 vs MA250 ±3% 自算，与 market_state_daily
+        （广度/情绪/技术口径）不一致——实测 08-24 market_state=BEAR 但自算=RANGE，
+        组合在熊市仍按 RANGE 进攻 80%。统一后映射 BULL→2 / NEUTRAL→1 / BEAR→0。
+        """
         try:
-            stmt = text("""
-                SELECT close FROM index_daily
-                WHERE ts_code = '000905.SH'
-                ORDER BY trade_date DESC LIMIT 250
-            """)
-            rows = (await self.session.execute(stmt)).fetchall()
-            closes = [float(r[0]) for r in rows if r[0] is not None]
-            if len(closes) < 250:
-                return 1
-            ma250 = sum(closes) / len(closes)
-            close = closes[0]
-            if close < ma250 * 0.97:
-                return 0
-            elif close > ma250 * 1.03:
-                return 2
+            row = (await self.session.execute(text(
+                "SELECT regime FROM market_state_daily ORDER BY trade_date DESC LIMIT 1"
+            ))).first()
+            if row and row[0]:
+                return {"BULL": 2, "NEUTRAL": 1, "BEAR": 0}.get(str(row[0]).upper(), 1)
+            logger.warning("market_state_daily 无数据，默认 RANGE")
             return 1
         except Exception as e:
             logger.warning(f"regime 判定失败(默认RANGE): {e}")

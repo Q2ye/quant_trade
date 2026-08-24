@@ -138,6 +138,11 @@ class TradeHandler:
 				return OrderResponse(success=False, data=None, message="用户没有可用账户")
 
 			account = accounts[0]  # 假设使用第一个账户
+			# 2026-08 修复：请求指定账户则优先使用（校验归属），避免默认落到 accounts[0]
+			if getattr(request, "account_id", None):
+				_sel = next((a for a in accounts if str(a.id) == str(request.account_id)), None)
+				if _sel:
+					account = _sel
 
 			# 计算订单金额
 			order_amount = request.price * request.quantity
@@ -242,15 +247,37 @@ class TradeHandler:
 			paginated_positions = filtered_positions[start:end]
 
 			# 转换为响应格式
+			# 2026-08 修复：盈亏用市场最新收盘价计算（positions.last_price 是成交价，
+			# 结算未更新为市价 → 直接用会导致浮亏恒 0）。批量拉取 stock_daily + etf_daily 最新收盘。
+			_codes = [p.ts_code for p in paginated_positions]
+			_close_map: dict = {}
+			if _codes:
+				from sqlalchemy import text as _text
+				for _tbl in ("stock_daily", "etf_daily"):
+					try:
+						_rows = (await self.position_repo.session.execute(
+							_text(f"SELECT DISTINCT ON (ts_code) ts_code, close FROM {_tbl} "
+							      f"WHERE ts_code = ANY(:c) ORDER BY ts_code, trade_date DESC"),
+							{"c": _codes})).fetchall()
+						for _r in _rows:
+							_close_map[_r[0]] = float(_r[1])
+					except Exception:
+						pass
 			position_data = []
 			for position in paginated_positions:
+				_cost = float(position.cost_price) if position.cost_price else 0.0
+				_price = _close_map.get(position.ts_code) or (
+					float(position.last_price) if position.last_price else 0.0)
+				_vol = int(position.volume or 0)
+				_pnl = (_price - _cost) * _vol
+				_pnl_rate = (_price / _cost - 1) if _cost and _cost > 0 else 0.0
 				position_data.append({
 					"symbol": position.ts_code,
 					"volume": position.volume,
-					"cost_price": float(position.cost_price) if position.cost_price else 0.0,
-					"current_price": float(position.last_price) if position.last_price else 0.0,
-					"pnl": float(position.pnl) if position.pnl else 0.0,
-					"pnl_rate": float(position.pnl_rate) if position.pnl_rate else 0.0
+					"cost_price": _cost,
+					"current_price": _price,
+					"pnl": _pnl,
+					"pnl_rate": _pnl_rate
 				})
 
 			return PositionListResponse(
@@ -289,14 +316,30 @@ class TradeHandler:
 			if not position:
 				return PositionDetailResponse(success=False, data=None, message="持仓不存在")
 
-			# 转换为响应格式
+			# 转换为响应格式（2026-08 修复：盈亏用市场最新收盘价，不依赖 DB 存储 pnl/last_price）
+			_cost = float(position.cost_price) if position.cost_price else 0.0
+			_price = float(position.last_price) if position.last_price else 0.0
+			try:
+				from sqlalchemy import text as _text
+				for _tbl in ("stock_daily", "etf_daily"):
+					_r = (await self.position_repo.session.execute(
+						_text(f"SELECT close FROM {_tbl} WHERE ts_code=:c ORDER BY trade_date DESC LIMIT 1"),
+						{"c": ts_code})).fetchone()
+					if _r and _r[0]:
+						_price = float(_r[0])
+						break
+			except Exception:
+				pass
+			_vol = int(position.volume or 0)
+			_pnl = (_price - _cost) * _vol
+			_pnl_rate = (_price / _cost - 1) if _cost and _cost > 0 else 0.0
 			position_data = {
 				"symbol": position.ts_code,
 				"volume": position.volume,
-				"cost_price": float(position.cost_price) if position.cost_price else 0.0,
-				"current_price": float(position.last_price) if position.last_price else 0.0,
-				"pnl": float(position.pnl) if position.pnl else 0.0,
-				"pnl_rate": float(position.pnl_rate) if position.pnl_rate else 0.0
+				"cost_price": _cost,
+				"current_price": _price,
+				"pnl": _pnl,
+				"pnl_rate": _pnl_rate
 			}
 
 			return PositionDetailResponse(success=True, data=position_data)
@@ -316,6 +359,24 @@ class TradeHandler:
 				)
 
 			account = accounts[0]  # 假设使用第一个账户
+			# 2026-08 修复：信号执行优先用信号所属策略的绑定账户（strategy_id → strategies.account_id），
+			# 避免落到 accounts[0]（卫星模拟账户 08-22 创建后劫持所有信号下单）。
+			if getattr(request, "signal_id", None):
+				try:
+					from sqlalchemy import text as _text
+					_sig = (await self.account_repo.session.execute(
+						_text("SELECT strategy_id FROM signals WHERE id = :sid"),
+						{"sid": request.signal_id})).fetchone()
+					if _sig and _sig[0]:
+						_strat = (await self.account_repo.session.execute(
+							_text("SELECT account_id FROM strategies WHERE id = :sid"),
+							{"sid": _sig[0]})).fetchone()
+						if _strat and _strat[0]:
+							_bound = next((a for a in accounts if str(a.id) == str(_strat[0])), None)
+							if _bound:
+								account = _bound
+				except Exception as _e:
+					logger.warning(f"按信号策略账户解析失败，回退用户默认账户: {_e}")
 
 			# 计算订单金额
 			order_amount = request.price * request.quantity

@@ -86,9 +86,17 @@ export function useChartLifecycle(options: ChartLifecycleOptions = {}) {
       timeScale: {
         borderColor: dark ? DARK_BORDER : LIGHT_BORDER,
         timeVisible: true,
+        // 缩放最小限制（2026-08）：放大上限 = bar 间距 ≥10px（图表可经 options.timeScale.minBarSpacing 覆盖）
+        minBarSpacing: 10,
         ...options.timeScale,
       },
       handleScroll: { vertTouchDrag: false },
+      // 显式开启滚轮/触控板缩放（统一限制，避免默认行为异常导致无上限放大）
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
+      },
       width: w,
       height: h,
     } as DeepPartial<ChartOptions> as ChartOptions);

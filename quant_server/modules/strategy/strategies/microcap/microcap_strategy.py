@@ -36,6 +36,7 @@ class MicrocapStrategy(BaseStrategy):
 		"pool_size": 50,                  # 微盘池大小（市值最小 50 只）
 		"min_amount_wan": 3000,           # 日均成交额下限 3000 万元（stock_daily.amount 千元 → /10）
 		"rebuild_pool_freq": 20,          # 每 20 交易日重选池
+		"rebalance_interval": 20,         # 持仓调仓间隔（交易日，20=月度，M3 口径；>0 消除日频换手）
 		# ── 择时（双门控） ──
 		"use_market_gate": True,          # 门控1：大盘 regime BULL
 		"use_micro_gate": True,           # 门控2：微盘指数 > MA20
@@ -45,11 +46,16 @@ class MicrocapStrategy(BaseStrategy):
 		"max_single_weight": 0.05,        # 单票上限 5%
 		"max_total_weight": 0.80,         # 总仓位上限 80%（留 20% 现金防流动性枯竭）
 		"momentum_window": 20,            # 选股动量窗口（20日动量排序）
+		"use_momentum": False,            # 2026-08 实证：动量Top15为巨大负贡献（等权+31% vs 动量+1.24%），
+		                                  # 默认等权（M3口径）；True 仅用于对照实验
 		# ── 风控 ──
 		"stop_loss": -0.10,               # 单票止损 10%
 		"profit_reduce": 0.30,            # 浮盈 30% 减半
 		"lookback_days": 120,             # 缓存回看（动量/均线）
 	}
+
+	# 回测预加载标记：load_live_state 为纯市场数据预加载（无实盘持仓恢复），回测可安全调用
+	BACKTEST_PRELOAD_STATE = True
 
 	def __init__(self, name: str, strategy_type=None, parameters: Optional[Dict[str, Any]] = None):
 		super().__init__(name=name, strategy_type=strategy_type, parameters=parameters)
@@ -63,6 +69,7 @@ class MicrocapStrategy(BaseStrategy):
 		self.pool_size = int(merged["pool_size"])
 		self.min_amount_wan = float(merged["min_amount_wan"])
 		self.rebuild_pool_freq = int(merged["rebuild_pool_freq"])
+		self.rebalance_interval = int(merged.get("rebalance_interval", self.rebuild_pool_freq))
 		self.use_market_gate = bool(merged["use_market_gate"])
 		self.use_micro_gate = bool(merged["use_micro_gate"])
 		self.micro_ma_window = int(merged["micro_ma_window"])
@@ -70,6 +77,7 @@ class MicrocapStrategy(BaseStrategy):
 		self.max_single_weight = float(merged["max_single_weight"])
 		self.max_total_weight = float(merged["max_total_weight"])
 		self.momentum_window = int(merged["momentum_window"])
+		self.use_momentum = bool(merged.get("use_momentum", True))
 		self.stop_loss = float(merged["stop_loss"])
 		self.profit_reduce = float(merged["profit_reduce"])
 		self.lookback_days = int(merged["lookback_days"])
@@ -79,6 +87,8 @@ class MicrocapStrategy(BaseStrategy):
 		self._bar_count: int = 0
 		self._last_batch_date: Optional[str] = None
 		self._last_rebuild_date: Optional[str] = None
+		self._last_rebalance_date: Optional[str] = None   # 上次持仓调仓日（月度重排）
+		self._exited_today: set = set()                   # 当日已退出股票（防止同日止损后立刻买回）
 		self._pool: List[str] = []                    # 当前微盘池
 		self._circ_mv_snapshots: Dict[str, Dict[str, float]] = {}  # {月末日: {code: circ_mv}}
 		self._regime_by_date: Dict[str, str] = {}     # {date: BULL/NEUTRAL/BEAR}
@@ -91,14 +101,26 @@ class MicrocapStrategy(BaseStrategy):
 		"""加载模型/数据（无 ML 模型，占位）"""
 		logger.info(f"{self.name} on_init: 微盘选股策略，依赖 circ_mv 数据")
 
-	async def load_live_state(self, db, strategy_id: str = "") -> None:
-		"""预加载：circ_mv 月末快照 + 大盘 regime 历史。"""
+	async def load_live_state(self, db, strategy_id: str = "", start_date: str = "") -> None:
+		"""预加载：circ_mv 月末快照 + 大盘 regime 历史。
+
+		start_date: 回测时传入回测起始日，circ_mv 快照窗口按其前移（覆盖选池预热）；
+		            实盘留空默认近 3 年（date.today()-3y）。
+		"""
 		try:
+			from datetime import timedelta
 			from sqlalchemy import text
 			sf = getattr(self, "_db_session_factory", None)
 			if sf is None:
 				logger.warning("微盘策略: session_factory 未注入，跳过数据预加载")
 				return
+			# 2026-08 修复：回测数据窗口适配（start_date 前移 370 天，覆盖月末快照预热；
+			# 实盘默认近 3 年）。加载后按日期过滤计算，无未来函数。
+			_hist_start = (
+				date.fromisoformat(start_date) - timedelta(days=370)
+				if start_date
+				else date.today().replace(year=date.today().year - 3)
+			)
 			async with sf() as session:
 				# 1. circ_mv 月末快照（join stock_basic 过滤 ST/北交所）
 				r = await session.execute(text("""
@@ -111,13 +133,21 @@ class MicrocapStrategy(BaseStrategy):
 						WHERE trade_date >= :s
 						ORDER BY to_char(trade_date, 'YYYY-MM'), trade_date DESC
 					)
-				"""), {"s": date.today().replace(year=date.today().year - 3)})
+				"""), {"s": _hist_start})
 				for row in r.fetchall():
 					d = str(row[0])[:10]
 					name = str(row[2] or "")
 					if name.startswith("ST") or name.startswith("*ST") or str(row[1]).endswith(".BJ"):
 						continue
 					self._circ_mv_snapshots.setdefault(d, {})[row[1]] = float(row[3] or 0)
+				# 2026-08 修复（宇宙）：微盘需从全 A 选最小市值，此前 _universe 恒空
+				# → 回测落入"stock_basic 前1000只=深市主板"兜底，微盘语义被破坏。
+				# 取"任一期末快照中满足 circ_mv<=50亿 的股票"作为全市场候选池
+				# （含创业板/科创板等，已排除 ST/北交所——预加载查询已过滤）。
+				self._universe = sorted({
+					c for snap in self._circ_mv_snapshots.values()
+					for c, mv in snap.items() if mv <= self.max_circ_mv
+				})
 
 				# 2. 大盘 regime
 				r = await session.execute(text(
@@ -173,37 +203,55 @@ class MicrocapStrategy(BaseStrategy):
 		# 4. 任一门关闭 → 整体空仓
 		if not gate1 or not gate2:
 			signals.extend(self._close_all(td, reason="门控关闭空仓"))
+			self._exited_today.clear()
 			return signals
 
-		# 5. 双门开 → 等权调仓到 Top N
-		signals.extend(self.generate_entry_signals(td))
-		signals.extend(self.generate_exit_signals(td))
+		# 5. 双门开 → 按 M3 月度口径调仓：仅在调仓间隔到期、或空仓重新入场时
+		#    重排 Top N（此前每天重排 → 平均持有 5 天、2033 笔高换手）。
+		#    止损/止盈仍由 on_bar 每日检查（risk 不因调仓降频而放松）。
+		do_rebalance = (
+			not self._holdings
+			or self._last_rebalance_date is None
+			or self._trade_date_diff(self._last_rebalance_date, td) >= self.rebalance_interval
+		)
+		if do_rebalance:
+			signals.extend(self.generate_entry_signals(td))
+			signals.extend(self.generate_exit_signals(td))
+			self._last_rebalance_date = td
+		self._exited_today.clear()
 		return signals
 
 	# ── 模块1：开仓（双门开时买入 Top N 等权） ──
 	def generate_entry_signals(self, td: str) -> List[TradingSignal]:
-		"""买入：池内按 20 日动量评分，等权 Top holdings，单票 ≤5%、总仓 ≤80%。"""
+		"""买入：池内按 20 日动量评分（或市值最小）选 Top N 等权，单票 ≤5%、总仓 ≤80%。
+
+		use_momentum=False 时为 M3 等权对照组（按市值最小取前 holdings 只，无动量）。
+		"""
 		signals: List[TradingSignal] = []
 		if not self._pool:
 			return signals
-		# 动量评分
-		scored: List[tuple] = []
-		for code in self._pool:
-			df = self._data_cache.get(code)
-			if df is None or len(df) < self.momentum_window + 2:
-				continue
-			mom = self._momentum(code, df)
-			if mom is None:
-				continue
-			scored.append((code, mom))
-		scored.sort(key=lambda x: x[1], reverse=True)
-		targets = [c for c, _ in scored[: self.holdings]]
+		if self.use_momentum:
+			# 动量评分
+			scored: List[tuple] = []
+			for code in self._pool:
+				df = self._data_cache.get(code)
+				if df is None or len(df) < self.momentum_window + 2:
+					continue
+				mom = self._momentum(code, df)
+				if mom is None:
+					continue
+				scored.append((code, mom))
+			scored.sort(key=lambda x: x[1], reverse=True)
+			targets = [c for c, _ in scored[: self.holdings]]
+		else:
+			# 等权对照组：池已按 circ_mv 升序，直接取最小前 holdings 只
+			targets = [c for c in self._pool[: self.holdings] if c in self._data_cache]
 
 		# 现有持仓中跌出 Top → 由 generate_exit_signals 处理
 		weight = self.max_single_weight
 		for code in targets:
-			if code in self._holdings:
-				continue
+			if code in self._holdings or code in self._exited_today:
+				continue  # 当日已止损/清仓的股票不立刻买回（防同日卖出又买入的重复信号）
 			df = self._data_cache.get(code)
 			price = float(df["close"].iloc[-1]) if df is not None and len(df) else 0.0
 			if price <= 0:
@@ -223,17 +271,21 @@ class MicrocapStrategy(BaseStrategy):
 		signals: List[TradingSignal] = []
 		if not self._pool:
 			return signals
-		# 池内动量 Top N
-		scored: List[tuple] = []
-		for code in self._pool:
-			df = self._data_cache.get(code)
-			if df is None or len(df) < self.momentum_window + 2:
-				continue
-			mom = self._momentum(code, df)
-			if mom is not None:
-				scored.append((code, mom))
-		scored.sort(key=lambda x: x[1], reverse=True)
-		keep = {c for c, _ in scored[: self.holdings]}
+		if self.use_momentum:
+			# 池内动量 Top N
+			scored: List[tuple] = []
+			for code in self._pool:
+				df = self._data_cache.get(code)
+				if df is None or len(df) < self.momentum_window + 2:
+					continue
+				mom = self._momentum(code, df)
+				if mom is not None:
+					scored.append((code, mom))
+			scored.sort(key=lambda x: x[1], reverse=True)
+			keep = {c for c, _ in scored[: self.holdings]}
+		else:
+			# 等权对照组：持仓目标 = 市值最小前 holdings 只
+			keep = set(self._pool[: self.holdings])
 
 		for code in list(self._holdings.keys()):
 			if code in keep:
@@ -264,6 +316,7 @@ class MicrocapStrategy(BaseStrategy):
 			if sig:
 				signals.append(sig)
 				self._holdings.pop(code, None)
+				self._exited_today.add(code)  # 当日不再买回
 			return signals
 		# 减半（浮盈 30%）
 		h["peak"] = max(float(h.get("peak", entry) or entry), close)
@@ -357,6 +410,7 @@ class MicrocapStrategy(BaseStrategy):
 			if sig:
 				signals.append(sig)
 			self._holdings.pop(code, None)
+			self._exited_today.add(code)
 		return signals
 
 	def _momentum(self, code: str, df: pd.DataFrame) -> Optional[float]:

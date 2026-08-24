@@ -140,7 +140,8 @@ const chartOption = computed(() => {
       { type: "text" as const, right: 4, top: "79%", style: { text: "每\n日\n成\n交\n额", fill: "#888", fontSize: 10, lineHeight: 14 } },
     ],
     dataZoom: [
-      { type: "inside" as const, xAxisIndex: [0, 1, 2, 3], start: 0, end: 100 },
+      // 2026-08: 缩放范围限制 — minSpan=5 最小显示 5% 数据跨度（防无限放大），maxSpan=100 不超过全量
+      { type: "inside" as const, xAxisIndex: [0, 1, 2, 3], start: 0, end: 100, minSpan: 5, maxSpan: 100 },
     ],
     series: [
       // 子图1: 累计收益率

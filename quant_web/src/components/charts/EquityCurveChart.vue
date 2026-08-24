@@ -107,7 +107,7 @@ function renderChart() {
     chart = createChartInstance({
       timeScale: {
         timeVisible: false,
-        minBarSpacing: 8,
+        minBarSpacing: 10, // 2026-08: 放大上限统一为 10px（与 useChartLifecycle 默认一致）
         rightOffset: 4,
         tickMarkFormatter: (time: Time) => {
           const d = new Date((time as number) * 1000);

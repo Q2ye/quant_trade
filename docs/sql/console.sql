@@ -204,7 +204,7 @@ select * from sys_users;
 select * from  accounts;
 select * from orders;
 select * from trades;
-select * from signals where ts_code = '002354.SZ';
+select * from signals where ts_code = '512400.SH';
 select * from  account_daily_performance;
 
 

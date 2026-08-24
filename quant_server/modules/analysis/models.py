@@ -121,6 +121,8 @@ class PerformanceMetrics:
 			),
 			"daily_pnl": getattr(self, "total_asset_snapshot", {}).get("daily_pnl", 0) if hasattr(self, "total_asset_snapshot") else 0,
 			"daily_return": getattr(self, "total_asset_snapshot", {}).get("daily_return", 0) if hasattr(self, "total_asset_snapshot") else 0,
+			# 账户绩效附加：当前持仓列表（账户接口由 performance_service 填充，策略接口为空列表）
+			"positions": getattr(self, "positions", []),
 		}
 		return result
 

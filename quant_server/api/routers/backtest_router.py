@@ -490,7 +490,7 @@ async def get_backtest_result_api(
 
 @router.post("/tasks/results/batch", response_model=BacktestResultResponse)
 async def get_batch_task_results_api(
-    task_ids: List[str] = Body(..., embed=True, max_length=50),  # 修复 2026-08（B10）：上限防循环查询风暴
+    task_ids: List[str] = Body(..., embed=True, max_length=200),  # 2026-08（B10 上调）：任务已达 85 个，50 上限致绩效总览报错；200 覆盖批量回测/实验任务
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
 ) -> BacktestResultResponse:

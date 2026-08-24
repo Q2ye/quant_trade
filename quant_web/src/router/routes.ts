@@ -335,20 +335,6 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "trade-composite", layout: "main", title: "组合实盘" },
   },
 
-  // 监控中心
-  {
-    path: "/monitor/alerts",
-    name: "AlertCenter",
-    component: () => import("@/views/MonitorCenter/AlertCenter.vue"),
-    meta: { menu: "monitor-alerts", layout: "main", title: "报警中心" },
-  },
-  {
-    path: "/monitor/strategies-health",
-    name: "StrategyHealth",
-    component: () => import("@/views/MonitorCenter/StrategyHealth.vue"),
-    meta: { menu: "monitor-strategy-health", layout: "main", title: "策略健康" },
-  },
-
   // 风险监控
   {
     path: "/risk/monitor",
@@ -373,6 +359,12 @@ export const routes: RouteRecordRaw[] = [
     name: "RiskBlacklist",
     component: () => import("@/views/Risk/BlacklistManagement.vue"),
     meta: { menu: "blacklist", layout: "main", title: "黑名单管理" },
+  },
+  {
+    path: "/risk/strategy-health-alerts",
+    name: "StrategyHealthAlerts",
+    component: () => import("@/views/Risk/StrategyHealthAlerts.vue"),
+    meta: { menu: "risk-strategy-health", layout: "main", title: "策略健康与报警" },
   },
 
   // 绩效分析（简化：仅回测总览 + 账户绩效；策略详情复用回测报告，对比/归因已砍）

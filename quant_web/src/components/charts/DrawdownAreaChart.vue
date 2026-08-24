@@ -1,6 +1,6 @@
 <!-- DrawdownAreaChart.vue — lightweight-charts 回撤曲线（重构版） -->
 <script setup lang="ts">
-import { watch, onMounted, onBeforeUnmount, nextTick, computed } from "vue";
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from "vue";
 import { NSkeleton, NEmpty, NResult, NButton } from "naive-ui";
 import {
   LineSeries,
@@ -56,6 +56,9 @@ const primitiveManager = usePrimitiveManager();
 
 let chart: IChartApi | null = null;
 let ddSeries: ISeriesApi<"Line", Time> | null = null;
+// 悬停详情（2026-08 修复：回撤图缺 tooltip）
+const ddTooltipData = ref<{ x: number; y: number; date: string; value: number; visible: boolean } | null>(null);
+let _ddTooltipTimer: ReturnType<typeof setTimeout> | null = null;
 
 function toTimeEpoch(dateStr: string): Time {
   const s = (dateStr?.slice(0, 10) || dateStr);
@@ -80,7 +83,7 @@ function renderChart() {
     chart = createChartInstance({
       timeScale: {
         timeVisible: false,
-        minBarSpacing: 8,
+        minBarSpacing: 10, // 2026-08: 放大上限统一为 10px
         rightOffset: 4,
         tickMarkFormatter: (time: Time) => {
           const d = new Date((time as number) * 1000);
@@ -121,6 +124,21 @@ function renderChart() {
       });
       primitiveManager.syncPrimitives(items);
     }
+
+    // 悬停详情（2026-08 修复）：订阅十字光标，用 seriesData 精确取点
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || param.point === undefined) {
+        ddTooltipData.value = null;
+        return;
+      }
+      const sd = ddSeries ? param.seriesData.get(ddSeries) : undefined;
+      if (sd && "value" in sd) {
+        const dateStr = new Date((param.time as number) * 1000).toISOString().slice(0, 10);
+        ddTooltipData.value = { x: param.point.x, y: param.point.y, date: dateStr, value: sd.value as number, visible: true };
+        if (_ddTooltipTimer) clearTimeout(_ddTooltipTimer);
+        _ddTooltipTimer = setTimeout(() => { ddTooltipData.value = null; }, 2500);
+      }
+    });
   }
 
   const ddData = toLineData(props.data);
@@ -211,6 +229,7 @@ onBeforeUnmount(() => {
     chart.timeScale().unsubscribeVisibleTimeRangeChange(_viewportHandler);
   }
   _viewportHandler = null;
+  if (_ddTooltipTimer) clearTimeout(_ddTooltipTimer);
   destroyChart();
   chart = null;
   ddSeries = null;
@@ -257,6 +276,15 @@ defineExpose({
         height: hasData && !loading && !error ? height + 'px' : '',
       }"
     />
+    <!-- 悬停详情浮层（2026-08 修复） -->
+    <div
+      v-if="ddTooltipData?.visible"
+      class="crosshair-tooltip"
+      :style="{ left: ddTooltipData.x + 'px', top: (ddTooltipData.y - 10) + 'px' }"
+    >
+      <div class="tooltip-date">{{ ddTooltipData.date }}</div>
+      <div class="tooltip-row"><span>回撤</span><span>{{ (ddTooltipData.value * 100).toFixed(1) }}%</span></div>
+    </div>
   </div>
 </template>
 
@@ -277,5 +305,39 @@ defineExpose({
 .drawdown-chart {
   width: 100%;
   zoom: 1.25; /* 抵消 html { zoom: 0.8 } */
+}
+
+/* 十字光标浮层标签 */
+.crosshair-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  z-index: 100;
+  background: var(--color-bg-card, rgba(18, 24, 40, 0.95));
+  border: 1px solid var(--color-primary, #448aff);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+.tooltip-date {
+  font-weight: 600;
+  color: var(--color-primary, #448aff);
+  margin-bottom: 3px;
+  text-align: center;
+  font-size: 12px;
+}
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tooltip-row span:first-child {
+  color: var(--color-text-tertiary, #888);
+}
+.tooltip-row span:last-child {
+  font-variant-numeric: tabular-nums;
 }
 </style>

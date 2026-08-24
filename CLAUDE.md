@@ -117,6 +117,8 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 |:---|:---|:---|
 | 主池进攻 | 高波动动量轮动 7.1（实盘确认 2026-08；代码注释 v7.3） | `rotation/high_vol_momentum_strategy.py` |
 | 主池防守 | ETF 底部抄底（LightGBM） | `etf/bottom_strategy.py` |
+| 卫星·事件 | 恐慌抄底（阶段 4b，模拟盘 draft） | `panic/panic_bottom_strategy.py` |
+| 卫星·进攻 | 微盘股 + 双指数择时（阶段 4c，模拟盘 draft） | `microcap/microcap_strategy.py` |
 | 参考/历史 | 低吸轮动 | `reference/stock_low_high_strategy.py` |
 | 基类 | BaseStrategy 生命周期 | `base/base_strategy.py` + `base/strategy_context.py` |
 
@@ -151,3 +153,6 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 | 后端深度审计 | `.claude/rules/audit-backend.md` | `quant_server/**/*.py` |
 | 策略深度审计 | `.claude/rules/audit-strategy.md` | `quant_server/modules/strategy/**/*.py` |
 | 策略快速质量门 | `.claude/rules/strategy-gates.md` | 策略文件变更 |
+| 回测分析标准流程 | `docs/02-功能设计/策略体系/回测分析标准流程.md` | 回测结果分析（所有策略通用） |
+| 策略运行分析标准流程 | `docs/02-功能设计/策略体系/策略运行分析标准流程.md` | 实盘/日终运行分析（所有策略通用） |
+| 卫星策略分析 | `docs/00-核心策略体系/卫星策略分析.md` | 微盘/恐慌抄底卫星优化方向 |

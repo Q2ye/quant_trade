@@ -161,13 +161,16 @@ class StrategyRegistry:
             注册的策略类数量
         """
         # 子包名 → 默认策略类型映射
+        # 2026-08 阶段 4b/4c：卫星池策略（恐慌抄底/微盘）加入扫描，走 CUSTOM
+        # （策略类无显式 strategy_type 类属性，落子包默认类型；先例：reference/StockLowHighStrategy）
+        # 2026-08 清理：移除不存在的子包映射（technical/alpha/ai 目录不存在，启动 auto_discover
+        # 报 3 条"无法导入策略子包"噪音；DL/ML 模板由 DB strategy_templates 承载，不经 registry）
         subpackage_type_map = {
-            "technical": StrategyType.TECHNICAL,
-            "alpha": StrategyType.ALPHA,
-            "ai": StrategyType.ML,
             "etf": StrategyType.ML,
             "rotation": StrategyType.ROTATION,
             "reference": StrategyType.CUSTOM,
+            "panic": StrategyType.CUSTOM,
+            "microcap": StrategyType.CUSTOM,
         }
 
         registered_count = 0

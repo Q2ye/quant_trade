@@ -215,8 +215,8 @@ class LightGBMBottomStrategy(BaseStrategy):
             yesterday = _cache_dates[-1]  # 缓存中最新的日期
             # 转为 date 对象（缓存 key 是 'YYYY-MM-DD' 字符串）
             if isinstance(yesterday, str):
-                from datetime import datetime as _dt
-                yesterday = _dt.strptime(yesterday, "%Y-%m-%d").date()
+                # 2026-08 修复：strptime 触发沙箱禁止的 _strptime（C 模块），改用纯 Python fromisoformat
+                yesterday = date.fromisoformat(yesterday)
 
             # 2. 昨日 bar 的 low（ETF 在 etf_daily 表）
             cur.execute(

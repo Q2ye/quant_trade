@@ -57,6 +57,8 @@ from modules.analysis.models import PerformanceMetrics
 from shared.database.repositories import AccountRepository
 from shared.database.repositories import StrategyRepository
 from shared.database.repositories import TradeRepository
+from shared.database.repositories import PositionRepository
+from shared.database.repositories import StockBasicRepository
 from shared.database.repositories.market.quote import StockDailyRepository
 from utils.core_utils.math_utils.financial_calculator import FinancialCalculator
 
@@ -83,7 +85,9 @@ class PerformanceService:
             strategy_repo: StrategyRepository = None,
             account_repo: AccountRepository = None,
             trade_repo: TradeRepository = None,
-            quote_repo: StockDailyRepository = None
+            quote_repo: StockDailyRepository = None,
+            position_repo: PositionRepository = None,
+            stock_basic_repo: StockBasicRepository = None
     ):
         """
         初始化绩效服务
@@ -94,12 +98,16 @@ class PerformanceService:
             account_repo: 账户 Repository（可选）
             trade_repo: 交易 Repository（可选，用于重建净值曲线）
             quote_repo: 日线行情 Repository（可选，用于获取基准收益率）
+            position_repo: 持仓 Repository（可选，账户绩效附加持仓列表）
+            stock_basic_repo: 股票基础信息 Repository（可选，持仓名称映射）
         """
         self.session = session
         self.strategy_repo = strategy_repo or StrategyRepository(session)
         self.account_repo = account_repo or AccountRepository(session)
         self.trade_repo = trade_repo or TradeRepository(session)
         self.quote_repo = quote_repo or StockDailyRepository(session)
+        self.position_repo = position_repo or PositionRepository(session)
+        self.stock_basic_repo = stock_basic_repo or StockBasicRepository(session)
         self.fin_calc = FinancialCalculator()
 
     # =========================================================================
@@ -395,6 +403,8 @@ class PerformanceService:
                         'market_value': float(latest.market_value),
                         'trade_date': str(latest.trade_date)[:10] if hasattr(latest.trade_date, '__str__') else str(latest.trade_date),
                     }
+                # 附加区间成交笔数 + 当前持仓（退化场景同样补充）
+                await self._attach_account_extra(metrics, account_id, start_date, end_date)
                 return metrics
 
             df_equity = pd.DataFrame(equity_curve)
@@ -483,10 +493,83 @@ class PerformanceService:
                 for i in range(len(df_equity))
             ]
 
+            # 附加区间成交笔数 + 当前持仓
+            await self._attach_account_extra(metrics, account_id, start_date, end_date)
+
             return metrics
 
         except Exception as e:
             raise ValueError(f"计算账户绩效失败: {str(e)}")
+
+    async def _attach_account_extra(
+            self,
+            metrics: PerformanceMetrics,
+            account_id: str,
+            start_date: date,
+            end_date: date
+    ) -> None:
+        """账户绩效附加数据：区间成交笔数 + 当前持仓（含权重/名称）
+
+        账户绩效不含胜率/利润因子（trades 表无 pnl 列，盈亏由持仓/结算层计算），
+        仅补充可准确统计的字段：
+        - total_trades：区间内成交笔数（Trade 记录数）
+        - positions：当前持仓列表（symbol/name/volume/cost_price/current_price/
+          market_value/pnl/pnl_ratio/weight，weight 按市值占比）
+
+        Args:
+            metrics: 已计算的绩效对象（就地修改）
+            account_id: 账户 ID
+            start_date: 区间开始
+            end_date: 区间结束
+        """
+        # 1. 区间成交笔数（trade_time 为 timestamptz 列，需转换为 datetime 绑定参数）
+        try:
+            start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+            end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
+            trades = await self.trade_repo.get_by_account_id(
+                account_id,
+                start_time=start_dt,
+                end_time=end_dt,
+                skip=0,
+                limit=100000,
+            )
+            metrics.total_trades = len(trades) if trades else 0
+        except Exception as e:
+            logger.warning(f"获取账户 {account_id} 区间成交统计失败: {e}")
+            metrics.total_trades = 0
+
+        # 2. 当前持仓（含权重）
+        try:
+            positions = await self.position_repo.get_account_positions(
+                account_id, include_zero=False
+            )
+        except Exception as e:
+            logger.warning(f"获取账户 {account_id} 持仓失败: {e}")
+            positions = []
+
+        total_mv = sum(float(p.market_value or 0) for p in positions) or 0.0
+        pos_list: List[Dict[str, Any]] = []
+        for p in positions:
+            symbol = p.ts_code
+            name = symbol
+            try:
+                basic = await self.stock_basic_repo.get_by_ts_code(symbol)
+                if basic and getattr(basic, 'name', None):
+                    name = basic.name
+            except Exception:
+                pass  # 名称缺失时回退显示代码
+            pos_list.append({
+                'symbol': symbol,
+                'name': name,
+                'volume': int(p.volume or 0),
+                'cost_price': float(p.cost_price or 0),
+                'current_price': float(p.last_price or 0),
+                'market_value': float(p.market_value or 0),
+                'pnl': float(p.pnl or 0),
+                'pnl_ratio': float(p.pnl_rate or 0),
+                'weight': (float(p.market_value or 0) / total_mv) if total_mv > 0 else 0.0,
+            })
+        metrics.positions = pos_list
 
     async def compare_multiple_strategies(
             self,

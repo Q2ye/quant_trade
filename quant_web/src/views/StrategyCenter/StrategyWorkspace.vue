@@ -104,7 +104,7 @@
             <div v-for="p in livePositions" :key="p.ts_code" class="pos-row">
               <n-tag size="tiny" :bordered="false">{{ p.ts_code }}</n-tag>
               <span class="pos-qty">{{ p.volume || p.quantity }}股</span>
-              <span class="pos-pnl" :class="(p.pnl || 0) >= 0 ? 'text-up' : 'text-down'">{{ (p.pnl || 0) >= 0 ? '+' : '' }}{{ (p.pnl || 0).toFixed(2) }}</span>
+              <span class="pos-pnl" :class="(p.pnl || 0) >= 0 ? 'text-rise' : 'text-fall'">{{ (p.pnl || 0) >= 0 ? '+' : '' }}{{ (p.pnl || 0).toFixed(2) }}</span>
             </div>
           </div>
         </n-card>
@@ -166,6 +166,12 @@
                 口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
               </div>
               <BacktestSubplots :equity="btEquityPct" :benchmark="btBenchmarkPct" :dailyReturns="btDailyReturns" :dailyTurnover="btDailyTurnover" :drawdown="btDrawdown" :height="720" />
+              <MonthlyReturnChart
+                v-if="btMonthlyReturns.length > 0"
+                :data="btMonthlyReturns"
+                :height="220"
+                style="margin-top: 14px"
+              />
             </n-card>
           </n-spin>
         </template>
@@ -198,6 +204,7 @@ import { useStore } from "vuex";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import CodeEditorPanel from "@/components/editors/CodeEditorPanel.vue";
 import BacktestSubplots from "@/components/charts/BacktestSubplots.vue";
+import MonthlyReturnChart from "@/components/charts/MonthlyReturnChart.vue";
 import TradeTable from "@/components/data/TradeTable.vue";
 import strategyAPI from "@/api/strategy";
 import { useStrategyWorkspace } from "@/composables/useStrategyWorkspace";

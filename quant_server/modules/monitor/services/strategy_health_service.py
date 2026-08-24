@@ -57,6 +57,20 @@ class StrategyHealthService:
 			        "alerts": ["策略不存在"], "metrics": {}}
 		return await StrategyHealthService._analyze(strategy, session, months)
 
+	@staticmethod
+	def _clean_ghost(records) -> list:
+		"""过滤 A30 幽灵绩效记录。
+
+		A30 修复前 total_assets 恒置 0/缺失时，每日绩效会写入 -100%（total_return=-1.0）的
+		假数据。此类记录会污染近段收益（首尾差）与回撤统计，统一剔除。
+		"""
+		if not records:
+			return []
+		return [
+			r for r in records
+			if float(getattr(r, "total_return", 0) or 0) > -0.99
+		]
+
 	# ------------------------------------------------------------------
 	@staticmethod
 	async def _analyze(strategy, session: AsyncSession, months: int) -> Dict[str, Any]:
@@ -73,8 +87,13 @@ class StrategyHealthService:
 		recent_start = (now - timedelta(days=months * 31)).date()
 		hist_start = (now - timedelta(days=months * 31 * 3)).date()
 
-		recent = await perf_repo.get_strategy_performance(strategy_id, recent_start, now.date())
-		history = await perf_repo.get_strategy_performance(strategy_id, hist_start, recent_start)
+		recent_raw = await perf_repo.get_strategy_performance(strategy_id, recent_start, now.date())
+		history_raw = await perf_repo.get_strategy_performance(strategy_id, hist_start, recent_start)
+
+		# 过滤 A30 幽灵记录（total_return = -1.0：资产缺失时写入的 -100% 假数据），
+		# 否则首尾差计算与回撤统计会被污染（如 5277 7/29~8/3、dc862847 8/12~8/14）
+		recent = StrategyHealthService._clean_ghost(recent_raw)
+		history = StrategyHealthService._clean_ghost(history_raw)
 
 		metrics: Dict[str, Any] = {
 			"recent_days": len(recent),
@@ -87,20 +106,44 @@ class StrategyHealthService:
 			"hist_monthly_signal_avg": None,
 		}
 
+		# ---- 信号频率（2026-08 修复：前置统计——信号数与绩效样本无关；
+		#      样本不足早退时也必须返回真实信号数，否则前端误显示 0） ----
+		# 2026-08 口径修订：只统计「已确认/已执行」信号（排除 pending_confirm 候选、rejected/cancelled 无效）
+		_active_statuses = ("confirmed", "executed", "partial", "approved", "pending_manual")
+		recent_sigs = await signal_repo.get_by_time_range(
+			start_time=now - timedelta(days=months * 31), end_time=now,
+			strategy_ids=[strategy_id],
+		)
+		metrics["recent_signal_count"] = len([
+			s for s in recent_sigs if getattr(s, "signal_status", "") in _active_statuses
+		])
+		hist_sigs = await signal_repo.get_by_time_range(
+			start_time=now - timedelta(days=months * 31 * 3),
+			end_time=now - timedelta(days=months * 31),
+			strategy_ids=[strategy_id],
+		)
+		if hist_sigs:
+			metrics["hist_monthly_signal_avg"] = round(
+				len([s for s in hist_sigs if getattr(s, "signal_status", "") in _active_statuses])
+				/ (months * 2), 2)
+
 		# ---- 样本不足保护 ----
 		if not recent:
 			return {"strategy_id": strategy_id, "name": name, "status": "insufficient",
 			        "alerts": ["近 {} 个月无实盘绩效数据".format(months)], "metrics": metrics}
-		if len(recent) < 20:
-			return {"strategy_id": strategy_id, "name": name, "status": "insufficient",
-			        "alerts": ["样本积累中（{} 个交易日）".format(len(recent))], "metrics": metrics}
 
-		# ---- 近段指标 ----
+		# ---- 近段指标（recent 非空即计算：insufficient 时也返回可显示数据，
+		#      前端近段收益/回撤不再恒显示 "--"） ----
 		recent_sorted = sorted(recent, key=lambda p: p.trade_date)
 		start_cr = float(recent_sorted[0].total_return or 0)
 		end_cr = float(recent_sorted[-1].total_return or 0)
 		metrics["recent_return"] = round((end_cr - start_cr) / (1 + start_cr) if (1 + start_cr) != 0 else 0.0, 6)
-		metrics["recent_mdd"] = round(max(float(p.max_drawdown or 0) for p in recent), 6)
+		# 回撤统一为「正值深度」口径（兼容旧正值写入与新负值口径写入，abs 取最深）
+		metrics["recent_mdd"] = round(max(abs(float(p.max_drawdown or 0)) for p in recent), 6)
+
+		if len(recent) < 20:
+			return {"strategy_id": strategy_id, "name": name, "status": "insufficient",
+			        "alerts": ["样本积累中（{} 个交易日）".format(len(recent))], "metrics": metrics}
 
 		# 近段月度收益（按月聚合 daily_return 求和）
 		monthly: Dict[str, float] = {}
@@ -120,25 +163,12 @@ class StrategyHealthService:
 				hist_months[m] = hist_months.get(m, 0.0) + float(p.daily_return or 0)
 			metrics["hist_avg_return"] = round(
 				sum(hist_returns) / len(hist_returns) if hist_returns else 0.0, 6)
-			metrics["hist_max_mdd"] = round(max(float(p.max_drawdown or 0) for p in hist_sorted), 6)
+			# 与近段一致：正值深度口径
+			metrics["hist_max_mdd"] = round(max(abs(float(p.max_drawdown or 0)) for p in hist_sorted), 6)
 			hist_monthly_avg = (
 				sum(hist_months.values()) / len(hist_months) if hist_months else 0.0)
 		else:
 			hist_monthly_avg = None
-
-		# ---- 信号频率 ----
-		recent_sigs = await signal_repo.get_by_time_range(
-			start_time=now - timedelta(days=months * 31), end_time=now,
-			strategy_ids=[strategy_id],
-		)
-		metrics["recent_signal_count"] = len(recent_sigs)
-		hist_sigs = await signal_repo.get_by_time_range(
-			start_time=now - timedelta(days=months * 31 * 3),
-			end_time=now - timedelta(days=months * 31),
-			strategy_ids=[strategy_id],
-		)
-		if hist_sigs:
-			metrics["hist_monthly_signal_avg"] = round(len(hist_sigs) / (months * 2), 2)
 
 		# ==================== 判定（基建设计 §3.3） ====================
 		# ---- 停用级（stop） ----
@@ -158,7 +188,9 @@ class StrategyHealthService:
 
 		# 近 1 年收益 < 0（取近 12 月 total_return 首尾差）
 		year_ago = (now - timedelta(days=365)).date()
-		year_perf = await perf_repo.get_strategy_performance(strategy_id, year_ago, now.date())
+		year_perf = StrategyHealthService._clean_ghost(
+			await perf_repo.get_strategy_performance(strategy_id, year_ago, now.date())
+		)
 		if year_perf:
 			ys = sorted(year_perf, key=lambda p: p.trade_date)
 			y_start = float(ys[0].total_return or 0)

@@ -135,11 +135,26 @@ class TradeRecordService:
         if price <= 0:
             raise ValueError("成交价格必须大于 0")
 
-        # ---- 1. 获取账户 ----
+        # ---- 1. 获取账户：优先策略绑定账户（strategy_id → strategies.account_id），否则用户默认 ----
+        # 2026-08 修复：此前无条件取 accounts[0]（用户创建时间最新账户）。
+        # 卫星模拟账户（08-22 创建）成为 accounts[0] 后劫持所有手动成交录入 →
+        # 实盘策略（熊市防守等，绑定 84d81a14）的订单/持仓被写到模拟账户。
         accounts = await self._account_repo.get_many_by_user_id(user_id)
         if not accounts:
             raise ValueError("用户没有可用账户，请先创建账户")
         account = accounts[0]
+        if strategy_id:
+            try:
+                from sqlalchemy import text as _text
+                _row = (await self._session.execute(
+                    _text("SELECT account_id FROM strategies WHERE id = :sid"),
+                    {"sid": strategy_id})).fetchone()
+                if _row and _row[0]:
+                    _bound = next((a for a in accounts if str(a.id) == str(_row[0])), None)
+                    if _bound:
+                        account = _bound
+            except Exception as _e:
+                logger.warning(f"按策略绑定账户解析失败，回退用户默认账户: {_e}")
 
         # ---- 2. 计算费用 ----
         fees = self._calculate_fees(direction, price, quantity, ts_code, user_fees)

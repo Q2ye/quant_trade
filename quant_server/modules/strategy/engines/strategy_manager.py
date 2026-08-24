@@ -43,6 +43,9 @@ logger = logging.getLogger(__name__)
 _ALLOWED_STRATEGY_MODULES = frozenset({
     # 标准库
     "abc", "asyncio", "collections", "dataclasses", "datetime", "decimal",
+    # _strptime：datetime.strptime 的 CPython C 依赖（仅日期解析，无系统能力）。
+    # 沙箱放行 datetime 却拦截其内部依赖会误伤所有 strptime 调用（ETF 底部 P4 恢复）。
+    "_strptime",
     "functools", "itertools", "json", "logging", "math", "pathlib", "random",
     "re", "statistics", "time", "typing", "uuid", "warnings",
     # __future__：exec 前自动注入 from __future__ import annotations 会触发导入（修复 2026-08 B6b）

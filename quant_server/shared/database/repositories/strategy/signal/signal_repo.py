@@ -37,6 +37,13 @@ class SignalRepository(BaseRepository[Signal]):
 		"""
 		super().__init__(session, Signal)
 
+	async def update (self, id: Any, data: Dict[str, Any]) -> Optional[Signal]:
+		"""覆写：signal_time 是 TimescaleDB 分区键，UPDATE 改它会跨 chunk 违反
+		chunk 时间约束（每周新 chunk 后更新旧候选行必报错 constraint_6617）。
+		信号时间一旦产生不可变，幂等更新（候选重写/状态流转）时统一排除。"""
+		data = {k: v for k, v in data.items() if k != "signal_time"}
+		return await super().update(id, data)
+
 	# ==================== 专用查询方法 ====================
 
 	async def get_by_strategy (

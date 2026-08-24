@@ -135,7 +135,7 @@
           </div>
           <div class="metric-card">
             <h3>月度收益</h3>
-            <MonthlyReturnChart v-if="report.monthlyReturns.length > 0" :data="report.monthlyReturns" />
+            <MonthlyReturnChart v-if="report.monthlyReturns.length > 0" :data="report.monthlyReturns" :title="''" />
             <n-empty v-else description="暂无月度收益数据" />
           </div>
           <div class="metric-card">
@@ -160,22 +160,13 @@
             <h3>回撤区间与连续亏损</h3>
             <template v-if="report.maxDrawdownPeriod.start">
               <p class="drawdown-info-line">
-                最大回撤区间：{{ report.maxDrawdownPeriod.start }} ~ {{ report.maxDrawdownPeriod.end }}
-                （{{ (report.maxDrawdownPeriod.depth * 100).toFixed(1) }}%）
+                最大回撤区间：<strong>{{ report.maxDrawdownPeriod.start }} ~ {{ report.maxDrawdownPeriod.end }}</strong>
+                （<strong>{{ (report.maxDrawdownPeriod.depth * 100).toFixed(1) }}%</strong>）
               </p>
-              <p class="drawdown-info-line">连续亏损月份：{{ report.maxConsecutiveLosses }} 个月</p>
+              <p class="drawdown-info-line">连续亏损月份：<strong>{{ report.maxConsecutiveLosses }} 个月</strong></p>
               <p class="drawdown-info-line">
-                正收益月：{{ monthlyWinMonths }} 个（{{ monthlyWinPct }}%）｜负收益月：{{ monthlyLossMonths }} 个
+                月度分布：正收益月 <strong>{{ monthlyWinMonths }}</strong> 个 / 负收益月 <strong>{{ monthlyLossMonths }}</strong> 个（占比 {{ monthlyWinPct }}%，详见上方月度收益图）
               </p>
-              <n-progress
-                type="line"
-                :percentage="monthlyWinPct"
-                :show-indicator="false"
-                :height="8"
-                color="var(--n-error-color)"
-                rail-color="var(--n-success-color)"
-                style="margin-top: 8px"
-              />
             </template>
             <n-empty v-else description="样本不足" :size="'small'" />
           </div>
@@ -183,7 +174,7 @@
 
         <div class="section">
           <h3>每日盈亏</h3>
-          <DailyPnLChart :data="report.dailyReturns" :height="260" />
+          <DailyPnLChart :data="report.dailyReturns" :height="260" :title="''" />
         </div>
 
         <div class="section">
@@ -192,12 +183,37 @@
             :trades="report.trades"
             :height="300"
             :symbol="route.params.taskId as string"
+            :title="''"
           />
         </div>
 
         <div class="section">
           <h3>交易分析</h3>
           <n-tabs v-model:value="activeTradeTab">
+            <n-tab-pane name="kline" tab="K线分析">
+              <div v-if="tradeSymbols.length" class="trade-kline-bar">
+                <n-select
+                  v-model:value="selectedTradeSymbol"
+                  :options="tradeSymbols.map((s) => ({ label: s, value: s }))"
+                  size="small"
+                  style="width: 220px"
+                />
+                <span class="toggle-label">选择标的查看 K 线与买卖点</span>
+              </div>
+              <LightweightKLine
+                v-if="tradeKline.length"
+                :data="tradeKline"
+                :height="420"
+                :signal-markers="tradeMarkers"
+                :loading="tradeKlineLoading"
+              />
+              <n-empty
+                v-else-if="!tradeKlineLoading && !selectedTradeSymbol"
+                description="请选择交易标的"
+                style="padding: 30px"
+              />
+              <n-empty v-else-if="!tradeKlineLoading" description="该标的暂无 K 线数据" style="padding: 30px" />
+            </n-tab-pane>
             <n-tab-pane name="trades" tab="交易列表">
               <TradeTable :trades="report.trades" />
             </n-tab-pane>
@@ -222,7 +238,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { useMessage, NResult, NSpin, NEmpty, NSwitch, NSpace } from "naive-ui";
@@ -234,10 +250,12 @@ import MonthlyReturnChart from "@/components/charts/MonthlyReturnChart.vue";
 import ProfitDistributionChart from "@/components/charts/ProfitDistributionChart.vue";
 import DailyPnLChart from "@/components/charts/DailyPnLChart.vue";
 import TradeRecordChart from "@/components/charts/TradeRecordChart.vue";
+import LightweightKLine, { type SignalMarker } from "@/components/charts/LightweightKLine.vue";
 import TradeTable from "@/components/data/TradeTable.vue";
 import StatCard from "@/components/common/StatCard.vue";
 import backtestAPI from "@/api/backtest";
 import strategyAPI from "@/api/strategy";
+import marketAPI from "@/api/market";
 import { SignalMarkerPrimitive } from "@/components/charts/primitives/SignalMarker";
 import { TrendLinePrimitive } from "@/components/charts/primitives/TrendLine";
 import type { SignalMarkerData, TrendLineData } from "@/components/charts/primitives/types";
@@ -248,7 +266,7 @@ const store = useStore<any>();
 
 const loading = ref(false);
 const error = ref(false);
-const activeTradeTab = ref("trades");
+const activeTradeTab = ref("kline");
 
 // ---- 图表标记开关 ----
 const showTradeMarkers = ref(true);
@@ -444,7 +462,7 @@ const aggregateProfitDistribution = (trades: any[]) => {
     const rawDir = t.side || t.direction || "";
     const dir = rawDir === "LONG" || rawDir === "buy" ? "buy" : "sell";
     const price = Number(t.price || 0);
-    const qty = Number(t.quantity || 0);
+    const qty = Number(t.quantity || t.volume || 0); // 2026-08: 原始 trades 用 volume 字段
     if (dir === "buy") {
       const prev = buyMap.get(key);
       if (prev) {
@@ -511,6 +529,39 @@ const report = ref({
   maxConsecutiveLosses: 0,
 });
 
+// ---- 交易分析 K 线（2026-08 修复：复用 K 线组件；须在 report 声明之后） ----
+const tradeSymbols = computed(() => [...new Set(report.value.trades.map((t: any) => t.symbol).filter(Boolean))] as string[]);
+const selectedTradeSymbol = ref("");
+const tradeKline = ref<any[]>([]);
+const tradeKlineLoading = ref(false);
+const tradeMarkers = ref<SignalMarker[]>([]);
+watch(selectedTradeSymbol, async (sym: string) => {
+  if (!sym) { tradeKline.value = []; tradeMarkers.value = []; return; }
+  tradeKlineLoading.value = true;
+  try {
+    const data = await marketAPI.getStockKline(sym, "daily");
+    tradeKline.value = (data || []).map((d: any) => ({
+      trade_date: d.trade_date,
+      open: d.open, high: d.high, low: d.low, close: d.close, vol: d.vol,
+    }));
+  } catch { tradeKline.value = []; }
+  const symTrades = report.value.trades.filter((t: any) => t.symbol === sym);
+  tradeMarkers.value = symTrades.map((t: any) => ({
+    time: String(t.date).slice(0, 10),
+    position: t.direction === "buy" ? "belowBar" : "aboveBar",
+    color: t.direction === "buy" ? "#ef5350" : "#26a69a",
+    shape: t.direction === "buy" ? "arrowUp" : "arrowDown",
+    text: `${t.direction === "buy" ? "买" : "卖"} ${t.quantity}股 @${Number(t.price).toFixed(2)}`,
+  }));
+  tradeKlineLoading.value = false;
+}, { immediate: true });
+// 成交记录加载后自动选第一个标的（便于直接看 K 线）
+watch(() => report.value.trades.length, (n: number) => {
+  if (n > 0 && !selectedTradeSymbol.value && tradeSymbols.value.length) {
+    selectedTradeSymbol.value = tradeSymbols.value[0];
+  }
+});
+
 // 月度盈亏分布统计（增强指标，基建设计 §2.3）
 const monthlyWinMonths = computed(() =>
   report.value.monthlyReturns.filter((m: any) => m.return >= 0).length,
@@ -555,6 +606,13 @@ const loadReport = async () => {
     const rawEq = Array.isArray(equity) && equity.length > 0
       ? equity
       : (Array.isArray(r.equity_curve) ? r.equity_curve : []);
+    // 2026-08 修复（净值曲线数据不对）：策略/基准须同一量纲可比。
+    // 策略用绝对资产（total_assets，起点=初始资金）；基准若为累计收益则 × 初始资金对齐绝对尺度。
+    const _eqArr = rawEq.map((p: any) => ({
+      date: p.trade_date || p.date,
+      value: p.total_assets || p.equity || 0,
+    }));
+    const _eqBase = _eqArr[0]?.value || 1;
     const tr = Array.isArray(trades) ? trades : [];
 
     report.value = {
@@ -571,13 +629,10 @@ const loadReport = async () => {
         calmarRatio: r.calmar_ratio ?? 0,
         avgHoldingDays: r.avg_holding_days ?? 0,
       },
-      equityCurve: rawEq.map((p: any) => ({
-        date: p.trade_date || p.date,
-        value: p.total_assets || p.equity || 0,
-      })),
+      equityCurve: _eqArr,
       benchmark: (r.benchmark_curve || []).map((p: any) => ({
         date: p.trade_date || p.date,
-        value: p.total_assets || (p.cumulative_return ? (1 + p.cumulative_return) * 100000 : p.value || 0),
+        value: p.total_assets ?? (p.cumulative_return != null ? (1 + p.cumulative_return) * _eqBase : (p.value ?? 0)),
       })),
       drawdown: (r.drawdown_curve || []).map((p: any) => ({
         date: p.trade_date || p.date,
@@ -772,10 +827,15 @@ onUnmounted(() => {
   font-size: 12px;
 }
 .drawdown-info-line {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--n-text-color-2);
-  line-height: 1.9;
+  line-height: 2;
   margin: 0;
+}
+.drawdown-info-line strong {
+  font-size: 15px;
+  color: var(--n-text-color-1);
+  font-weight: 700;
 }
 
 .report-footer {
@@ -788,5 +848,11 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--n-text-color-3);
   line-height: 1.6;
+}
+.trade-kline-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 </style>
