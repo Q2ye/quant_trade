@@ -99,6 +99,7 @@ class HighVolMomentumStrategy(BaseStrategy):
 
         # —— Regime（年线门） ——
         "use_annual_gate": True,         # CSI500 收盘<MA250 熊市
+        "annual_gate_band": 0.03,        # 年线门偏离阈值（±3%，统一 shared.market_regime）
 
         # —— v7.0 熊市分支（温和放量启动） ——
         # 熊市（年线下）不放量突破 → 空仓；放量突破+温和过滤 → 1只25%仓位
@@ -157,6 +158,7 @@ class HighVolMomentumStrategy(BaseStrategy):
         self.atr_trailing_mult = float(merged["atr_trailing_mult"])
         # Regime
         self.use_annual_gate = bool(merged.get("use_annual_gate", True))
+        self.annual_gate_band = float(merged.get("annual_gate_band", 0.03))
         # v7.0 熊市分支参数
         self.bear_max_positions = int(merged.get("bear_max_positions", 1))
         self.bear_single_weight = float(merged.get("bear_single_weight", 0.25))
@@ -313,12 +315,14 @@ class HighVolMomentumStrategy(BaseStrategy):
         self._finalize_exits()
 
         # 1. 行情判定（年线门 → 熊市/牛市）
-        bear = self._annual_line_gate() if self.use_annual_gate else False
-        # 持仓上限与单票权重：熊市降仓（1×25%），牛市满仓（2×50%）
+        regime = self._current_regime() if self.use_annual_gate else 2
+        bear = regime == 0
+        # 持仓上限与单票权重：熊市降仓（1×25%），非熊市满仓（2×50%）
         eff_max_pos = self.bear_max_positions if bear else self.max_positions
         eff_weight = self.bear_single_weight if bear else self.max_single_weight
         if self.verbose_logging:
-            logger.info(f"{self.name} 调仓: {'熊市' if bear else '牛市'} 持仓={len(self._holdings)} "
+            _regime_label = {0: "熊市", 1: "震荡", 2: "牛市"}.get(regime, "?")
+            logger.info(f"{self.name} 调仓: {_regime_label} 持仓={len(self._holdings)} "
                         f"上限={eff_max_pos} 权重={eff_weight:.0%}")
 
         # 2. 日频风控（对持仓）：2×ATR 硬止损 + 2×ATR 移动止损 + 趋势破坏
@@ -769,19 +773,20 @@ class HighVolMomentumStrategy(BaseStrategy):
     # =========================================================================
     # Regime（年线门）
     # =========================================================================
-    def _annual_line_gate(self) -> bool:
-        """CSI500 收盘 < MA250 → 停买"""
+    def _current_regime(self) -> int:
+        """返回统一 regime：0=熊 1=震 2=牛（shared.market_regime.compute_regime）。"""
         if not self.use_annual_gate or self._csi500_cache.empty or not self._last_trade_date:
-            return False
-        sliced = self._csi500_cache[
-            self._csi500_cache["trade_date"].astype(str) <= self._last_trade_date
-        ]
-        closes = sliced["close"].values.astype(np.float64)
-        if len(closes) < 250:
-            return False
-        if closes[-1] < float(np.mean(closes[-250:])):
-            return True  # 年线下 → 熊市
-        return False  # 牛市
+            return 2  # 默认非熊（与旧 _annual_line_gate 返回 False 一致）
+        from shared.market_regime import compute_regime
+        closes_dict = dict(zip(
+            self._csi500_cache["trade_date"].astype(str),
+            self._csi500_cache["close"].astype(np.float64),
+        ))
+        return compute_regime(closes_dict, self._last_trade_date, self.annual_gate_band)
+
+    def _annual_line_gate(self) -> bool:
+        """CSI500 收盘 < MA250×(1-band) → 停买（熊市）。"""
+        return self._current_regime() == 0
 
     # =========================================================================
     # 信号构造（四大模块）

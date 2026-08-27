@@ -1634,8 +1634,8 @@ class StrategyManager(EngineBase):
                 "trade_date": str(trade_date),
                 "signals_count": len(signals),
                 "positions_count": (
-                    len(strategy_obj.positions) +
-                    len(getattr(strategy_obj, "_active_positions", {}))
+                    len(set(strategy_obj.positions)
+                        | set(getattr(strategy_obj, "_active_positions", {})))
                 ) if strategy_obj else 0,
                 "data_cached": len(getattr(strategy_obj, "_data_cache", {})) if strategy_obj else 0,
                 "updated_at": datetime.now().isoformat(),

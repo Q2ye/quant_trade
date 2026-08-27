@@ -539,20 +539,25 @@ class CompositeService:
                 "account_total": account_total, "capital_changes": capital_changes}
 
     async def _compute_regime(self) -> int:
-        """统一 regime：以 market_state_daily（系统分类器权威）为准。
+        """统一 regime：CSI500 vs MA250 ±3%带（与策略年线门、回测 CapitalAllocator 同源）。
 
-        2026-08 修复：此前用 CSI500 vs MA250 ±3% 自算，与 market_state_daily
-        （广度/情绪/技术口径）不一致——实测 08-24 market_state=BEAR 但自算=RANGE，
-        组合在熊市仍按 RANGE 进攻 80%。统一后映射 BULL→2 / NEUTRAL→1 / BEAR→0。
+        2026-08-27 修订：此前改读 market_state_daily（广度/情绪口径），与策略年线门
+        （CSI500 vs MA250）分叉——实测 08-27 CSI500 站上年线（年线门=牛）但
+        market_state_daily=BEAR，导致组合按熊市资金饿死策略的牛市信号。
+        改回 CSI500 vs MA250，回测/实盘/策略三方对齐。
         """
+        from shared.market_regime import compute_regime
         try:
-            row = (await self.session.execute(text(
-                "SELECT regime FROM market_state_daily ORDER BY trade_date DESC LIMIT 1"
-            ))).first()
-            if row and row[0]:
-                return {"BULL": 2, "NEUTRAL": 1, "BEAR": 0}.get(str(row[0]).upper(), 1)
-            logger.warning("market_state_daily 无数据，默认 RANGE")
-            return 1
+            rows = (await self.session.execute(text(
+                "SELECT trade_date, close FROM index_daily "
+                "WHERE ts_code='000905.SH' ORDER BY trade_date DESC LIMIT 260"
+            ))).all()
+            if not rows:
+                logger.warning("CSI500 无数据，默认 RANGE")
+                return 1
+            closes = {str(r[0])[:10]: float(r[1]) for r in rows}
+            latest = max(closes.keys())
+            return compute_regime(closes, latest, 0.03)
         except Exception as e:
             logger.warning(f"regime 判定失败(默认RANGE): {e}")
             return 1

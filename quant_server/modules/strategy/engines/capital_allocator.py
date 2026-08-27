@@ -182,17 +182,9 @@ class CapitalAllocator:
         if self._force_regime is not None:
             return self._force_regime
         if self._csi500_closes:
-            dates = sorted(d for d in self._csi500_closes if d <= trade_date)
-            if len(dates) >= 250:
-                closes = [self._csi500_closes[d] for d in dates[-250:]]
-                ma250 = sum(closes) / len(closes)
-                close = closes[-1]
-                band = float(self._params.get("regime_gate_band", 0.01))
-                if close < ma250 * (1 - band):
-                    return 0
-                elif close > ma250 * (1 + band):
-                    return 2
-                return 1
+            from shared.market_regime import compute_regime
+            band = float(self._params.get("regime_gate_band", 0.03))
+            return compute_regime(self._csi500_closes, trade_date, band)
         return 1  # 默认 RANGE
 
     # =========================================================================
