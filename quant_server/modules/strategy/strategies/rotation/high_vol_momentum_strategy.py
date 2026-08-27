@@ -31,43 +31,6 @@
         ※ 回测结论：A 负优化（+177%/MDD31.8%，2025 大牛损失 213pp），
           B 完全无效（B-only = 7.1，过滤从不触发）→ 本版本不保留
 
-═══ 8.x 优化记录（2026-08-18 ~ 08-19，已回退，仅供回溯）═══
-  v8.0  候选确认机制实验（2026-08-18 回测 → 未达标，代码回退，不保留默认）：
-        背景：7.1 实盘 8-12~8-18 连续 0 持仓，候选确认过严无法建仓
-          （601886 收盘 12.73 ≤ 信号价 12.75，仅 -0.16% 被拒）。
-        方向1 候选 Top5 入池（max_candidates=5）+ 确认时动态仓位（按持仓空位分配）
-        方向2 确认容差（confirm_tolerance=2%，后改 ATR 自适应 k×ATR）
-        方向3 确认窗口 3 天（confirm_window_days=3）+ 破位守卫（5%）+ 窗口衰减
-        方向4 确认日 K 线形态过滤（收阳/收盘位≥30%/上影≤50%）
-        ※ 回测结论：初版 +147%（右尾被 Top5 稀释，>30% 大赚贡献 730%→414%），
-          优化版 +251%（动态仓位修复右尾至 555%），但仍差于 7.1 的 +354%，
-          且夏普 0.86 vs 1.40、MDD 44% vs 25% —— 放宽确认整体有害。
-          形态过滤拦截的 70 只股票 7.1 买进净亏 -10.7%（过滤方向正确但收益不达）。
-        → 保留动态仓位思路，其余方向回退，另立 8.1。
-  v8.1  最小干预基线（2026-08-18 创建，2026-08-19 A/B/C 三方向优化后回测）：
-        7.1 基线 + 三处基础改动 + A/B/C 质量门：
-          ① max_candidates=5：候选入池扩到 Top5（解决 7.1 候选信号少、被 Top2 截断）
-          ② 确认后按确认通过的信号数平均分仓（weight=min(1/确认数, cap)）
-          ③ confirm_tolerance=0.5% 极小容差（解决 601886 -0.16% 微回调误杀）
-        方向A（confirm_rank_sort）：确认候选按 score 降序排序，只买最强 TopN
-        方向B（confirm_score_threshold=0.50）：强信号容差 0.5%、弱信号容差 0
-        方向C（confirm_window_days=2）：确认窗口 2 天，T+1 失败保留待 T+2
-        ※ 修复记录（2026-08-19）：v8.0 动态仓位 bug（持仓=1 时 slots=1 → 超配 100%
-          资金不足，收益崩到 70%）→ 修复为两阶段分仓（先收集→再统一分仓）。
-        ※ 回测记录（2026-08-19）：8.1 两阶段修复版 +259%（夏普 0.91/MDD 42%）vs
-          7.1 基线 +354%（夏普 1.40/MDD 25%）——收益下降主因是 2021/2022/2025
-          三年交易质量下降（宽松确认放行更多平庸候选）→ 8.1 未达 7.1，不切换。
-        ※ 8.x 期间并入的其他修复（2026-08-19）：北京时间信号时间戳（BEIJING_TZ，
-          此前 naive datetime 被当作 UTC 导致前端信号日错位）；候选确认竞态修复
-          （_rejected_candidate_ids，幂等复用跳过本批次确认失败行）。
-  8.1 → 7.1 回退记录（2026-08-19 校验，恢复基准 = git HEAD）：
-        磁盘文件已恢复为纯 7.1（本文件 = git HEAD 版本），8.x 改动全部从代码移除，
-        优化记录保留于此供回溯。DB 实例 8.0/8.1 均 stopped，9.0 draft 未启用。
-        实盘对照：DB strategies.code 快照「高波动动量轮动-7.1-实盘」（dc862847）
-        与本文件 7.1 行为一致。
-        若未来再启 8.x 方向，建议：独立分支/副本开发（勿改实盘文件）+ 单测先行 +
-        对照 7.1 基线（+354%/夏普 1.40/MDD 25%）验收，不达标不切换。
-
 通用机制（跨策略候选落库，v6.14 起统一）：
   - 候选信号落库 signals 表（pending_confirm + signal_id），前端信号列表可见
   - 确认转正 promoted + 买入信号 parent_id（候选→信号→订单 全链路追溯）
@@ -86,6 +49,8 @@ import logging
 import numpy as np
 import pandas as pd
 from datetime import date, datetime
+from shared.utils.time_utils import BEIJING_TZ, beijing_now
+from shared.config.constants import SignalRejectReason
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.engines.types.entities import BarData
@@ -212,7 +177,11 @@ class HighVolMomentumStrategy(BaseStrategy):
         self._listing_dates: Dict[str, str] = {}
         self._holdings: Dict[str, Dict] = {}    # {code: {entry_price, weight, shares, entry_date, peak_high}}
         self._exit_pending: Set[str] = set()
+        self._confirmed_active: Set[str] = set()  # 已确认转正且未卖出 → 选股排除（防补仓）
         self._buy_pending: Dict[str, dict] = {}
+        # 竞态修复：本批次确认失败（rejected）的候选 id ——
+        # persist 幂等复用须跳过，避免 fire-and-forget reject 与新候选 persist 竞写同一行
+        self._rejected_candidate_ids: Set[str] = set()
         self._csi500_cache: pd.DataFrame = pd.DataFrame()
         self._market_mom60: float = 0.0         # 全市场 60 日动量中位数（相对强度基准）
         self._nav_realized: float = 1.0
@@ -335,6 +304,8 @@ class HighVolMomentumStrategy(BaseStrategy):
     # =========================================================================
     def _run_rebalance(self) -> List[TradingSignal]:
         signals: List[TradingSignal] = []
+        # 竞态修复：每批次重置候选拒绝记录（确认失败 → persist 跳过复用）
+        self._rejected_candidate_ids.clear()
         if len(self._data_cache) < 10:
             return signals
 
@@ -408,7 +379,7 @@ class HighVolMomentumStrategy(BaseStrategy):
         """全市场扫描：趋势过滤 + 右侧确认 + 多因子打分，返回 Top 候选"""
         scored: List[Tuple[str, float]] = []
         for code in self._data_cache.keys():
-            if code in self._holdings or code in self._exit_pending:
+            if code in self._holdings or code in self._exit_pending or code in self._confirmed_active:
                 continue
             if code in self._pending_signals or code in self._buy_pending:
                 continue
@@ -434,7 +405,7 @@ class HighVolMomentumStrategy(BaseStrategy):
         """
         scored: List[Tuple[str, float]] = []
         for code in self._data_cache.keys():
-            if code in self._holdings or code in self._exit_pending:
+            if code in self._holdings or code in self._exit_pending or code in self._confirmed_active:
                 continue
             if code in self._pending_signals or code in self._buy_pending:
                 continue
@@ -604,24 +575,37 @@ class HighVolMomentumStrategy(BaseStrategy):
     # =========================================================================
     # 收盘确认买入
     # =========================================================================
+    def _resolve_capital(self) -> float:
+        """解析实际运行资本：context.initial_capital 优先，否则 allocated_capital 参数，兜底 100000。"""
+        return float(
+            getattr(self.context, "initial_capital", 0)
+            or self.parameters.get("allocated_capital", 100000)
+        )
+
     def _confirm_pending_buys(self) -> List[TradingSignal]:
         signals: List[TradingSignal] = []
         if not self._buy_pending:
             return signals
         today = str(self._last_trade_date)[:10]
-        capital = float(
-            getattr(self.context, "initial_capital", 0)
-            or self.parameters.get("allocated_capital", 100000)
-        )
+        capital = self._resolve_capital()
         pending = dict(self._buy_pending)
         self._buy_pending.clear()
         # v7.1: 判断当前是否熊市（决定持仓上限与 is_bear 标志）
         is_bear = self._annual_line_gate() if self.use_annual_gate else False
         eff_max_pos = self.bear_max_positions if is_bear else self.max_positions
 
+        # —— 阶段一：对所有候选做价格确认（先确认，再看仓位）——
+        # 每个候选都有明确结果：确认失败(rejected) / 确认通过(passed) / 未到确认日(保留待次日)。
+        # 修复 2026-08-25：原逻辑先判满仓即跳过确认，导致满仓候选永不确认（8-25 603565 实证）。
+        passed: List[Tuple[str, dict, float]] = []
         for code, pinfo in pending.items():
-            if len(self._holdings) >= eff_max_pos:
-                break
+            # [修复 2026-08-25] 同日入池/当日恢复候选未到确认日：
+            # 当日收盘价(=信号价)确认恒成立 price<=signal_price 误拒（8-24 603519/603565）。
+            # 跳过并放回，待次日收盘确认。
+            _sig_date = str(pinfo.get("signal_date", ""))[:10]
+            if _sig_date and _sig_date >= today:
+                self._buy_pending[code] = pinfo
+                continue
             price = self._get_price(code)
             if price <= 0:
                 continue
@@ -632,20 +616,40 @@ class HighVolMomentumStrategy(BaseStrategy):
                 # v7.2 修复：确认失败须回写信号状态，否则前端信号列表一直停留在"待确认"
                 _cand_sid = pinfo.get("signal_id")
                 if _cand_sid:
+                    # 竞态修复：记录本批次 reject 的候选 id，
+                    # _persist_candidate 幂等复用扫描跳过（防 reject 与新候选 persist 竞写覆盖）
+                    self._rejected_candidate_ids.add(_cand_sid)
                     self._fire_db(self._mark_candidate_status(
                         _cand_sid, "rejected",
-                        f"收盘{price:.2f} ≤ 信号价{signal_price:.2f}，确认失败",
+                        f"{SignalRejectReason.CONFIRM_FAILED.value}: 收盘{price:.2f} ≤ 信号价{signal_price:.2f}，确认失败",
+                        signal_date=today,
                     ))
                 continue
+            # 确认通过（收盘 > 信号价）
+            passed.append((code, pinfo, price))
+
+        if not passed:
+            return signals
+
+        # —— 阶段二：处理确认通过者（先看仓位）——
+        # 满仓时在通过候选中选择：按确认相对强度（收盘/信号价）降序，最强优先；
+        # 无空位则保留待空位（已明确确认结果，不误判不丢弃）。
+        passed.sort(key=lambda x: x[2] / float(x[1]["signal_price"]), reverse=True)
+        for code, pinfo, price in passed:
+            if len(self._holdings) >= eff_max_pos:
+                self._buy_pending[code] = pinfo
+                continue
+            signal_price = float(pinfo["signal_price"])
             # P1-1 修复：按当前 regime 封顶权重（跨行情候选：牛市入池 weight=0.5，熊市确认时不得超 25%）
             _weight_cap = self.bear_single_weight if is_bear else self.max_single_weight
             weight = min(float(pinfo.get("weight", _weight_cap)), _weight_cap)
             amount = capital * weight
             shares = max(int(amount / price / self.min_lot_size) * self.min_lot_size, self.min_lot_size)
-            # 候选转正 + 买入信号 parent_id（与低吸/ETF 一致）
+            # [阶段3 单行流转] 候选行直接流转到 pending_manual（待人工审核），
+            # 不再单独 promoted 中间态 + 另起买入行；买入信号 parent_id 复用候选行。
             _cand_sid = pinfo.get("signal_id")
             if _cand_sid and not getattr(self, "_replaying", False):
-                self._fire_db(self._mark_candidate_status(_cand_sid, "promoted", "收盘确认转正"))
+                self._fire_db(self._mark_candidate_status(_cand_sid, "pending_manual", "收盘确认转正", signal_date=today))
             sig = self._make_entry_signal(code, weight, shares, price,
                                           f"{'熊市温和启动' if is_bear else '右侧追强'}买入(收盘确认): 收盘{price:.2f} > 信号价{signal_price:.2f}",
                                           parent_id=_cand_sid)
@@ -759,6 +763,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                     pnl = (exit_price - entry) / entry
                     self._nav_realized *= 1.0 + pnl * w
                 del self._holdings[code]
+                self._confirmed_active.discard(code)  # 卖出后释放占用，可重新纳入选股
         self._exit_pending.clear()
 
     # =========================================================================
@@ -798,8 +803,12 @@ class HighVolMomentumStrategy(BaseStrategy):
         except RuntimeError:
             logger.debug("事件循环未运行，跳过候选 DB 写入")
 
-    async def _mark_candidate_status(self, sig_id, status: str, reason: str = "") -> None:
-        """更新候选信号行的状态（promoted 转正 / expired 丢弃）。"""
+    async def _mark_candidate_status(self, sig_id, status: str, reason: str = "", signal_date=None) -> None:
+        """更新候选信号行的状态（promoted 转正 / rejected / expired）。
+
+        signal_date: 状态变更日，传入时同步更新 signal_time（状态流转时间闭环，
+        消除「候选创建日」与「转正日」混淆导致的"当天转正"假象）。
+        """
         if not self._is_live_mode():
             return
         sf = getattr(self, "_db_session_factory", None)
@@ -807,8 +816,14 @@ class HighVolMomentumStrategy(BaseStrategy):
             return
         try:
             from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
+            _data = {"signal_status": status, "reason": reason}
+            if signal_date:
+                _d = signal_date
+                if isinstance(_d, str):
+                    _d = date.fromisoformat(_d[:10])
+                _data["signal_time"] = datetime.combine(_d, beijing_now().time(), tzinfo=BEIJING_TZ)
             async with sf() as db:
-                await SignalRepository(db).update(sig_id, {"signal_status": status, "reason": reason})
+                await SignalRepository(db).update(sig_id, _data)
                 await db.commit()
         except Exception as e:
             logger.warning(f"候选状态更新失败({status}): {e}")
@@ -825,6 +840,26 @@ class HighVolMomentumStrategy(BaseStrategy):
         try:
             from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
             async with sf() as db:
+                # [阶段2] 落库前校验：已持仓 / 未了结买入意图 → 拒绝落库（防补仓/重复入池）
+                from sqlalchemy import select, text
+                from shared.database.models.business_models import Signal
+                _pos = (await db.execute(text(
+                    "SELECT 1 FROM positions WHERE strategy_id = :sid AND ts_code = :code AND volume > 0"
+                ), {"sid": sid, "code": code})).fetchall()
+                if _pos:
+                    if self.verbose_logging:
+                        logger.info(f"{self.name} {code} 已持仓，跳过候选落库")
+                    return
+                _intent = (await db.execute(select(Signal.id).where(
+                    Signal.strategy_id == sid,
+                    Signal.ts_code == code,
+                    Signal.signal_type == "buy",
+                    Signal.signal_status.in_(("promoted", "pending_manual", "approved")),
+                ))).scalars().all()
+                if _intent:
+                    if self.verbose_logging:
+                        logger.info(f"{self.name} {code} 已有未了结买入意图，跳过候选落库")
+                    return
                 repo = SignalRepository(db)
                 _td = getattr(self, "_last_trade_date", None)
                 if isinstance(_td, str):
@@ -834,7 +869,9 @@ class HighVolMomentumStrategy(BaseStrategy):
                         _td = None
                 elif hasattr(_td, "date"):
                     _td = _td.date()
-                _sig_time = datetime.combine(_td, datetime.min.time()) if _td else datetime.now()
+                # 时间戳修复：日期保留交易日 _td（跨日确认依赖），
+                # 时刻用 beijing_now().time()（北京时间具体时分秒，此前 00:00 固定）
+                _sig_time = datetime.combine(_td, beijing_now().time(), tzinfo=BEIJING_TZ) if _td else beijing_now()
                 data = {
                     "strategy_id": sid,
                     "ts_code": code,
@@ -849,8 +886,12 @@ class HighVolMomentumStrategy(BaseStrategy):
                 existing = await repo.get(sig_id)
                 if not existing:
                     # 幂等：同代码已存在 pending_confirm 候选 → 复用其行
+                    # 竞态修复：跳过本批次确认失败的候选（reject 可能未提交，
+                    # 复用会覆盖 rejected → 必须跳过并新建行）
                     _dups = await repo.get_by_stock(ts_code=code, strategy_id=sid, limit=20)
                     for _d in _dups:
+                        if _d.id in self._rejected_candidate_ids:
+                            continue
                         if getattr(_d, "signal_status", None) == "pending_confirm":
                             sig_id = _d.id
                             pinfo["signal_id"] = sig_id
@@ -864,6 +905,42 @@ class HighVolMomentumStrategy(BaseStrategy):
                 await db.commit()
         except Exception as e:
             logger.warning(f"候选持久化失败: {code}: {e}")
+
+    async def _rebuild_confirmed_active(self, db=None) -> None:
+        """从 signals 表重建「已确认转正且未卖出」的活跃占用集合。
+
+        确认采纳(promoted/executed)即视为占用：选股时排除（防补仓/重复建仓），
+        直到卖出(_finalize_exits)释放。跨重启经此恢复。
+        """
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf:
+            return
+        sid = getattr(getattr(self, "context", None), "strategy_id", "") or self.name
+        if not sid:
+            return
+        try:
+            from sqlalchemy import select
+            from shared.database.models.business_models import Signal
+            async with sf() as db_session:
+                rows = (await db_session.execute(
+                    select(Signal).where(Signal.strategy_id == sid)
+                    .order_by(Signal.ts_code, Signal.signal_time.desc())
+                )).scalars().all()
+                # 每只股票取最新一条信号；最新为 buy 且 promoted/executed → 占用
+                seen: Dict[str, Signal] = {}
+                for r in rows:
+                    if r.ts_code not in seen:
+                        seen[r.ts_code] = r
+                self._confirmed_active = {
+                    code for code, r in seen.items()
+                    if str(r.signal_type).lower() in ("buy", "entry", "long")
+                    # pending_manual=确认转正后待成交的买入信号，同样视为占用（防补仓）
+                    and getattr(r, "signal_status", "") in ("promoted", "executed", "pending_manual")
+                }
+                if self._confirmed_active:
+                    logger.info(f"[{self.name}] 已确认占用恢复: {len(self._confirmed_active)} 只 {sorted(self._confirmed_active)}")
+        except Exception as e:
+            logger.warning(f"活跃确认集重建失败: {e}")
 
     async def _restore_candidates_from_db(self, db=None) -> None:
         """从 signals 表读回 pending_confirm 候选，重建 _buy_pending（重启恢复）。"""
@@ -887,7 +964,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                     if _sd:
                         try:
                             if (date.today() - date.fromisoformat(_sd)).days > 5:
-                                await self._mark_candidate_status(r.id, "expired", "过期未确认")
+                                await self._mark_candidate_status(r.id, "expired", f"{SignalRejectReason.EXPIRED_UNCONFIRMED.value}: 过期未确认")
                                 continue
                         except (ValueError, TypeError):
                             pass
@@ -910,6 +987,10 @@ class HighVolMomentumStrategy(BaseStrategy):
             await self._restore_candidates_from_db()
         except Exception as e:
             logger.warning(f"[{self.name}] 候选恢复失败: {e}")
+        try:
+            await self._rebuild_confirmed_active()
+        except Exception as e:
+            logger.warning(f"[{self.name}] 已确认占用重建失败: {e}")
 
     def _make_entry_signal(self, code, weight, shares, price, reason, parent_id=None) -> Optional[TradingSignal]:
         if price <= 0:
@@ -940,6 +1021,10 @@ class HighVolMomentumStrategy(BaseStrategy):
         price = self._get_price(code)
         if price <= 0:
             return None
+        # 修复：出场数量 = 实际持仓股数（全平）。此前硬编码 0 导致「建议数量 0 股」，
+        # 且全自动模式下会下 0 股单卖不掉。_holdings 在买入(本文件 653 行)与
+        # 重启恢复(strategy_manager 2006 行)两条路径均写入 "shares"。
+        shares = int(self._holdings.get(code, {}).get("shares", 0) or 0)
         return TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
@@ -948,8 +1033,8 @@ class HighVolMomentumStrategy(BaseStrategy):
             signal_type=signal_type,
             direction=SignalDirection.CLOSE_LONG,
             price=price,
-            quantity=0,
-            amount=0.0,
+            quantity=shares,
+            amount=shares * price,
             confidence=0.80,
             reason=reason,
             timestamp=datetime.now(),
@@ -964,7 +1049,8 @@ class HighVolMomentumStrategy(BaseStrategy):
             price = self._get_price(code)
             if price <= 0:
                 continue
-            shares = max(int(100000 * weight / price / self.min_lot_size) * self.min_lot_size,
+            capital = self._resolve_capital()
+            shares = max(int(capital * weight / price / self.min_lot_size) * self.min_lot_size,
                          self.min_lot_size)
             sig = self._make_entry_signal(code, weight, shares, price, reason)
             if sig:

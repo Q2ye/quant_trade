@@ -4,10 +4,22 @@
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <h1 class="page-title">绩效总览</h1>
+          <h1 class="page-title">回测排行</h1>
           <p class="page-description">策略回测绩效排名 · {{ stats.strategyCount }} 个策略 · {{ stats.rankedCount }} 有回测</p>
         </div>
         <div class="header-actions">
+          <n-button size="small" quaternary @click="goDashboard">
+            <template #icon><SmartIcon name="Grid" /></template>
+            绩效中心
+          </n-button>
+          <n-button size="small" quaternary @click="goAccount">
+            <template #icon><SmartIcon name="AnalyticsOutline" /></template>
+            账户绩效
+          </n-button>
+          <n-button size="small" quaternary @click="goHealth">
+            <template #icon><SmartIcon name="Pulse" /></template>
+            策略健康
+          </n-button>
           <n-button size="small" :loading="loading" @click="loadData">刷新</n-button>
         </div>
       </div>
@@ -24,9 +36,9 @@
       </n-result>
 
       <template v-else>
-        <!-- 策略回测排名表 → 点击直达回测报告 -->
+        <!-- 策略回测排名表 → 点击直达回测报告（数据来自 backtest_tasks，历史模拟） -->
         <div class="section-head">
-          <h3><SmartIcon name="Trophy" class="title-icon" />策略回测绩效排行</h3>
+          <h3><SmartIcon name="Trophy" class="title-icon" />策略回测绩效排行 <SourceBadge type="backtest" /></h3>
           <n-tag size="tiny" v-if="strategyRankings.length > 0">Top {{ strategyRankings.length }}</n-tag>
         </div>
         <n-card :class="tokens.surface.card" size="small" content-class="!p-0">
@@ -69,12 +81,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from "vue";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NCard, NTag, NSkeleton, NEmpty, NResult } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import SourceBadge from "@/components/common/SourceBadge.vue";
 import { tokens } from "@/styles/design-tokens";
-import request from "@/utils/request";
 import strategyAPI from "@/api/strategy";
 import backtestAPI from "@/api/backtest";
 
@@ -88,24 +100,15 @@ interface RankItem { id: string; name: string; taskId?: string; taskDate?: strin
 const goReport = (s: RankItem) => {
   if (s.taskId) router.push(`/backtest/report/${s.taskId}`);
 };
-const stats = ref({ strategyCount: 0, runningCount: 0, rankedCount: 0, avgAnnualReturn: 0, cumulativeReturn: 0, sharpeRatio: 0, maxDrawdown: 0, accountNav: "--" });
+const stats = ref({ strategyCount: 0, runningCount: 0, rankedCount: 0, avgAnnualReturn: 0, cumulativeReturn: 0, sharpeRatio: 0, maxDrawdown: 0 });
 const strategyRankings = ref<RankItem[]>([]);
 
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 
-const aggregateStats = computed(() => {
-  const r = strategyRankings.value;
-  if (r.length === 0) return { medianSharpe: 0, avgDrawdown: 0, bestStrategy: "--", medianWinRate: "--", positiveCount: 0, totalTrades: 0 };
-  const sharpes = r.map(s => s.sharpeRatio || 0).sort((a,b) => a-b);
-  const medianSharpe = sharpes[Math.floor(sharpes.length/2)];
-  const avgDrawdown = r.reduce((sum, s) => sum + (s.maxDrawdown||0), 0) / r.length;
-  const best = r.reduce((a,b) => (a.annualReturn||0) > (b.annualReturn||0) ? a : b);
-  const winRates = r.filter(s => s.winRate != null).map(s => s.winRate!);
-  const medianWinRate = winRates.length > 0 ? `${((winRates.sort((a,b)=>a-b)[Math.floor(winRates.length/2)]||0)*100).toFixed(0)}%` : "--";
-  const positiveCount = r.filter(s => (s.annualReturn||0) > 0).length;
-  const totalTrades = r.reduce((sum, s) => sum + (s.tradesCount||0), 0);
-  return { medianSharpe, avgDrawdown, bestStrategy: best.name||"--", medianWinRate, positiveCount, totalTrades };
-});
+// 快捷入口：绩效中心内部互跳（驾驶舱 / 账户绩效 / 策略健康）
+const goDashboard = () => router.push("/performance");
+const goAccount = () => router.push("/performance/account");
+const goHealth = () => router.push("/performance/health");
 
 const loadData = async () => {
   loading.value = true; error.value = false;
@@ -183,16 +186,6 @@ const loadData = async () => {
       // 最差策略回撤（组合/账户回撤需账户净值计算，此处明确为最差单策略）
       stats.value.maxDrawdown = Math.min(...rankings.map(r => r.maxDrawdown));
     }
-
-    // 5. 账户总净值（真实数据：账户列表 total_balance 求和）
-    try {
-      const accRes: any = await request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100 } }).catch(() => null);
-      const accList = accRes?.data?.data || accRes?.data || [];
-      const totalNav = Array.isArray(accList)
-        ? accList.reduce((sum: number, a: any) => sum + (Number(a.total_balance ?? a.total_asset ?? 0) || 0), 0)
-        : 0;
-      stats.value.accountNav = totalNav > 0 ? totalNav.toLocaleString("zh-CN", { maximumFractionDigits: 2 }) : "--";
-    } catch { /* 账户数据不可用时保持 -- */ }
   } catch { error.value = true; } finally { loading.value = false; }
 };
 
@@ -260,7 +253,7 @@ onMounted(() => loadData());
   &:hover { border-color: var(--color-primary, #7C3AED); color: var(--color-primary, #7C3AED); background: rgba(124,111,247,0.08); }
 }
 
-.text-up { color: #18a058 !important; }
-.text-down { color: #d03050 !important; }
+.text-up { color: var(--color-stock-up) !important; }
+.text-down { color: var(--color-stock-down) !important; }
 .metric-footnote { margin: 6px 0 0; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6; }
 </style>

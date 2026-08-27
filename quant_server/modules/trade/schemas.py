@@ -153,8 +153,12 @@ class BatchTradeRecordResponse(BaseModel):
 
 class SignalReviewRequest(BaseModel):
 	"""信号审核请求"""
-	action: str = Field(..., description="审核动作: approved / rejected")
+	action: str = Field(..., description="审核动作: approved / rejected / cancelled(删除作废)")
 	comment: Optional[str] = Field(default=None, description="审核备注")
+	reject_reason: Optional[str] = Field(
+		default=None,
+		description="拒绝原因枚举值（rejected 时有效）: gap_up_chase/gap_down_break/insufficient_funds 等",
+	)
 
 
 class SignalReviewResponse(BaseModel):

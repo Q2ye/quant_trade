@@ -217,6 +217,10 @@ class StrategyDailyPerformance(Base):
     total_return = Column(Numeric(10, 6), nullable=False, comment='累计收益率')
     max_drawdown = Column(Numeric(10, 6), nullable=False, comment='最大回撤')
     sharpe_ratio = Column(Numeric(10, 6), comment='夏普比率')
+    # 2026-08-26 修复：模型对齐 DB 表缺失字段——perf dict 含 total_assets，
+    # 此前模型缺该字段导致 save 报 "total_assets is an invalid keyword argument"。
+    strategy_run_id = Column(String(36), nullable=True, comment='策略运行ID')
+    total_assets = Column(Numeric(18, 2), nullable=True, comment='当日总资产')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系

@@ -11,6 +11,7 @@ import type { DataTableColumns } from "naive-ui";
 import { tokens } from "@/styles/design-tokens";
 import performanceAPI from "@/api/performance";
 import AppDateRangePicker from "@/components/common/AppDateRangePicker.vue";
+import SourceBadge from "@/components/common/SourceBadge.vue";
 
 interface PerformancePoint {
   date: string;
@@ -498,7 +499,7 @@ onMounted(async () => {
         </div>
         <!-- 口径标注（2026-08 C4：绩效口径统一） -->
         <div class="metric-footnote">
-          口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）；95% VaR 为日频收益 5% 分位（负值表示单日潜在亏损比例）。账户层不含胜率/利润因子（成交记录无逐笔盈亏，盈亏由持仓/结算层计算），以区间成交笔数与 VaR 替代。
+          数据源：账户日资产快照 <SourceBadge type="account" />；口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）；95% VaR 为日频收益 5% 分位（负值表示单日潜在亏损比例）。账户层不含胜率/利润因子（成交记录无逐笔盈亏，盈亏由持仓/结算层计算），以区间成交笔数与 VaR 替代。
         </div>
 
         <!-- Equity + Drawdown dual-axis chart -->

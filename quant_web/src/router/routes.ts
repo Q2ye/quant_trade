@@ -362,18 +362,24 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: "/risk/strategy-health-alerts",
-    name: "StrategyHealthAlerts",
-    component: () => import("@/views/Risk/StrategyHealthAlerts.vue"),
-    meta: { menu: "risk-strategy-health", layout: "main", title: "策略健康与报警" },
+    redirect: "/performance/health",
   },
 
-  // 绩效分析（简化：仅回测总览 + 账户绩效；策略详情复用回测报告，对比/归因已砍）
+  // 绩效中心（驾驶舱唯一入口 + 钻取页）
   {
     path: "/performance",
+    name: "PerformanceDashboard",
+    component: () =>
+      import("@/views/Performance/PerformanceDashboard.vue"),
+    meta: { menu: "performance-dashboard", layout: "main", title: "绩效中心" },
+  },
+  // 回测排行（驾驶舱内钻取，2026-08 由原 /performance 迁移）
+  {
+    path: "/performance/rank",
     name: "PerformanceHub",
     component: () =>
       import("@/views/StrategyCenter/Performance/PerformanceHub.vue"),
-    meta: { menu: "performance-hub", layout: "main", title: "绩效总览" },
+    meta: { menu: "performance-hub", layout: "main", title: "回测排行", hideInMenu: true },
   },
   {
     path: "/performance/account",
@@ -386,6 +392,13 @@ export const routes: RouteRecordRaw[] = [
       title: "账户绩效",
       hideInMenu: true,
     },
+  },
+  // 策略健康与报警（2026-08 信息架构重构：从风险监控移入绩效中心钻取）
+  {
+    path: "/performance/health",
+    name: "StrategyHealthAlerts",
+    component: () => import("@/views/Risk/StrategyHealthAlerts.vue"),
+    meta: { menu: "strategy-health", layout: "main", title: "策略健康与报警", hideInMenu: true },
   },
 
   // 信号管理（原监控+历史合并）

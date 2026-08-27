@@ -38,7 +38,7 @@
       </div>
 
       <!-- ================================================================
-          分区三：交易与持仓 — 驾驶舱 / 信号 / 篮子 / 持仓 / 账户
+          分区三：交易与持仓 — 驾驶舱 / 信号 / 组合实盘 / 绩效中心
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">交易与持仓</div>
@@ -139,7 +139,7 @@ export default defineComponent({
     ];
 
     /**
-     * 策略中心菜单 — 4 项（按工作流排序：因子→策略→回测→绩效）
+     * 策略中心菜单 — 4 项（按工作流排序：因子→策略→回测）
      * 每项指向一个枢纽页面，页面内以卡片形式展示子功能入口
      */
     const strategyCenterOptions = [
@@ -169,15 +169,10 @@ export default defineComponent({
             default: () => h(SmartIcon, { name: "TrendingUpOutline" }),
           }),
       },
-      {
-        label: "绩效总览",
-        key: "performance-hub",
-        icon: () =>
-          h(NIcon, null, { default: () => h(SmartIcon, { name: "Trophy" }) }),
-      },
     ];
 
-    /** 交易与持仓菜单 — 4 项（驾驶舱 / 信号 / 篮子 / 账户） */
+    /** 交易与持仓菜单 — 4 项（驾驶舱 / 信号 / 组合实盘 / 绩效中心）
+     *  绩效中心为驾驶舱大页唯一入口（回测排行/账户绩效/健康为页内钻取） */
     const tradingOptions = [
       {
         label: "交易驾驶舱",
@@ -192,14 +187,6 @@ export default defineComponent({
           h(NIcon, null, { default: () => h(SmartIcon, { name: "NotificationsOutline" }) }),
       },
       {
-        label: "账户绩效",
-        key: "account-performance",
-        icon: () =>
-          h(NIcon, null, {
-            default: () => h(SmartIcon, { name: "AnalyticsOutline" }),
-          }),
-      },
-      {
         label: "组合实盘",
         key: "trade-composite",
         icon: () =>
@@ -207,9 +194,15 @@ export default defineComponent({
             default: () => h(SmartIcon, { name: "WalletOutline" }),
           }),
       },
+      {
+        label: "绩效中心",
+        key: "performance-dashboard",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Trophy" }) }),
+      },
     ];
 
-    /** 风险监控菜单 — 4 项 */
+    /** 风险监控菜单 — 4 项（健康与报警已并入绩效中心钻取） */
     const riskOptions = [
       {
         label: "风控规则",
@@ -238,12 +231,6 @@ export default defineComponent({
         key: "blacklist",
         icon: () =>
           h(NIcon, null, { default: () => h(SmartIcon, { name: "Ban" }) }),
-      },
-      {
-        label: "健康与报警",
-        key: "risk-strategy-health",
-        icon: () =>
-          h(NIcon, null, { default: () => h(SmartIcon, { name: "Pulse" }) }),
       },
     ];
 
@@ -291,9 +278,8 @@ export default defineComponent({
       "risk-monitor": "/risk/monitor",
       "risk-events": "/risk/events",
       blacklist: "/risk/blacklist",
-      "account-performance": "/performance/account",
-      "performance-hub": "/performance",
-      "risk-strategy-health": "/risk/strategy-health-alerts",
+      // 绩效中心唯一菜单项；/performance/* 前缀匹配 → 钻取页访问时「绩效中心」保持高亮
+      "performance-dashboard": "/performance",
       "system-dashboard": "/system/dashboard",
       users: "/system/users",
       logs: "/system/logs",

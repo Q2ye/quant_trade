@@ -172,9 +172,9 @@ export default {
       .then((data: ApiResponse<any>) => data);
   },
 
-  async reviewSignal(signalId: string, action: string, comment?: string): Promise<any> {
+  async reviewSignal(signalId: string, action: string, comment?: string, rejectReason?: string): Promise<any> {
     return request
-      .put(`/quantTrade/trade/signals/${signalId}/review`, { action, comment })
+      .put(`/quantTrade/trade/signals/${signalId}/review`, { action, comment, reject_reason: rejectReason })
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data);
   },
@@ -197,3 +197,38 @@ export default {
       .then((data: ApiResponse<any>) => data?.data ?? data);
   },
 };
+
+// 信号拒绝原因（与后端 SignalRejectReason 枚举对齐）
+export const SIGNAL_REJECT_REASONS = [
+  { label: "人工审核拒绝", value: "manual_rejected" },
+  { label: "跳空高开（不追高）", value: "gap_up_chase" },
+  { label: "跳空低开/破位（不接飞刀）", value: "gap_down_break" },
+  { label: "资金不足", value: "insufficient_funds" },
+];
+
+// 拒绝原因枚举值 → 中文（后端 reason 存英文枚举前缀，前端展示时映射中文）
+const REJECT_REASON_LABELS: Record<string, string> = {
+  manual_rejected: "人工审核拒绝",
+  gap_up_chase: "跳空高开",
+  gap_down_break: "跳空低开",
+  insufficient_funds: "资金不足",
+  confirm_failed: "确认失败",
+  volume_confirm_failed: "量能不足",
+  expired_unconfirmed: "过期未确认",
+  bull_market_give_up: "牛市让位",
+  deleted: "已删除",
+};
+
+// 将 reason 的英文枚举前缀映射为中文（纯 code 或 "code: 详情" 均支持）
+export function formatRejectReason(reason?: string | null): string {
+  if (!reason) return "--";
+  // 纯枚举 code（如 "gap_down_break"）→ 直接映射中文
+  if (REJECT_REASON_LABELS[reason]) return REJECT_REASON_LABELS[reason];
+  // "code: 详情"（如 "confirm_failed: 收盘12.53 ≤ 信号价13.52"）→ 映射 code + 保留详情
+  const m = reason.match(/^([a-z_]+):\s*(.*)$/);
+  if (m) {
+    const label = REJECT_REASON_LABELS[m[1]];
+    if (label) return m[2] ? `${label}：${m[2]}` : label;
+  }
+  return reason;
+}

@@ -191,7 +191,7 @@ class TestConfirmBuy:
         cls = _load_strategy_class()
         s = cls(name="test")
         s._buy_pending["600030.SH"] = {"signal_price": 100.0, "weight": 0.5,
-                                       "signal_date": "2021-01-01"}
+                                       "signal_date": "2019-01-18"}
         closes = [100.0] * 20 + [102.0]
         _seed_history(s, "600030.SH", closes)
         s._last_trade_date = s._bar_dates["600030.SH"]
@@ -208,7 +208,7 @@ class TestConfirmBuy:
         cls = _load_strategy_class()
         s = cls(name="test")
         s._buy_pending["600030.SH"] = {"signal_price": 100.0, "weight": 0.5,
-                                       "signal_date": "2021-01-01"}
+                                       "signal_date": "2019-01-18"}
         closes = [100.0] * 20 + [95.0]
         _seed_history(s, "600030.SH", closes)
         s._last_trade_date = s._bar_dates["600030.SH"]

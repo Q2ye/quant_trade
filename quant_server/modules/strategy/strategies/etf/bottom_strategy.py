@@ -10,8 +10,9 @@ import logging
 import uuid
 from datetime import date, datetime
 from shared.utils.time_utils import BEIJING_TZ, beijing_now
+from shared.config.constants import SignalRejectReason
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 
 import joblib
 import numpy as np
@@ -101,6 +102,7 @@ class LightGBMBottomStrategy(BaseStrategy):
         self._track_high: Dict[str, float] = {}
         self._cooling: Dict[str, int] = {}
         self._p4_buffer: Dict[str, dict] = {}  # v3.4: P4 确认缓冲区，独立于 BaseStrategy._pending_signals
+        self._confirmed_active: Set[str] = set()  # 已确认转正(promoted/executed)且未卖出 → 生成信号时排除
         # v3.4: 每日诊断计数器
         self._diag = self._reset_diag()
         self.use_market_gate = bool(self.parameters.get("use_market_gate", True))
@@ -113,6 +115,7 @@ class LightGBMBottomStrategy(BaseStrategy):
             "max_positions": 0, "p4_pending": 0, "p4_confirmed": 0,
             "proba_none": 0, "proba_below": 0, "vol_filter": 0,
             "vol_confirm": 0, "weight_zero": 0, "p4_buffered": 0, "entry_generated": 0,
+            "confirmed_active": 0,  # 已确认占用被排除计数
             "top_probas": [],  # [(ts_code, proba, regime), ...]
         }
 
@@ -440,11 +443,13 @@ class LightGBMBottomStrategy(BaseStrategy):
         except RuntimeError:
             logger.debug("事件循环未运行，跳过候选 DB 写入")
 
-    async def _mark_candidate_status(self, sig_id, status: str, reason: str = "") -> None:
-        """更新候选信号行的状态（promoted 转正 / expired 丢弃）。
+    async def _mark_candidate_status(self, sig_id, status: str, reason: str = "", signal_date=None) -> None:
+        """更新候选信号行的状态（promoted 转正 / rejected / expired）。
 
         P1 修复：加 _is_live_mode 检查——回测中候选为内存 signal_id（未落库），
         状态更新是无意义 DB 写，堆积导致 QueuePool 连接超时。
+
+        signal_date: 状态变更日，传入时同步更新 signal_time（状态流转时间闭环）。
         """
         if not self._is_live_mode():
             return
@@ -453,8 +458,14 @@ class LightGBMBottomStrategy(BaseStrategy):
             return
         try:
             from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
+            _data = {"signal_status": status, "reason": reason}
+            if signal_date:
+                _d = signal_date
+                if isinstance(_d, str):
+                    _d = date.fromisoformat(_d[:10])
+                _data["signal_time"] = datetime.combine(_d, beijing_now().time(), tzinfo=BEIJING_TZ)
             async with sf() as db:
-                await SignalRepository(db).update(sig_id, {"signal_status": status, "reason": reason})
+                await SignalRepository(db).update(sig_id, _data)
                 await db.commit()
         except Exception as e:
             logger.warning(f"候选状态更新失败({status}): {e}")
@@ -471,6 +482,24 @@ class LightGBMBottomStrategy(BaseStrategy):
         try:
             from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
             async with sf() as db:
+                # [阶段2] 落库前校验：已持仓 / 未了结买入意图 → 拒绝落库（防补仓/重复入池）
+                from sqlalchemy import select, text
+                from shared.database.models.business_models import Signal
+                _pos = (await db.execute(text(
+                    "SELECT 1 FROM positions WHERE strategy_id = :sid AND ts_code = :code AND volume > 0"
+                ), {"sid": sid, "code": code})).fetchall()
+                if _pos:
+                    logger.info("[%s] %s 已持仓，跳过候选落库", self.name, code)
+                    return
+                _intent = (await db.execute(select(Signal.id).where(
+                    Signal.strategy_id == sid,
+                    Signal.ts_code == code,
+                    Signal.signal_type == "buy",
+                    Signal.signal_status.in_(("promoted", "pending_manual", "approved")),
+                ))).scalars().all()
+                if _intent:
+                    logger.info("[%s] %s 已有未了结买入意图，跳过候选落库", self.name, code)
+                    return
                 repo = SignalRepository(db)
                 _td = getattr(self, "_last_trade_date", None)
                 if isinstance(_td, str):
@@ -535,7 +564,7 @@ class LightGBMBottomStrategy(BaseStrategy):
                     if _sd:
                         try:
                             if (date.today() - date.fromisoformat(_sd)).days > 5:
-                                await self._mark_candidate_status(r.id, "expired", "过期未确认")
+                                await self._mark_candidate_status(r.id, "expired", f"{SignalRejectReason.EXPIRED_UNCONFIRMED.value}: 过期未确认")
                                 continue
                         except (ValueError, TypeError):
                             pass
@@ -544,7 +573,7 @@ class LightGBMBottomStrategy(BaseStrategy):
                     # 此前 L656 牛市门控只拦截"确认"不清理"候选"，导致 8-16 产生的候选
                     # 在牛市永久滞留 pending_confirm（前端一直显示，每次重启重复恢复）。
                     if self.use_market_gate and self._market_regime(date.today()) == 2:
-                        await self._mark_candidate_status(r.id, "expired", "牛市空仓让位，候选放弃")
+                        await self._mark_candidate_status(r.id, "expired", f"{SignalRejectReason.BULL_MARKET_GIVE_UP.value}: 牛市空仓让位，候选放弃")
                         if getattr(self, "verbose_logging", False):
                             logger.info(f"[{self.name}] 牛市恢复候选放弃: {r.ts_code}（让位进攻）")
                         continue
@@ -572,6 +601,46 @@ class LightGBMBottomStrategy(BaseStrategy):
         # P1-1 修复: 从框架注入的实盘持仓重建 _position_entry（持仓退出管理入口），
         # 否则重启后已持仓标的的止损/时间/移动止盈全部静默失效，且可能被再次开仓。
         self._rebuild_position_state()
+        try:
+            await self._rebuild_confirmed_active()
+        except Exception as e:
+            logger.warning(f"[{self.name}] 已确认占用重建失败: {e}")
+
+    async def _rebuild_confirmed_active(self, db=None) -> None:
+        """从 signals 表重建「已确认转正且未卖出」的活跃占用集合。
+
+        确认采纳(promoted/executed)即视为该股票已被占用：策略生成信号时不再考虑，
+        直到出现卖出(exit/sell)信号。跨重启经此恢复，防补仓/重复确认。
+        """
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf:
+            return
+        sid = getattr(getattr(self, "context", None), "strategy_id", "") or self.name
+        if not sid:
+            return
+        try:
+            from sqlalchemy import select
+            from shared.database.models.business_models import Signal
+            async with sf() as db_session:
+                rows = (await db_session.execute(
+                    select(Signal).where(Signal.strategy_id == sid)
+                    .order_by(Signal.ts_code, Signal.signal_time.desc())
+                )).scalars().all()
+                # 每只股票取最新一条信号；最新为 buy 且 promoted/executed → 占用
+                seen: Dict[str, Signal] = {}
+                for r in rows:
+                    if r.ts_code not in seen:
+                        seen[r.ts_code] = r
+                self._confirmed_active = {
+                    code for code, r in seen.items()
+                    if str(r.signal_type).lower() in ("buy", "entry", "long")
+                    # pending_manual=确认转正后待成交的买入信号，同样视为占用（防补仓）
+                    and getattr(r, "signal_status", "") in ("promoted", "executed", "pending_manual")
+                }
+                if self._confirmed_active:
+                    logger.info(f"[{self.name}] 已确认占用恢复: {len(self._confirmed_active)} 只 {sorted(self._confirmed_active)}")
+        except Exception as e:
+            logger.warning(f"活跃确认集重建失败: {e}")
 
     def _rebuild_position_state(self) -> None:
         """从 _active_positions（DB 真相源）重建 _position_entry。
@@ -662,6 +731,12 @@ class LightGBMBottomStrategy(BaseStrategy):
         if _held_lp is not None and _held_lp.quantity > 0:
             return signals
 
+        # [修复 2026-08-25] 已确认转正(promoted/executed)且未卖出的股票不再生成候选信号：
+        # 确认采纳即占用（防补仓/重复确认）；卖出后由 _make_exit 释放。
+        if ts_code in self._confirmed_active:
+            d["confirmed_active"] += 1
+            return signals
+
         regime = self._get_regime(ts_code, bar.trade_date)
         # 大盘牛市：防守空仓让位（已有持仓照常退出，组合层资金给进攻策略）
         if self.use_market_gate and self._market_regime(bar.trade_date) == 2:
@@ -677,6 +752,14 @@ class LightGBMBottomStrategy(BaseStrategy):
         if self.parameters.get("confirm_enabled", False) and ts_code in self._p4_buffer:
             d["p4_pending"] += 1
             pinfo = self._p4_buffer.pop(ts_code)
+            # [修复 2026-08-25] 当日入池/当日恢复候选未到确认日：
+            # 当日确认用当日数据（proba 已过阈值 + close>signal_low 恒真）会提前一天放行。
+            # 严格 T+1：同日候选跳过确认，放回 buffer 待次日。
+            _sig_date = str(pinfo.get("signal_date", ""))[:10]
+            _today_s = str(bar.trade_date)[:10]
+            if _sig_date and _sig_date >= _today_s:
+                self._p4_buffer[ts_code] = pinfo
+                return signals
             if self.parameters.get("trace", False):
                 logger.info('[P4/入] %s close=%.4f low=%.4f proba=%.3f → 检查确认',
                             ts_code, bar.close, pinfo['signal_low'], pinfo['proba'])
@@ -693,13 +776,22 @@ class LightGBMBottomStrategy(BaseStrategy):
                         # 2026-08 修复：量能确认拦截此前静默无痕，现计数+日志便于诊断
                         d["vol_confirm"] += 1
                         logger.info("[%s] %s 量能确认拦截 vol_ratio=%.2f<1.0", self.name, ts_code, vr)
+                        # [修复 2026-08-25] 拦截 = T+1 单次确认失败 → 标记 rejected（终结候选，
+                        # 不再 DB 滞留反复恢复）。P4 语义「昨日过阈值今日确认」为单次确认。
+                        _cand_sid = pinfo.get("signal_id")
+                        if _cand_sid and not getattr(self, "_replaying", False):
+                            self._fire_db(self._mark_candidate_status(
+                                _cand_sid, "rejected",
+                                f"{SignalRejectReason.VOLUME_CONFIRM_FAILED.value}: vol_ratio={vr:.2f}<1.0",
+                                signal_date=bar.trade_date))
                         return signals
                 d["p4_confirmed"] += 1
                 # v6.x: 候选转正（promoted）+ 买入信号关联 parent_id（与进攻实盘候选一致）
                 _cand_sid = pinfo.get("signal_id")
-                # P1 修复: 重放(silent replay)时不转正——重放仅为追平状态，非真实确认
+                # [阶段3 单行流转] 候选行直接流转到 pending_manual（待人工审核），
+                # 不再单独 promoted 中间态 + 另起买入行；买入信号 parent_id 复用候选行。
                 if _cand_sid and not getattr(self, "_replaying", False):
-                    self._fire_db(self._mark_candidate_status(_cand_sid, "promoted", "收盘确认转正"))
+                    self._fire_db(self._mark_candidate_status(_cand_sid, "pending_manual", "收盘确认转正", signal_date=bar.trade_date))
                 s = self._make_entry(ts_code, bar, pinfo["proba"], weight, regime, parent_id=_cand_sid)
                 if s:
                     signals.append(s)
@@ -708,6 +800,17 @@ class LightGBMBottomStrategy(BaseStrategy):
                 else:
                     d["weight_zero"] += 1
                     logger.warning("[%s] %s P4确认但入场被拦截", self.name, ts_code)
+            else:
+                # 修复 2026-08-27：确认日收盘未超信号价 → 标记 rejected（终结候选）。
+                # 此前静默丢弃（pop 出 buffer 后无状态回写），DB 永久滞留 pending_confirm。
+                _cand_sid = pinfo.get("signal_id")
+                if _cand_sid and not getattr(self, "_replaying", False):
+                    self._fire_db(self._mark_candidate_status(
+                        _cand_sid, "rejected",
+                        f"{SignalRejectReason.CONFIRM_FAILED.value}: 收盘{bar.close:.4f} ≤ 信号价{pinfo['signal_low']:.4f}",
+                        signal_date=bar.trade_date))
+                logger.info("[%s] %s 收盘确认失败: %.4f ≤ 信号价 %.4f，候选 rejected",
+                            self.name, ts_code, float(bar.close), float(pinfo['signal_low']))
             return signals
 
         # 新预测
@@ -740,7 +843,9 @@ class LightGBMBottomStrategy(BaseStrategy):
                 # v6.x: 候选 signal_id + 落库（与进攻实盘候选一致），跨重启保留
                 _sid = str(uuid.uuid4())
                 self._p4_buffer[ts_code] = {
-                    "proba": proba, "signal_low": bar.low, "weight": weight, "signal_id": _sid}
+                    "proba": proba, "signal_low": bar.low, "weight": weight, "signal_id": _sid,
+                    # [修复 2026-08-25] 记录候选入池日，P4 确认严格 T+1（防同日恢复当日提前确认）
+                    "signal_date": str(bar.trade_date)[:10]}
                 # P1 修复: 重放(silent replay)时不落库候选——重放仅为追平状态，非真实当日
                 if not getattr(self, "_replaying", False):
                     self._fire_db(self._persist_candidate(ts_code, self._p4_buffer[ts_code]))
@@ -852,6 +957,7 @@ class LightGBMBottomStrategy(BaseStrategy):
         self._position_entry.pop(ts_code, None)
         self._track_high.pop(ts_code, None)
         self._cooling[ts_code] = self.parameters["cooling_days"]
+        self._confirmed_active.discard(ts_code)  # 卖出后释放占用，可重新纳入选股
         return TradingSignal(
             id=str(uuid.uuid4()), strategy_id=self.name, strategy_name=self.name,
             ts_code=ts_code, signal_type=signal_type,

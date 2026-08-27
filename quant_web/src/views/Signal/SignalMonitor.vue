@@ -4,10 +4,10 @@ import { useRouter } from "vue-router";
 import {
   NTag, NButton, NProgress, NSpin, NResult, NEmpty,
   NSelect, NInput, NSpace, NStatistic, NCard,
-  NDataTable, useMessage,
+  NDataTable, NModal, NRadioGroup, NRadio, useMessage,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
-import tradeAPI from "@/api/trade";
+import tradeAPI, { SIGNAL_REJECT_REASONS, formatRejectReason } from "@/api/trade";
 import { formatDateTime } from "@/utils/date";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import TradeRecordModal from "@/components/trade/TradeRecordModal.vue";
@@ -114,13 +114,24 @@ const openTrace = (row: any) => {
 };
 
 const handleReview = async (signalId: string, action: string) => {
+  if (action === "rejected") {
+    // 拒绝时弹窗选择拒绝原因
+    pendingRejectSignalId.value = signalId;
+    selectedRejectReason.value = "manual_rejected";
+    showRejectDialog.value = true;
+    return;
+  }
+  await doReview(signalId, action);
+};
+
+const doReview = async (signalId: string, action: string, rejectReason?: string) => {
   const found = signals.value.find((s) => (s.signal_id || s.id) === signalId);
   const prevStatus = found?.signal_status;
   if (found) found.signal_status = action;
 
   reviewing.value.add(signalId);
   try {
-    await tradeAPI.reviewSignal(signalId, action);
+    await tradeAPI.reviewSignal(signalId, action, undefined, rejectReason);
     message.success(action === "approved" ? "已采纳" : "已拒绝");
   } catch (e: any) {
     if (found) found.signal_status = prevStatus;
@@ -128,6 +139,15 @@ const handleReview = async (signalId: string, action: string) => {
   } finally {
     reviewing.value.delete(signalId);
   }
+};
+
+const showRejectDialog = ref(false);
+const selectedRejectReason = ref("manual_rejected");
+const pendingRejectSignalId = ref("");
+
+const confirmReject = async () => {
+  showRejectDialog.value = false;
+  await doReview(pendingRejectSignalId.value, "rejected", selectedRejectReason.value);
 };
 
 // ============================================================
@@ -266,7 +286,7 @@ const columns: DataTableColumns<any> = [
       ]);
     },
   },
-  { title: "原因", key: "reason", minWidth: 150, ellipsis: { tooltip: true }, render: (row) => row.reason || "--" },
+  { title: "原因", key: "reason", minWidth: 150, ellipsis: { tooltip: true }, render: (row) => formatRejectReason(row.reason) },
   {
     title: "状态", key: "status", minWidth: 72,
     render: (row) => h(NTag, { type: statusTag(signalStatus(row)).type, size: "small", bordered: false }, { default: () => statusTag(signalStatus(row)).text }),
@@ -422,6 +442,24 @@ onMounted(() => loadSignals());
       :signal-id="traceSignalId"
       @update:show="showTrace = $event"
     />
+
+    <!-- 拒绝原因选择 -->
+    <n-modal
+      v-model:show="showRejectDialog"
+      preset="dialog"
+      title="选择拒绝原因"
+      positive-text="确认拒绝"
+      negative-text="取消"
+      @positive-click="confirmReject"
+    >
+      <n-radio-group v-model:value="selectedRejectReason">
+        <n-space vertical>
+          <n-radio v-for="r in SIGNAL_REJECT_REASONS" :key="r.value" :value="r.value">
+            {{ r.label }}
+          </n-radio>
+        </n-space>
+      </n-radio-group>
+    </n-modal>
   </div>
 </template>
 

@@ -374,6 +374,8 @@ async def get_backtest_equity_api(
 @router.get("/tasks/{task_id}/trades", response_model=BacktestTradesResponse)
 async def get_backtest_trades_api(
 		task_id: str,
+		page: int = Query(1, ge=1, description="页码"),
+		page_size: int = Query(10000, ge=1, le=100000, description="每页条数（回测报告需全量成交，默认 10000）"),
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
 ) -> BacktestTradesResponse:
@@ -382,6 +384,8 @@ async def get_backtest_trades_api(
 
 	Args:
 		task_id: 回测任务ID
+		page: 页码（默认 1）
+		page_size: 每页条数（默认 10000，回测报告成交图/列表需完整数据）
 		current_user: 当前登录用户
 		db_session: 数据库会话
 
@@ -394,7 +398,9 @@ async def get_backtest_trades_api(
 		result = await get_backtest_trades(
 			session=db_session,
 			task_id=task_id,
-			user_id=current_user.get("id")
+			user_id=current_user.get("id"),
+			page=page,
+			page_size=page_size,
 		)
 
 		return result

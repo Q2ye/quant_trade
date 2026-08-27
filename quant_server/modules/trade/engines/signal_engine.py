@@ -141,27 +141,62 @@ class SignalEngine(EngineBase):
                                 "close_long": "sell", "close_short": "cover"}
                     _db_direction = _dir_map.get(_raw_dir, _raw_dir)
 
-                    signal_record = await repo.create({
-                        "strategy_id": sid,
-                        "strategy_version_id": signal_data.get("strategy_version_id") or None,
-                        "account_id": signal_data.get("account_id") or None,  # 4a: 多账户路由——信号归属账户
-                        "ts_code": signal_data.get("ts_code", ""),
-                        "direction": _db_direction,
-                        "signal_type": _db_signal_type,
-                        "signal_time": beijing_now(),
-                        "price": signal_data.get("price", 0.0),
-                        "quantity": signal_data.get("quantity", 0),
-                        "strength": float(signal_data.get("confidence", signal_data.get("strength", 1.0))),
-                        "confidence": float(signal_data.get("confidence", 1.0)),
-                        "reason": signal_data.get("reason", ""),
-                        "price_limit_low": signal_data.get("price_limit_low"),
-                        "price_limit_high": signal_data.get("price_limit_high"),
-                        "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
-                        "order_type": signal_data.get("order_type", "limit_range"),
-                        "parent_id": signal_data.get("parent_id"),  # v3.4: 父信号ID
-                        "signal_status": "pending_manual",  # v3.3: 统一用 signal_status
-                    })
-                    db_id = signal_record.id
+                    # [阶段3 单行流转] 复用候选行：parent_id 指向的候选行存在
+                    # → update 该行流转到 pending_manual（不再另起一行，消除候选+买入双行割裂）。
+                    # 卖出信号 parent_id=None，走 create 新建（不受影响）。
+                    _reuse_id = signal_data.get("parent_id")
+                    _existing = await repo.get(_reuse_id) if _reuse_id else None
+                    if _existing:
+                        await repo.update(_reuse_id, {
+                            "signal_status": "pending_manual",
+                            "price": signal_data.get("price", 0.0),
+                            "quantity": signal_data.get("quantity", 0),
+                            "confidence": float(signal_data.get("confidence", 1.0)),
+                            "strength": float(signal_data.get("confidence", signal_data.get("strength", 1.0))),
+                            "reason": signal_data.get("reason", ""),
+                            "order_type": signal_data.get("order_type", "limit_range"),
+                            "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
+                            "parent_id": None,  # 复用后不再父子关联
+                        })
+                        db_id = _reuse_id
+                    else:
+                        # 去重守卫：新信号覆盖同(strategy, ts_code, 方向)未了结的旧信号，
+                        # 避免重启/重跑后同一标的产生多条 pending_manual 信号。
+                        # signal_type 已归一化为 buy/sell，候选(pending_confirm)同为 buy 一并覆盖。
+                        _pending_sts = ("pending_manual", "pending_confirm", "promoted", "approved")
+                        _old_signals = await repo.get_by_stock(
+                            ts_code=signal_data.get("ts_code", ""),
+                            strategy_id=sid,
+                            signal_type=_db_signal_type,
+                            limit=50,
+                        )
+                        for _old in _old_signals:
+                            if getattr(_old, "signal_status", "") in _pending_sts:
+                                await repo.update(
+                                    _old.id,
+                                    {"signal_status": "cancelled", "reason": "superseded: 被新信号覆盖"},
+                                )
+                        signal_record = await repo.create({
+                            "strategy_id": sid,
+                            "strategy_version_id": signal_data.get("strategy_version_id") or None,
+                            "account_id": signal_data.get("account_id") or None,  # 4a: 多账户路由——信号归属账户
+                            "ts_code": signal_data.get("ts_code", ""),
+                            "direction": _db_direction,
+                            "signal_type": _db_signal_type,
+                            "signal_time": beijing_now(),
+                            "price": signal_data.get("price", 0.0),
+                            "quantity": signal_data.get("quantity", 0),
+                            "strength": float(signal_data.get("confidence", signal_data.get("strength", 1.0))),
+                            "confidence": float(signal_data.get("confidence", 1.0)),
+                            "reason": signal_data.get("reason", ""),
+                            "price_limit_low": signal_data.get("price_limit_low"),
+                            "price_limit_high": signal_data.get("price_limit_high"),
+                            "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
+                            "order_type": signal_data.get("order_type", "limit_range"),
+                            "parent_id": signal_data.get("parent_id"),  # v3.4: 父信号ID
+                            "signal_status": "pending_manual",  # v3.3: 统一用 signal_status
+                        })
+                        db_id = signal_record.id
             # 返回 DB id（status 列已废弃 v3.3，统一用 signal_status）
             return db_id
         except ImportError as e:
@@ -219,7 +254,7 @@ class SignalEngine(EngineBase):
             signal["status"] = "pending_manual"
             signal["message"] = "信号已生成，等待人工确认成交"
             self.processed_signals.append(signal)
-            self._update_signal_status(db_signal_id, "pending_manual")
+            await self._update_signal_status(db_signal_id, "pending_manual")
             logger.info(
                 "半自动信号 pending_manual: %s %s %s @ %.2f",
                 signal_id, signal.get("ts_code"), signal.get("direction"), signal.get("price", 0)

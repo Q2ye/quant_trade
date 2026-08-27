@@ -139,3 +139,130 @@ class TestCandidateRaceFix:
                 pinfo["signal_id"] = sig_id
                 break
         assert pinfo["signal_id"] == "existing-pending-row"
+
+    def test_confirm_skips_same_day_candidate(self):
+        """同日入池候选（signal_date == today）跳过确认，保留待次日。
+
+        修复 2026-08-25：候选入池 signal_price=当日收盘价，若同日二次驱动
+        （重启/补跑）确认，price<=signal_price 恒成立误拒（8-24 603519/603565）。
+        """
+        s = self._make_strategy()
+        s._buy_pending["000001.SZ"] = {
+            "signal_price": 10.0,
+            "weight": 0.5,
+            "signal_date": "2026-08-24",   # 与 today 同日
+            "signal_id": "cand-same-day",
+        }
+        s._last_trade_date = "2026-08-24"
+        s._replaying = True  # 跳过 DB 回写，聚焦逻辑
+        import pandas as pd
+        s._data_cache["000001.SZ"] = pd.DataFrame({
+            "close": [10.0], "high": [10.0], "low": [10.0],
+            "volume": [1000000], "amount": [10000000],
+        })
+        s._confirm_pending_buys()
+        # 未到确认日：保留待次日，不入场、不 reject
+        assert "000001.SZ" in s._buy_pending
+        assert not s._holdings
+
+    def test_confirm_processes_next_day_candidate(self):
+        """次日候选（signal_date < today）且收盘 > 信号价 → 正常转正入场"""
+        s = self._make_strategy()
+        s._buy_pending["000001.SZ"] = {
+            "signal_price": 10.0,
+            "weight": 0.5,
+            "signal_date": "2026-08-23",
+            "signal_id": "cand-next-day",
+        }
+        s._last_trade_date = "2026-08-24"
+        s._replaying = True
+        import pandas as pd
+        s._data_cache["000001.SZ"] = pd.DataFrame({
+            "close": [10.5], "high": [10.5], "low": [10.2],
+            "volume": [1000000], "amount": [10500000],
+        })
+        s._confirm_pending_buys()
+        # 次日收盘 > 信号价 → 转正入场，移出待确认
+        assert "000001.SZ" in s._holdings
+        assert "000001.SZ" not in s._buy_pending
+
+    def test_confirm_keeps_candidate_when_positions_full(self):
+        """持仓满时候选保留待下次（不 break 丢弃）。
+
+        修复 2026-08-25：此前持仓满直接 break，内存候选被丢弃而 DB 保持
+        pending_confirm，下次运行重复恢复（8-25 603565 实证）。改放回待空位。
+        """
+        s = self._make_strategy()
+        # 构造持仓满（>= eff_max_pos）
+        s._holdings["000002.SZ"] = {"entry_price": 5.0, "weight": 1.0}
+        s._holdings["000003.SZ"] = {"entry_price": 6.0, "weight": 1.0}
+        s._last_trade_date = "2026-08-24"
+        s._replaying = True
+        s._buy_pending["000001.SZ"] = {
+            "signal_price": 10.0,
+            "weight": 0.5,
+            "signal_date": "2026-08-23",
+            "signal_id": "cand-full-pos",
+        }
+        import pandas as pd
+        s._data_cache["000001.SZ"] = pd.DataFrame({
+            "close": [10.5], "high": [10.5], "low": [10.2],
+            "volume": [1000000], "amount": [10500000],
+        })
+        s._confirm_pending_buys()
+        # 持仓满：候选未被丢弃，保留待下次运行；未入场
+        assert "000001.SZ" in s._buy_pending
+        assert "000001.SZ" not in s._holdings
+
+    def test_confirm_rejects_candidate_even_when_positions_full(self):
+        """持仓满时候选仍先做价格确认（确认失败 → reject，而非满仓跳过）。
+
+        修复 2026-08-25：确认逻辑改为「先价格确认，再看仓位」——满仓不再
+        拦截候选确认，每个候选都有明确结果（拒/通过/待次日）。
+        """
+        s = self._make_strategy()
+        # 构造持仓满
+        s._holdings["000002.SZ"] = {"entry_price": 5.0, "weight": 1.0}
+        s._holdings["000003.SZ"] = {"entry_price": 6.0, "weight": 1.0}
+        s._last_trade_date = "2026-08-24"
+        s._buy_pending["000001.SZ"] = {
+            "signal_price": 10.0,
+            "weight": 0.5,
+            "signal_date": "2026-08-23",
+            "signal_id": "cand-full-reject",
+        }
+        import pandas as pd
+        s._data_cache["000001.SZ"] = pd.DataFrame({
+            "close": [9.0], "high": [9.0], "low": [9.0],
+            "volume": [1000000], "amount": [9000000],
+        })
+        s._rejected_candidate_ids.clear()
+        s._confirm_pending_buys()
+        # 满仓也先确认：close 9.0 < signal 10.0 → 记入 rejected（而非因满仓跳过）
+        assert "cand-full-reject" in s._rejected_candidate_ids
+        assert "000001.SZ" not in s._buy_pending
+        assert "000001.SZ" not in s._holdings
+
+    def test_screen_excludes_confirmed_active(self):
+        """已确认占用（promoted/executed 未卖出）的股票被选股排除（防补仓）"""
+        s = self._make_strategy()
+        s._confirmed_active.add("600030.SH")
+        import pandas as pd
+        s._data_cache["600030.SH"] = pd.DataFrame({"close": [1.0]})
+        result = s._screen_stocks()
+        assert "600030.SH" not in result
+
+    def test_finalize_exits_releases_confirmed_active(self):
+        """卖出结算(_finalize_exits)后释放占用，可重新纳入选股"""
+        s = self._make_strategy()
+        s._confirmed_active.add("600030.SH")
+        s._exit_pending.add("600030.SH")
+        s._holdings["600030.SH"] = {"entry_price": 10.0, "weight": 0.5}
+        import pandas as pd
+        s._data_cache["600030.SH"] = pd.DataFrame({
+            "close": [11.0], "high": [11.0], "low": [10.0],
+            "volume": [1000000], "amount": [11000000],
+        })
+        s._finalize_exits()
+        assert "600030.SH" not in s._confirmed_active
+        assert "600030.SH" not in s._holdings

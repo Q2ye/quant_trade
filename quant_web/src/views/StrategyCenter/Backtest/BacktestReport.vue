@@ -13,7 +13,7 @@
       <div class="page-header">
         <div class="header-content">
           <div class="title-section">
-            <h1 class="page-title">{{ strategyName }} · 回测报告</h1>
+            <h1 class="page-title">{{ strategyName ? strategyName + ' · ' : '' }}回测报告</h1>
             <p class="page-description">{{ rangeLabel }}</p>
           </div>
           <div class="header-actions">
@@ -52,7 +52,7 @@
             />
             <StatCard title="波动率" :value="`${(report.summary.volatility * 100).toFixed(1)}%`" />
             <StatCard title="盈亏比" :value="report.summary.profitFactor ? report.summary.profitFactor.toFixed(2) : '--'" />
-            <StatCard title="平均单笔" :value="report.summary.avgTradeReturn ? `${(report.summary.avgTradeReturn * 100).toFixed(2)}%` : '--'" />
+            <StatCard title="平均单笔" :value="report.summary.avgTradeReturn ? `¥${report.summary.avgTradeReturn.toFixed(0)}` : '--'" />
             <StatCard title="卡玛比率" :value="report.summary.calmarRatio ? report.summary.calmarRatio.toFixed(2) : '--'" />
             <StatCard title="平均持仓" :value="report.summary.avgHoldingDays ? `${report.summary.avgHoldingDays.toFixed(1)} 天` : '--'" />
           </div>
@@ -107,20 +107,12 @@
         <div class="section">
           <div class="section-header-row">
             <h3>净值曲线</h3>
-            <n-space :size="8">
-              <n-switch v-model:value="showTradeMarkers" size="small" />
-              <span class="toggle-label">交易标记</span>
-              <n-switch v-model:value="showTrendLines" size="small" />
-              <span class="toggle-label">趋势线</span>
-            </n-space>
           </div>
           <EquityCurveChart
-            ref="equityChartRef"
             :data="report.equityCurve"
             :benchmark="report.benchmark"
             :show-excess="report.benchmark.length > 0"
             :height="400"
-            :primitives="equityPrimitives"
           />
         </div>
 
@@ -130,7 +122,6 @@
             <DrawdownAreaChart
               :data="report.drawdown"
               :height="260"
-              :primitives="drawdownPrimitives"
             />
           </div>
           <div class="metric-card">
@@ -150,7 +141,8 @@
                   <td :style="{ color: y.return >= 0 ? 'var(--n-error-color)' : 'var(--n-success-color)' }">
                     {{ (y.return * 100).toFixed(1) }}%
                   </td>
-                  <td>{{ (y.max_drawdown * 100).toFixed(1) }}%</td>
+                  <!-- 回撤统一负值口径（与主卡/注脚一致） -->
+                  <td>{{ (-y.max_drawdown * 100).toFixed(1) }}%</td>
                 </tr>
               </tbody>
             </table>
@@ -161,7 +153,7 @@
             <template v-if="report.maxDrawdownPeriod.start">
               <p class="drawdown-info-line">
                 最大回撤区间：<strong>{{ report.maxDrawdownPeriod.start }} ~ {{ report.maxDrawdownPeriod.end }}</strong>
-                （<strong>{{ (report.maxDrawdownPeriod.depth * 100).toFixed(1) }}%</strong>）
+                （<strong>{{ (-report.maxDrawdownPeriod.depth * 100).toFixed(1) }}%</strong>）
               </p>
               <p class="drawdown-info-line">连续亏损月份：<strong>{{ report.maxConsecutiveLosses }} 个月</strong></p>
               <p class="drawdown-info-line">
@@ -241,8 +233,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useStore } from "vuex";
-import { useMessage, NResult, NSpin, NEmpty, NSwitch, NSpace } from "naive-ui";
-import { type ISeriesPrimitive, type Time } from "lightweight-charts";
+import { useMessage, NResult, NSpin, NEmpty, NSpace } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import EquityCurveChart from "@/components/charts/EquityCurveChart.vue";
 import DrawdownAreaChart from "@/components/charts/DrawdownAreaChart.vue";
@@ -256,9 +247,6 @@ import StatCard from "@/components/common/StatCard.vue";
 import backtestAPI from "@/api/backtest";
 import strategyAPI from "@/api/strategy";
 import marketAPI from "@/api/market";
-import { SignalMarkerPrimitive } from "@/components/charts/primitives/SignalMarker";
-import { TrendLinePrimitive } from "@/components/charts/primitives/TrendLine";
-import type { SignalMarkerData, TrendLineData } from "@/components/charts/primitives/types";
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
@@ -268,188 +256,6 @@ const loading = ref(false);
 const error = ref(false);
 const activeTradeTab = ref("kline");
 
-// ---- 图表标记开关 ----
-const showTradeMarkers = ref(true);
-const showTrendLines = ref(true);
-const equityChartRef = ref<InstanceType<typeof EquityCurveChart>>();
-let _markerGeneration = 0; // 每次 loadReport 递增，防止 ID 碰撞导致旧原语残留
-
-/**
- * 从交易记录生成信号标记原语
- * 将标记叠加到净值曲线上：X=交易日期，Y=当日净值（而非股票成交价）
- * ⚠️ timeToCoordinate + priceToCoordinate 动态定位，处理节假日断点
- */
-function buildTradeMarkers(
-  trades: Array<{ date: string; price: number; direction: string; symbol?: string }>,
-  equityCurve: Array<{ date: string; value: number }>,
-): ISeriesPrimitive<Time>[] {
-  // 构建日期→净值查找表
-  const equityMap = new Map<string, number>();
-  for (const p of equityCurve) {
-    const d = (p.date?.slice(0, 10) || p.date);
-    equityMap.set(d, p.value);
-  }
-  // 记录每只股票的最近买入价（用于卖出标记显示成本价）
-  const entryMap = new Map<string, number>();
-  for (const t of trades) {
-    if (t.direction === "buy") {
-      const sym = (t.symbol || "").slice(0, 6);
-      if (sym && t.price > 0) entryMap.set(sym, t.price);
-    }
-  }
-
-  return trades.map((t, i) => {
-    const isBuy = t.direction === "buy";
-    const tradeDate = (t.date?.slice(0, 10) || t.date);
-    // 查找交易当日净值，若找不到则取最近净值
-    const equityValue = equityMap.get(tradeDate);
-    const finalEquityValue = equityValue ?? equityCurve[equityCurve.length - 1]?.value ?? 0;
-    const sym = (t.symbol || "").slice(0, 6);
-
-    // 文本：买入/卖出 + 股票代码；卖出标记再显示该股买入价
-    const text = `${isBuy ? "买入" : "卖出"} ${sym}`;
-    const entryPrice = entryMap.get(sym);
-    const strategyName = (!isBuy && entryPrice) ? `买价 ${entryPrice.toFixed(2)}` : "";
-
-    const data: SignalMarkerData = {
-      id: `trade-marker-g${_markerGeneration}-${i}`,
-      type: "signalMarker",
-      time: tradeDate as Time,
-      price: finalEquityValue,           // ← 净值，非股票成交价
-      direction: isBuy ? "buy" : "sell",
-      shape: isBuy ? "arrowUp" : "arrowDown",
-      color: isBuy ? "#ef5350" : "#26a69a",
-      text,
-      strategyName,
-    };
-    return new SignalMarkerPrimitive(data);
-  });
-}
-
-/**
- * 从净值曲线关键点生成趋势线
- * 提取起点→最高点→最低点→终点的连线，用于可视化验证
- * ⚠️ 使用 TrendLinePrimitive，坐标在每次 draw() 中通过 timeToCoordinate 动态计算
- *    时间断点期间的空白被自然处理，线条跨越断点时斜率视觉上连续
- */
-function buildEquityTrendLines(
-  equity: Array<{ date: string; value: number }>,
-): TrendLinePrimitive[] {
-  if (equity.length < 2) return [];
-  const lines: TrendLinePrimitive[] = [];
-
-  // 找到最高点和最低点
-  let maxIdx = 0;
-  let minIdx = 0;
-  for (let i = 1; i < equity.length; i++) {
-    if (equity[i].value > equity[maxIdx].value) maxIdx = i;
-    if (equity[i].value < equity[minIdx].value) minIdx = i;
-  }
-
-  const first = equity[0];
-  const last = equity[equity.length - 1];
-
-  // 起点→最高点（如果是上升段）
-  if (maxIdx > 0) {
-    const peak = equity[maxIdx];
-    lines.push(
-      new TrendLinePrimitive({
-        id: `tl-start-to-peak-g${_markerGeneration}`,
-        type: "trendLine",
-        startTime: (first.date.slice(0, 10)) as Time,
-        endTime: (peak.date.slice(0, 10)) as Time,
-        startPrice: first.value,
-        endPrice: peak.value,
-        lineColor: "rgba(255,152,0,0.5)",
-        lineWidth: 1,
-        lineStyle: 1, // dashed
-        extendLeft: false,
-        extendRight: false,
-      }),
-    );
-  }
-
-  // 最高点→终点
-  if (maxIdx < equity.length - 1) {
-    const peak = equity[maxIdx];
-    lines.push(
-      new TrendLinePrimitive({
-        id: `tl-peak-to-end-g${_markerGeneration}`,
-        type: "trendLine",
-        startTime: (peak.date.slice(0, 10)) as Time,
-        endTime: (last.date.slice(0, 10)) as Time,
-        startPrice: peak.value,
-        endPrice: last.value,
-        lineColor: "rgba(239,68,68,0.4)",
-        lineWidth: 1,
-        lineStyle: 1,
-        extendLeft: false,
-        extendRight: true, // 延长射线
-      }),
-    );
-  }
-
-  // 起点→终点（总趋势）
-  lines.push(
-    new TrendLinePrimitive({
-      id: `tl-start-to-end-g${_markerGeneration}`,
-      type: "trendLine",
-      startTime: (first.date.slice(0, 10)) as Time,
-      endTime: (last.date.slice(0, 10)) as Time,
-      startPrice: first.value,
-      endPrice: last.value,
-      lineColor: "rgba(124,58,237,0.6)",
-      lineWidth: 2,
-      lineStyle: 0, // solid
-      extendLeft: false,
-      extendRight: true,
-    }),
-  );
-
-  return lines;
-}
-
-/** 动态计算净值曲线原语（响应开关状态） */
-const equityPrimitives = computed<ISeriesPrimitive<Time>[]>(() => {
-  const prims: ISeriesPrimitive<Time>[] = [];
-
-  if (showTradeMarkers.value && report.value.trades.length > 0) {
-    prims.push(...buildTradeMarkers(report.value.trades, report.value.equityCurve));
-  }
-
-  if (showTrendLines.value && report.value.equityCurve.length >= 2) {
-    prims.push(...buildEquityTrendLines(report.value.equityCurve));
-  }
-
-  return prims;
-});
-
-/** 回撤曲线原语：标注最大回撤点 */
-const drawdownPrimitives = computed<ISeriesPrimitive<Time>[]>(() => {
-  if (!showTrendLines.value) return [];
-  const dd = report.value.drawdown;
-  if (dd.length === 0) return [];
-
-  // 找到最大回撤点
-  let worstIdx = 0;
-  for (let i = 1; i < dd.length; i++) {
-    if (dd[i].value < dd[worstIdx].value) worstIdx = i;
-  }
-  const worst = dd[worstIdx];
-
-  return [
-    new SignalMarkerPrimitive({
-      id: `max-drawdown-marker-g${_markerGeneration}`,
-      type: "signalMarker",
-      time: (worst.date.slice(0, 10)) as Time,
-      price: worst.value,
-      direction: "sell",
-      shape: "circle",
-      color: "#ef4444",
-      text: `最大回撤 ${(worst.value * 100).toFixed(1)}%`,
-    }),
-  ];
-});
 
 /** 从 trades 列表聚合收益分布（后端不直接返回此字段） */
 const aggregateProfitDistribution = (trades: any[]) => {
@@ -579,7 +385,7 @@ const strategy = computed(
 );
 
 // 页头标题：优先用 strategy_id 拉真实策略名（不依赖 Vuex store）
-const strategyName = ref("回测");
+const strategyName = ref("");
 const rangeLabel = ref("");
 
 const loadReport = async () => {
@@ -587,12 +393,12 @@ const loadReport = async () => {
   if (!taskId) { error.value = true; return; }
   loading.value = true;
   error.value = false;
-  _markerGeneration++; // 递增代次，确保重新加载时原语 ID 不碰撞
   try {
     const [result, equity, trades] = await Promise.all([
       backtestAPI.getResult(taskId).catch(() => null),
       backtestAPI.getEquityCurve(taskId).catch(() => []),
-      backtestAPI.getTrades(taskId).catch(() => []),
+      // 全量成交（后端默认 page_size=10000）：成交图/交易列表/收益分布需完整数据
+      backtestAPI.getTrades(taskId, { page_size: 10000 }).catch(() => []),
     ]);
 
     const r: Record<string, any> = result || {};
@@ -636,7 +442,8 @@ const loadReport = async () => {
       })),
       drawdown: (r.drawdown_curve || []).map((p: any) => ({
         date: p.trade_date || p.date,
-        value: p.drawdown || p.max_drawdown || 0,
+        // 引擎 drawdown 为正值深度 → 取负使回撤曲线显示在 0 下方（与负值口径一致）
+        value: -(p.drawdown || p.max_drawdown || 0),
       })),
       monthlyReturns: (r.monthly_returns || []).map((p: any) => ({
         month: p.month || p.trade_date || "",
@@ -653,8 +460,8 @@ const loadReport = async () => {
       })),
       profitDistribution: aggregateProfitDistribution(tr),
       excessMetrics: r.excess_metrics && Object.keys(r.excess_metrics).length > 0
-        ? (console.log("excess_metrics raw:", JSON.stringify(r.excess_metrics)), r.excess_metrics)
-        : (console.log("excess_metrics empty or missing"), null),
+        ? r.excess_metrics
+        : null,
       trades: tr.map((t: any) => {
         const side = t.side || t.direction || '';
         const qty = Number(t.volume || t.quantity || 0);
@@ -709,9 +516,9 @@ const addToBasket = () => {
   const taskId = route.params.taskId as string;
   store.dispatch("basket/createBasketFromReport", {
     reportId: taskId,
-    basketName: `${strategyName.value}_股票池`,
+    basketName: `${strategyName.value || '回测'}_股票池`,
   });
-  message.success(`已创建股票篮子: ${strategyName.value}_股票池`);
+  message.success(`已创建股票篮子: ${strategyName.value || '回测'}_股票池`);
 };
 
 const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)

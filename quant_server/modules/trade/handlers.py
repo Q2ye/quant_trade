@@ -678,8 +678,8 @@ class TradeHandler:
 		from datetime import datetime, timezone
 
 		try:
-			if request.action not in ("approved", "rejected"):
-				raise HTTPException(status_code=400, detail="审核动作必须为 approved 或 rejected")
+			if request.action not in ("approved", "rejected", "cancelled"):
+				raise HTTPException(status_code=400, detail="审核动作必须为 approved / rejected / cancelled")
 
 			signal = await SignalRepository(self.db).get(signal_id)
 			if not signal:
@@ -687,20 +687,39 @@ class TradeHandler:
 
 			# v3.3: signal_status 是唯一的信号状态字段
 			_current_status = getattr(signal, "signal_status", "pending_manual")
-			if _current_status not in ("pending", "pending_manual"):
-				raise HTTPException(
-					status_code=400,
-					detail=f"信号状态为 {_current_status}，不可重复审核",
-				)
+			if request.action == "cancelled":
+				# [阶段3] 删除作废：允许从未成交的中间态删除（覆盖"成交失败→删除→重新入池"），
+				# 已成交(executed)不可删（走卖出），已删除(cancelled)不可重复删。
+				if _current_status in ("executed", "cancelled"):
+					raise HTTPException(
+						status_code=400,
+						detail=f"信号状态为 {_current_status}，不可删除",
+					)
+			else:
+				# 审核：前置状态必须是待审核
+				if _current_status not in ("pending", "pending_manual"):
+					raise HTTPException(
+						status_code=400,
+						detail=f"信号状态为 {_current_status}，不可重复审核",
+					)
 
 			now = datetime.now(timezone.utc)
-			await SignalRepository(self.db).update(signal_id, {
+			from shared.config.constants import SignalRejectReason
+			_update = {
 				"signal_status": request.action,
 				"reviewed_at": now,
 				"reviewed_by": user_id,
-			})
+			}
+			# 拒绝/删除时记录原因（纯枚举 code，前端映射中文）
+			if request.action == "rejected":
+				# 直接存枚举 code（gap_up_chase/gap_down_break/insufficient_funds/manual_rejected）
+				_reject_reason = getattr(request, "reject_reason", None) or SignalRejectReason.MANUAL_REJECTED.value
+				_update["reason"] = _reject_reason
+			elif request.action == "cancelled":
+				_update["reason"] = SignalRejectReason.DELETED.value
+			await SignalRepository(self.db).update(signal_id, _update)
 
-			status_label = {"approved": "已采纳", "rejected": "已拒绝"}
+			status_label = {"approved": "已采纳", "rejected": "已拒绝", "cancelled": "已删除"}
 			return SignalReviewResponse(
 				success=True,
 				data={

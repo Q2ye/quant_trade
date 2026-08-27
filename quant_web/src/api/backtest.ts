@@ -190,10 +190,11 @@ export default {
   /**
    * 获取交易记录
    * GET /quantTrade/backtest/tasks/{taskId}/trades
+   * 后端支持 page/page_size 分页；回测报告需全量成交（page_size 默认 10000）
    */
   async getTrades(
     taskId: string,
-    params?: { skip?: number; limit?: number },
+    params?: { page?: number; page_size?: number },
   ): Promise<BacktestTaskResult["trades"]> {
     return request
       .get(`${BASE}/tasks/${taskId}/trades`, { params })

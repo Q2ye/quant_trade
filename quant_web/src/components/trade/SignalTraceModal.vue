@@ -95,7 +95,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { NModal, NTag, NButton, NSpin, NResult, NEmpty, useMessage } from "naive-ui";
-import tradeAPI from "@/api/trade";
+import tradeAPI, { formatRejectReason } from "@/api/trade";
 
 const props = defineProps<{ show: boolean; signalId: string }>();
 const emit = defineEmits(["update:show"]);
@@ -173,7 +173,7 @@ const detailQty = computed(() => {
   const q = currentDetail.value?.quantity || currentDetail.value?.volume;
   return q ? `${q}股` : "—";
 });
-const detailReason = computed(() => currentDetail.value?.reason || "");
+const detailReason = computed(() => formatRejectReason(currentDetail.value?.reason));
 
 const copyId = async () => {
   try {

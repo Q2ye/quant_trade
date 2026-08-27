@@ -2172,6 +2172,23 @@ class StrategyManager(EngineBase):
                                         "重启恢复: 策略 %s 恢复了 %d 只股票的 _track_high 历史高点",
                                         sid, len(snap["_track_high"]),
                                     )
+                                # v7.1 修复：恢复 _holdings 的运行时字段（is_bear/peak_high）。
+                                # positions 表无此信息，丢失会导致熊市持仓被当牛市止损、
+                                # 移动止损基准回退到成本价（_restore_positions_from_db 只重建基础字段）。
+                                if hasattr(strategy_obj, "_holdings") and snap.get("_holdings"):
+                                    _restored_h = 0
+                                    for ts_code, h in snap["_holdings"].items():
+                                        if ts_code in strategy_obj._holdings:
+                                            if "is_bear" in h:
+                                                strategy_obj._holdings[ts_code]["is_bear"] = bool(h["is_bear"])
+                                            if "peak_high" in h:
+                                                strategy_obj._holdings[ts_code]["peak_high"] = float(h["peak_high"])
+                                            _restored_h += 1
+                                    if _restored_h:
+                                        logger.info(
+                                            "重启恢复: 策略 %s 恢复了 %d 只股票的 _holdings 运行时字段(is_bear/peak_high)",
+                                            sid, _restored_h,
+                                        )
                                 logger.info(
                                     "重启恢复: 策略 %s 累积状态已恢复 "
                                     "(exited_entry=%.2f, exited_cash=%.2f, peak=%.4f)",
@@ -2529,6 +2546,10 @@ class StrategyManager(EngineBase):
                     "weight": h.get("weight", 1.0),
                     "shares": h.get("shares", 0),
                     "locked": h.get("locked", False),
+                    # v7.1: 持久化运行时字段（positions 表无此信息，重启丢失会导致
+                    # 熊市持仓被当牛市止损、移动止损基准回退到成本价）
+                    "is_bear": bool(h.get("is_bear", False)),
+                    "peak_high": float(h.get("peak_high", 0) or h.get("entry_price", 0) or 0),
                 }
                 for ts_code, h in strategy._holdings.items()
             }

@@ -4,7 +4,7 @@ import { useRouter, useRoute } from "vue-router";
 import {
   NTabs, NTabPane, NCard, NDataTable, NButton, NTag, NSpin,
   NResult, NEmpty, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect,
-  NProgress, NBadge, NAlert, useMessage, useDialog, NSpace,
+  NProgress, NBadge, NAlert, NRadioGroup, NRadio, useMessage, useDialog, NSpace,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
@@ -13,7 +13,7 @@ import TradeRecordModal from "@/components/trade/TradeRecordModal.vue";
 import { useWebSocket } from "@/composables/useWebSocket";
 import type { Account, Order, Position, Basket } from "@/types";
 import request from "@/utils/request";
-import tradeAPI from "@/api/trade";
+import tradeAPI, { SIGNAL_REJECT_REASONS, formatRejectReason } from "@/api/trade";
 import basketAPI from "@/api/basket";
 
 const router = useRouter();
@@ -157,6 +157,17 @@ const signalCounts = computed(() => ({
 // Signal actions
 // ============================================================
 const handleReviewSignal = async (signalId: string, action: string) => {
+  if (action === "rejected") {
+    // 拒绝时弹窗选择拒绝原因
+    pendingRejectSignalId.value = signalId;
+    selectedRejectReason.value = "manual_rejected";
+    showRejectDialog.value = true;
+    return;
+  }
+  await doReviewSignal(signalId, action);
+};
+
+const doReviewSignal = async (signalId: string, action: string, rejectReason?: string) => {
   // 乐观更新：先改 UI（后端字段为 signal_status）
   const found = signals.value.find((s) => s.signal_id === signalId || s.id === signalId);
   const prevStatus = found?.signal_status;
@@ -164,7 +175,7 @@ const handleReviewSignal = async (signalId: string, action: string) => {
 
   signalReviewing.value.add(signalId);
   try {
-    await tradeAPI.reviewSignal(signalId, action);
+    await tradeAPI.reviewSignal(signalId, action, undefined, rejectReason);
     message.success(action === "approved" ? "已采纳" : "已拒绝");
   } catch (e: any) {
     // 失败回滚
@@ -173,6 +184,15 @@ const handleReviewSignal = async (signalId: string, action: string) => {
   } finally {
     signalReviewing.value.delete(signalId);
   }
+};
+
+const showRejectDialog = ref(false);
+const selectedRejectReason = ref("manual_rejected");
+const pendingRejectSignalId = ref("");
+
+const confirmReject = async () => {
+  showRejectDialog.value = false;
+  await doReviewSignal(pendingRejectSignalId.value, "rejected", selectedRejectReason.value);
 };
 
 const handleRecordFromSignal = (signal: any) => {
@@ -745,7 +765,7 @@ onMounted(() => loadAllData());
                           强度 {{ (s.strength * 100).toFixed(0) }}%
                         </span>
                       </div>
-                      <div v-if="s.reason" class="signal-reason">{{ s.reason }}</div>
+                      <div v-if="s.reason" class="signal-reason">{{ formatRejectReason(s.reason) }}</div>
                     </div>
                     <div class="signal-actions">
                       <template v-if="signalStatus(s) === 'pending'">
@@ -1015,6 +1035,24 @@ onMounted(() => loadAllData());
           </div>
         </div>
       </n-spin>
+    </n-modal>
+
+    <!-- 拒绝原因选择 -->
+    <n-modal
+      v-model:show="showRejectDialog"
+      preset="dialog"
+      title="选择拒绝原因"
+      positive-text="确认拒绝"
+      negative-text="取消"
+      @positive-click="confirmReject"
+    >
+      <n-radio-group v-model:value="selectedRejectReason">
+        <n-space vertical>
+          <n-radio v-for="r in SIGNAL_REJECT_REASONS" :key="r.value" :value="r.value">
+            {{ r.label }}
+          </n-radio>
+        </n-space>
+      </n-radio-group>
     </n-modal>
   </div>
 </template>

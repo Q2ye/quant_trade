@@ -10,6 +10,12 @@ import os
 
 import pandas as pd
 
+import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="v9.0 出场优化已回退，high_vol_momentum_v90.py 快照文件已删除（2026-08-25 标记过时）"
+)
+
 _STRATEGY_PATH = os.path.join(
     os.path.dirname(__file__),
     "..", "..", "..",

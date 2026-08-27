@@ -55,10 +55,14 @@ let _viewportHandler: ((range: any) => void) | null = null;
 const tooltipData = ref<{ x: number; y: number; month: string; value: number } | null>(null);
 let _tooltipTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Convert 'YYYY-MM' to lightweight-charts Time (first day of month) */
+/**
+ * Convert 'YYYY-MM' to epoch 秒（2026-08 修复：lightweight-charts v5 的 business day 时间
+ * 会让 crosshair param.time 返回对象，String() 得 "[object Object]" 导致 tooltip 月份乱码；
+ * 统一用 epoch 秒线性时间轴，与其他图表一致）
+ */
 function monthToTime(month: string): Time {
   const m = month.slice(0, 7); // 'YYYY-MM'
-  return `${m}-01` as Time; // first day of month
+  return (Math.floor(new Date(m + "-01T00:00:00Z").getTime() / 1000)) as Time;
 }
 
 function toHistogramData(data: MonthlyReturnPoint[]): HistogramData[] {
@@ -99,7 +103,10 @@ function renderChart() {
       }
       const sd = series ? param.seriesData.get(series) : undefined;
       if (sd && "value" in sd) {
-        const month = String(param.time).slice(0, 7);
+        // epoch 秒 → 月份；兼容 business day 字符串
+        const month = typeof param.time === "number"
+          ? new Date(param.time * 1000).toISOString().slice(0, 7)
+          : String(param.time).slice(0, 7);
         tooltipData.value = {
           x: param.point.x,
           y: param.point.y,

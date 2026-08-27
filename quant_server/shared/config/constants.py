@@ -62,6 +62,28 @@ class OrderDirection(str, Enum):
 	SELL = "sell"  # 卖出
 
 
+class SignalRejectReason(str, Enum):
+	"""信号拒绝/终态原因枚举（标准化 reason 前缀，方便追溯、统计、过滤）。
+
+	存储约定：reason 字段格式 = `{枚举值}: {详细描述}`，如
+	`confirm_failed: 收盘12.53 ≤ 信号价13.52`。
+	"""
+
+	# —— 拒绝（rejected）——
+	CONFIRM_FAILED = "confirm_failed"                # 收盘确认失败（收盘 ≤ 信号价）
+	VOLUME_CONFIRM_FAILED = "volume_confirm_failed"  # 量能确认拦截（vol_ratio < 阈值）
+	MANUAL_REJECTED = "manual_rejected"              # 人工审核拒绝
+	# —— 人工买入失败（半自动信号手动执行时，因盘面/资金放弃）——
+	GAP_UP_CHASE = "gap_up_chase"                    # 跳空高开不追高（开盘 > 信号价 × 1.02）
+	GAP_DOWN_BREAK = "gap_down_break"                # 跳空低开/破位不接飞刀（开盘 < 信号价 × 0.97）
+	INSUFFICIENT_FUNDS = "insufficient_funds"        # 账户资金不足
+	# —— 过期/放弃（expired）——
+	EXPIRED_UNCONFIRMED = "expired_unconfirmed"      # 候选超时未确认
+	BULL_MARKET_GIVE_UP = "bull_market_give_up"      # 牛市空仓让位，候选放弃
+	# —— 删除（cancelled）——
+	DELETED = "deleted"                              # 删除作废
+
+
 class StrategyType(str, Enum):
 	"""策略类型"""
 

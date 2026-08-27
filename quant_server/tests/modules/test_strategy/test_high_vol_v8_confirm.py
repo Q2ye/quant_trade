@@ -14,6 +14,12 @@ import os
 
 import pandas as pd
 
+import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="v8.1 候选确认优化已回退，当前策略为 7.1（无 confirm_window_days 等特性）（2026-08-25 标记过时）"
+)
+
 _STRATEGY_PATH = os.path.join(
     os.path.dirname(__file__),
     "..", "..", "..",

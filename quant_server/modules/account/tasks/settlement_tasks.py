@@ -393,16 +393,35 @@ class SettlementTasks:
         }
 
     async def _mark_to_market(self, account_id: str, trading_day: date) -> Decimal:
-        """按 trading_day 收盘价重估持仓市值（当日行情缺失用持仓 last_price 兜底）"""
+        """按 trading_day 收盘价重估持仓市值（当日行情缺失用持仓 last_price 兜底）
+
+        [修复 2026-08-25] 补充 ETF 持仓(etf_daily)收盘价：此前仅查 stock_daily，
+        512400 等 ETF 查不到当日收盘 → 回退成本价 → 市值高估、当日盈亏虚增。
+        """
         positions = await self.position_repo.get_account_positions(account_id)
         if not positions:
             return Decimal("0")
         symbols = [p.ts_code for p in positions if p.volume and p.volume > 0]
         if not symbols:
             return Decimal("0")
-        # 一次 IN 批量查询当日收盘价，避免 N+1
+        # 一次 IN 批量查询当日收盘价，避免 N+1（stock_daily 覆盖 A股）
         rows = await self.stock_daily_repo.get_batch_by_date_range(symbols, trading_day, trading_day)
         close_map = {r.ts_code: Decimal(str(r.close)) for r in rows if getattr(r, "close", None) is not None}
+        # [修复 2026-08-25] ETF 收盘价在 etf_daily 表，补充查询，避免市值重估缺失
+        try:
+            from sqlalchemy import select
+            from shared.database.models.data_models import EtfDaily
+            _etf_rows = (await self.account_repo.session.execute(
+                select(EtfDaily.ts_code, EtfDaily.close).where(
+                    EtfDaily.ts_code.in_(symbols),
+                    EtfDaily.trade_date == trading_day,
+                )
+            )).all()
+            for _r in _etf_rows:
+                if getattr(_r, "close", None) is not None:
+                    close_map[_r.ts_code] = Decimal(str(_r.close))
+        except Exception as _e:
+            logger.warning(f"ETF 收盘价重估查询失败: {_e}")
         market_value = Decimal("0")
         for p in positions:
             if not p.volume or p.volume <= 0:
