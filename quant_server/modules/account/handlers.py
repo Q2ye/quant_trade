@@ -298,7 +298,7 @@ async def get_account_list (session: AsyncSession, request, user_id: str):
 			from sqlalchemy import text as _text
 			rows = (await session.execute(
 				_text(
-					"SELECT DISTINCT ON (account_id) account_id, daily_pnl, daily_return "
+					"SELECT DISTINCT ON (account_id) account_id, daily_pnl, daily_return, trade_date "
 					"FROM account_daily_performance "
 					"WHERE account_id = ANY(:ids) "
 					"ORDER BY account_id, trade_date DESC"
@@ -310,6 +310,7 @@ async def get_account_list (session: AsyncSession, request, user_id: str):
 				p = perf_map.get(a.get("id"))
 				a["daily_pnl"] = float(p.daily_pnl) if p and p.daily_pnl is not None else 0.0
 				a["daily_return"] = float(p.daily_return) if p and p.daily_return is not None else 0.0
+				a["daily_pnl_date"] = p.trade_date.isoformat() if p and p.trade_date else None
 	except Exception as _pe:
 		logger.warning(f"附加账户日绩效失败（非致命）: {_pe}")
 

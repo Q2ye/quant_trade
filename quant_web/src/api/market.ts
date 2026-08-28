@@ -51,7 +51,7 @@ export default {
     return request
       .get(`/quantTrade/data/stocks/${code}`)
       .then(handleResponse)
-      .then((data: { stock: StockBasic }) => data.stock);
+      .then((data: any) => data?.basic_info ?? data?.stock ?? data);
   },
   async getStockHistory(
     code: string,

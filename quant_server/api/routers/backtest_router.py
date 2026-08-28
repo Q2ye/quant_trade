@@ -28,6 +28,7 @@ from modules.backtest.handlers import (
 	get_backtest_trades,
 	get_backtest_positions,
 	get_backtest_result,
+	get_backtest_rankings,
 	optimize_backtest_parameters,
 	check_backtest_module_health
 )
@@ -536,6 +537,34 @@ async def get_batch_task_results_api(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"批量获取回测结果失败: {'服务器内部错误'}"
+        )
+
+
+@router.get("/tasks/rankings", response_model=None)
+async def get_backtest_rankings_api(
+    limit: int = Query(5, ge=1, le=50, description="返回条数（默认 5，最大 50）"),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """
+    获取回测绩效 Top N 排行。
+
+    每策略取净值窗口最长的已完成任务，按年化收益降序。
+    max_drawdown 统一返回负值口径（-15% = 回撤 15%），与全站展示一致。
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求回测排行，limit={limit}")
+        result = await get_backtest_rankings(
+            session=db_session,
+            user_id=current_user.get("id"),
+            limit=limit,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"获取回测排行失败: {'服务器内部错误'}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回测排行失败: {'服务器内部错误'}",
         )
 
 

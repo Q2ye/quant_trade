@@ -26,6 +26,7 @@
       <div class="main-content">
         <div class="report-body">
           <div class="report-header">
+            <h3 class="report-section-title">核心指标</h3>
             <div class="summary-stats">
             <StatCard
               title="年化收益"
@@ -111,29 +112,37 @@
           <EquityCurveChart
             :data="report.equityCurve"
             :benchmark="report.benchmark"
+            :drawdown="report.drawdown"
             :show-excess="report.benchmark.length > 0"
             :height="400"
           />
         </div>
 
         <div class="metrics-grid">
-          <div class="metric-card">
-            <h3>回撤分析</h3>
-            <DrawdownAreaChart
-              :data="report.drawdown"
-              :height="260"
-            />
-          </div>
-          <div class="metric-card">
-            <h3>月度收益</h3>
-            <MonthlyReturnChart v-if="report.monthlyReturns.length > 0" :data="report.monthlyReturns" :title="''" />
-            <n-empty v-else description="暂无月度收益数据" />
+          <div class="metric-card metric-card-full">
+            <div class="metric-card-header">
+              <h3>月度收益</h3>
+              <div class="monthly-toggle">
+                <n-radio-group v-model:value="monthlyUnit" size="small">
+                  <n-radio-button value="percent">百分比</n-radio-button>
+                  <n-radio-button value="amount">金额</n-radio-button>
+                </n-radio-group>
+              </div>
+            </div>
+            <MonthlyReturnChart v-if="report.monthlyReturns.length > 0" :data="monthlyDisplayData" :unit="monthlyUnit" :title="''" :height="300" />
+            <n-empty v-if="report.monthlyReturns.length === 0" description="暂无月度收益数据" />
+            <div v-if="monthlyAnalysis" class="monthly-analysis">
+              正收益月 <b>{{ monthlyAnalysis.pos }}</b>/{{ monthlyAnalysis.total }}（{{ (monthlyAnalysis.winRate * 100).toFixed(0) }}%），
+              最佳 <b class="text-up">{{ monthlyAnalysis.best.month }} +{{ (monthlyAnalysis.best.return * 100).toFixed(1) }}%</b>，
+              最差 <b class="text-down">{{ monthlyAnalysis.worst.month }} {{ (monthlyAnalysis.worst.return * 100).toFixed(1) }}%</b>，
+              最长连续正收益 {{ monthlyAnalysis.maxConsecPos }} 月
+            </div>
           </div>
           <div class="metric-card">
             <h3>分年度表现</h3>
             <table v-if="report.yearlyReturns.length > 0" class="yearly-table">
               <thead>
-                <tr><th>年份</th><th>收益</th><th>最大回撤</th></tr>
+                <tr><th>年份</th><th>收益</th><th>最大回撤</th><th>市场情况</th><th>策略表现</th><th>归因分析</th></tr>
               </thead>
               <tbody>
                 <tr v-for="y in report.yearlyReturns" :key="y.year">
@@ -143,9 +152,25 @@
                   </td>
                   <!-- 回撤统一负值口径（与主卡/注脚一致） -->
                   <td>{{ (-y.max_drawdown * 100).toFixed(1) }}%</td>
+                  <!-- 市场情况（当年 regime 分布，来自 CSI500 vs MA250） -->
+                  <td>{{ regimeLabelForYear(y.year) }}</td>
+                  <!-- 策略表现：相对 CSI500 的超额收益（跑赢/跑输） -->
+                  <td>
+                    <span :class="(y.return - (csi500YearlyReturn[String(y.year)] ?? 0)) >= 0 ? 'text-up' : 'text-down'">
+                      {{ (y.return - (csi500YearlyReturn[String(y.year)] ?? 0)) >= 0 ? '跑赢' : '跑输' }}
+                      {{ ((y.return - (csi500YearlyReturn[String(y.year)] ?? 0)) * 100).toFixed(1) }}%
+                    </span>
+                  </td>
+                  <!-- 归因分析（顺逆风 + α 有无 → 结论） -->
+                  <td>{{ yearAttribution(y) }}</td>
                 </tr>
               </tbody>
             </table>
+            <div v-if="yearlyConclusion" class="yearly-conclusion">
+              正收益年 <b>{{ yearlyConclusion.pos }}</b>/{{ yearlyConclusion.total }}，
+              最佳 <b class="text-up">{{ yearlyConclusion.best.year }} +{{ (yearlyConclusion.best.return * 100).toFixed(1) }}%</b>，
+              最差 <b class="text-down">{{ yearlyConclusion.worst.year }} {{ (yearlyConclusion.worst.return * 100).toFixed(1) }}%</b>
+            </div>
             <n-empty v-else description="样本不足（回测区间不足一年）" :size="'small'" />
           </div>
           <div class="metric-card">
@@ -159,6 +184,19 @@
               <p class="drawdown-info-line">
                 月度分布：正收益月 <strong>{{ monthlyWinMonths }}</strong> 个 / 负收益月 <strong>{{ monthlyLossMonths }}</strong> 个（占比 {{ monthlyWinPct }}%，详见上方月度收益图）
               </p>
+              <!-- 行情背景归因（A2-④：市场同期涨跌 + 结论） -->
+              <p v-if="drawdownMarketContext" class="drawdown-info-line">
+                行情背景：同期 CSI500
+                <strong :class="(drawdownMarketContext.csiRet ?? 0) < 0 ? 'text-down' : 'text-up'">{{ ((drawdownMarketContext.csiRet ?? 0) * 100).toFixed(1) }}%</strong>
+                / 沪深300
+                <strong :class="(drawdownMarketContext.hsRet ?? 0) < 0 ? 'text-down' : 'text-up'">{{ ((drawdownMarketContext.hsRet ?? 0) * 100).toFixed(1) }}%</strong>
+                <strong>{{ ((drawdownMarketContext.csiRet ?? 0) < -0.05 || (drawdownMarketContext.hsRet ?? 0) < -0.05) ? '——市场下跌拖累为主' : '——策略自身因素为主' }}</strong>
+              </p>
+              <!-- 结论与建议 -->
+              <p v-if="drawdownConclusion" class="drawdown-info-line drawdown-conclusion">
+                结论：回撤<strong>{{ drawdownConclusion.severity }}</strong>（{{ (drawdownConclusion.depth * 100).toFixed(1) }}%，连续亏损 {{ drawdownConclusion.consec }} 月），{{ drawdownConclusion.cause }}。<br />
+                建议：{{ drawdownConclusion.advice }}
+              </p>
             </template>
             <n-empty v-else description="样本不足" :size="'small'" />
           </div>
@@ -167,51 +205,96 @@
         <div class="section">
           <h3>每日盈亏</h3>
           <DailyPnLChart :data="report.dailyReturns" :height="260" :title="''" />
+          <!-- 诊断区块：尾部风险 / 分布偏度 / 收益集中度 / 连续亏损 / 基准相关性 -->
+          <div v-if="dailyPnLDiagnostics" class="pnl-diagnostic">
+            <div class="diag-grid">
+              <div class="diag-item">
+                <span class="diag-label">单日最大盈利</span>
+                <span class="diag-value text-up">¥{{ (dailyPnLDiagnostics.maxWin / 1e4).toFixed(2) }}万</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">单日最大亏损</span>
+                <span class="diag-value text-down">¥{{ (dailyPnLDiagnostics.maxLoss / 1e4).toFixed(2) }}万</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">亏损超 -3% 天数</span>
+                <span class="diag-value">{{ dailyPnLDiagnostics.lossOver3Pct }} 天</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">日胜率</span>
+                <span class="diag-value">{{ (dailyPnLDiagnostics.winRate * 100).toFixed(1) }}%</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">收益分布偏度</span>
+                <span class="diag-value">{{ dailyPnLDiagnostics.skew > 0.2 ? '右偏' : dailyPnLDiagnostics.skew < -0.2 ? '左偏' : '近对称' }}（{{ dailyPnLDiagnostics.skew.toFixed(2) }}）</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">收益集中度</span>
+                <span class="diag-value" :class="dailyPnLDiagnostics.concentration < 0.5 ? 'text-down' : ''">去掉最好/最差 10 天后剩 {{ (dailyPnLDiagnostics.concentration * 100).toFixed(0) }}%</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">最长连续亏损</span>
+                <span class="diag-value">{{ dailyPnLDiagnostics.maxConsecLoss }} 天</span>
+              </div>
+              <div class="diag-item">
+                <span class="diag-label">与基准日相关性</span>
+                <span class="diag-value">{{ dailyPnLDiagnostics.benchmarkCorr != null ? dailyPnLDiagnostics.benchmarkCorr.toFixed(2) : '--' }}</span>
+              </div>
+            </div>
+            <div class="diag-note">
+              集中度：去掉最好/最差 10 天收益即归零，说明「靠运气不靠 alpha」；相关性高 = 单日涨跌跟随大盘（beta 暴露）。
+            </div>
+          </div>
         </div>
 
         <div class="section">
-          <h3>成交记录图</h3>
-          <TradeRecordChart
-            :trades="report.trades"
+          <h3>成交记录</h3>
+          <TradePnlScatterChart
+            :data="roundTrips"
             :height="300"
-            :symbol="route.params.taskId as string"
             :title="''"
           />
+          <div class="sub-chart-title">x=退出时间 · y=单笔盈亏% · 颜色=赚/亏 · 气泡大小=仓位</div>
         </div>
 
         <div class="section">
           <h3>交易分析</h3>
           <n-tabs v-model:value="activeTradeTab">
-            <n-tab-pane name="kline" tab="K线分析">
-              <div v-if="tradeSymbols.length" class="trade-kline-bar">
-                <n-select
-                  v-model:value="selectedTradeSymbol"
-                  :options="tradeSymbols.map((s) => ({ label: s, value: s }))"
-                  size="small"
-                  style="width: 220px"
-                />
-                <span class="toggle-label">选择标的查看 K 线与买卖点</span>
+            <n-tab-pane name="stats" tab="交易统计">
+              <div v-if="tradeStats" class="trade-stats-grid">
+                <div class="ts-item"><span class="ts-label">总交易笔数</span><span class="ts-value">{{ tradeStats.total }}</span></div>
+                <div class="ts-item"><span class="ts-label">胜率</span><span class="ts-value">{{ (tradeStats.winRate * 100).toFixed(1) }}%</span></div>
+                <div class="ts-item"><span class="ts-label">盈亏比</span><span class="ts-value">{{ tradeStats.profitFactor.toFixed(2) }}</span></div>
+                <div class="ts-item"><span class="ts-label">平均盈利</span><span class="ts-value text-up">{{ (tradeStats.avgWin * 100).toFixed(2) }}%</span></div>
+                <div class="ts-item"><span class="ts-label">平均亏损</span><span class="ts-value text-down">{{ (tradeStats.avgLoss * 100).toFixed(2) }}%</span></div>
+                <div class="ts-item"><span class="ts-label">平均持仓</span><span class="ts-value">{{ tradeStats.avgHolding.toFixed(1) }} 天</span></div>
               </div>
-              <LightweightKLine
-                v-if="tradeKline.length"
-                :data="tradeKline"
-                :height="420"
-                :signal-markers="tradeMarkers"
-                :loading="tradeKlineLoading"
-              />
-              <n-empty
-                v-else-if="!tradeKlineLoading && !selectedTradeSymbol"
-                description="请选择交易标的"
-                style="padding: 30px"
-              />
-              <n-empty v-else-if="!tradeKlineLoading" description="该标的暂无 K 线数据" style="padding: 30px" />
+              <n-empty v-else description="暂无成交配对数据" />
             </n-tab-pane>
             <n-tab-pane name="trades" tab="交易列表">
-              <TradeTable :trades="report.trades" />
+              <n-data-table
+                :columns="stockColumns"
+                :data="stockGroupedTrips"
+                :row-key="(row: any) => row.symbol"
+                size="small"
+                :max-height="360"
+                :row-class-name="(row: any) => row.symbol === selectedStockSymbol ? 'stock-row-selected' : ''"
+                @row-click="onStockRowClick"
+              />
+              <div v-if="selectedStockDetail" class="stock-detail">
+                <h4 class="stock-detail-title">{{ selectedStockDetail.name }}（{{ selectedStockDetail.symbol }}）成交明细 · 共 {{ selectedStockDetail.count }} 次往返</h4>
+                <n-data-table :columns="tripColumns" :data="selectedStockDetail.trips" size="small" :bordered="false" />
+              </div>
+              <div v-else class="stock-detail-hint">👆 点击上方股票行，追溯该股票的每笔买卖配对</div>
             </n-tab-pane>
             <n-tab-pane name="distribution" tab="收益分布">
               <n-empty v-if="report.profitDistribution.bins.length === 0" description="收益分布由交易列表聚合计算" />
-              <ProfitDistributionChart v-else :data="report.profitDistribution" />
+              <template v-else>
+                <ProfitDistributionChart :data="report.profitDistribution" />
+                <div v-if="distributionConclusion" class="distribution-conclusion">
+                  <b>{{ distributionConclusion.type }}</b>：{{ distributionConclusion.text }}
+                </div>
+              </template>
             </n-tab-pane>
           </n-tabs>
         </div>
@@ -230,19 +313,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, h } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useStore } from "vuex";
-import { useMessage, NResult, NSpin, NEmpty, NSpace } from "naive-ui";
+import { useMessage, NResult, NSpin, NEmpty, NSpace, NButton } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import EquityCurveChart from "@/components/charts/EquityCurveChart.vue";
-import DrawdownAreaChart from "@/components/charts/DrawdownAreaChart.vue";
 import MonthlyReturnChart from "@/components/charts/MonthlyReturnChart.vue";
 import ProfitDistributionChart from "@/components/charts/ProfitDistributionChart.vue";
 import DailyPnLChart from "@/components/charts/DailyPnLChart.vue";
-import TradeRecordChart from "@/components/charts/TradeRecordChart.vue";
-import LightweightKLine, { type SignalMarker } from "@/components/charts/LightweightKLine.vue";
-import TradeTable from "@/components/data/TradeTable.vue";
+import TradePnlScatterChart from "@/components/charts/TradePnlScatterChart.vue";
 import StatCard from "@/components/common/StatCard.vue";
 import backtestAPI from "@/api/backtest";
 import strategyAPI from "@/api/strategy";
@@ -254,7 +334,7 @@ const store = useStore<any>();
 
 const loading = ref(false);
 const error = ref(false);
-const activeTradeTab = ref("kline");
+const activeTradeTab = ref("stats");
 
 
 /** 从 trades 列表聚合收益分布（后端不直接返回此字段） */
@@ -305,6 +385,249 @@ const aggregateProfitDistribution = (trades: any[]) => {
   return { bins, counts };
 };
 
+// ---- 成交 round-trip（A4：FIFO 买卖配对 → 单笔盈亏/持仓天数/仓位） ----
+const roundTrips = computed(() => {
+  const trades = report.value.trades || [];
+  if (trades.length === 0) return [];
+  const bySymbol = new Map<string, any[]>();
+  for (const t of trades) {
+    const key = t.symbol;
+    if (!bySymbol.has(key)) bySymbol.set(key, []);
+    bySymbol.get(key)!.push(t);
+  }
+  const trips: any[] = [];
+  for (const [symbol, list] of bySymbol) {
+    const sorted = [...list].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const open: Array<{ date: string; price: number; quantity: number }> = [];
+    for (const t of sorted) {
+      if (t.direction === 'buy') {
+        open.push({ date: t.date, price: t.price, quantity: t.quantity });
+      } else {
+        let remaining = t.quantity;
+        while (remaining > 0 && open.length > 0) {
+          const entry = open[0];
+          const matchedQty = Math.min(remaining, entry.quantity);
+          const pnlRate = entry.price > 0 ? (t.price - entry.price) / entry.price : 0;
+          const holdingMs = new Date(t.date).getTime() - new Date(entry.date).getTime();
+          const holdingDays = Math.max(0, Math.round(holdingMs / 86400000));
+          trips.push({
+            symbol,
+            entryDate: String(entry.date).slice(0, 10),
+            exitDate: String(t.date).slice(0, 10),
+            buyPrice: entry.price,
+            sellPrice: t.price,
+            pnlRate,
+            holdingDays,
+            positionSize: entry.price * matchedQty,
+            isWin: pnlRate >= 0,
+          });
+          remaining -= matchedQty;
+          entry.quantity -= matchedQty;
+          if (entry.quantity <= 0) open.shift();
+        }
+      }
+    }
+  }
+  return trips.sort((a, b) => String(a.exitDate).localeCompare(String(b.exitDate)));
+});
+
+// ---- 交易统计（Fix 6：胜率/盈亏比/平均盈亏/持仓天数，替代逐笔 K 线） ----
+const tradeStats = computed(() => {
+  const trips = roundTrips.value;
+  if (trips.length === 0) return null;
+  const wins = trips.filter((t) => t.pnlRate > 0);
+  const losses = trips.filter((t) => t.pnlRate < 0);
+  const avgWin = wins.length ? wins.reduce((a, t) => a + t.pnlRate, 0) / wins.length : 0;
+  const avgLoss = losses.length ? Math.abs(losses.reduce((a, t) => a + t.pnlRate, 0) / losses.length) : 0;
+  const totalWin = wins.reduce((a, t) => a + t.pnlRate, 0);
+  const totalLoss = Math.abs(losses.reduce((a, t) => a + t.pnlRate, 0));
+  return {
+    total: trips.length,
+    winRate: wins.length / trips.length,
+    avgWin,
+    avgLoss,
+    profitFactor: avgLoss > 0 ? avgWin / avgLoss : 0,
+    avgHolding: trips.reduce((a, t) => a + t.holdingDays, 0) / trips.length,
+    totalWin,
+    totalLoss,
+  };
+});
+
+// ---- 收益分布结论（偏度判断策略类型 + 尾部风险） ----
+const distributionConclusion = computed(() => {
+  const trips = roundTrips.value;
+  if (trips.length < 3) return null;
+  const rates = trips.map((t: any) => t.pnlRate);
+  const mean = rates.reduce((a, b) => a + b, 0) / rates.length;
+  const std = Math.sqrt(rates.reduce((a, b) => a + (b - mean) ** 2, 0) / rates.length);
+  const skew = std > 1e-9 ? rates.reduce((a, b) => a + ((b - mean) / std) ** 3, 0) / rates.length : 0;
+  if (skew > 0.3) return { type: "右偏", text: "多数小亏 + 少数大赚（截断亏损、让利润奔跑），典型趋势/动量策略" };
+  if (skew < -0.3) return { type: "左偏", text: "多数小赚 + 少数大亏，尾部风险高，某次大亏可能吃掉累计利润" };
+  return { type: "近对称", text: "单笔赚亏对等，无明显 alpha 结构" };
+});
+
+// ---- 股票名称解析 + 按股票聚合（追溯单只股票交易记录） ----
+const stockNames = ref<Record<string, string>>({});
+
+async function resolveStockNames() {
+  const codes = [...new Set(roundTrips.value.map((t: any) => t.symbol).filter(Boolean))];
+  console.log("[追溯] 待解析股票代码:", codes);
+  if (!codes.length) return;
+  const results = await Promise.all(codes.map((c) => marketAPI.getStockDetail(c).catch((e) => { console.log("[追溯] 名称解析失败:", c, e); return null; })));
+  const map: Record<string, string> = {};
+  codes.forEach((c, i) => {
+    const s: any = results[i];
+    map[c] = s?.name || s?.stock_name || s?.ts_name || c;
+  });
+  console.log("[追溯] 解析结果:", map);
+  stockNames.value = map;
+}
+
+const stockGroupedTrips = computed(() => {
+  const map = new Map<string, any[]>();
+  for (const t of roundTrips.value) {
+    if (!map.has(t.symbol)) map.set(t.symbol, []);
+    map.get(t.symbol)!.push(t);
+  }
+  return [...map.entries()].map(([symbol, ts]) => {
+    const wins = ts.filter((t: any) => t.isWin).length;
+    return {
+      symbol,
+      name: stockNames.value[symbol] || symbol,
+      count: ts.length,
+      winRate: wins / ts.length,
+      totalPnl: ts.reduce((a: number, t: any) => a + t.pnlRate, 0),
+      avgHolding: ts.reduce((a: number, t: any) => a + t.holdingDays, 0) / ts.length,
+      trips: ts,
+    };
+  });
+});
+
+const stockColumns = [
+  { title: "股票代码", key: "symbol", width: 100 },
+  { title: "名称", key: "name", width: 160, ellipsis: { tooltip: true } },
+  { title: "往返次数", key: "count", width: 90 },
+  { title: "胜率", key: "winRate", width: 80, render: (row: any) => `${(row.winRate * 100).toFixed(0)}%` },
+  { title: "总盈亏", key: "totalPnl", width: 110, render: (row: any) => h("span", { class: row.totalPnl >= 0 ? "text-up" : "text-down" }, `${row.totalPnl >= 0 ? "+" : ""}${(row.totalPnl * 100).toFixed(1)}%`) },
+  { title: "平均持仓", key: "avgHolding", width: 90, render: (row: any) => `${row.avgHolding.toFixed(1)} 天` },
+  {
+    title: "操作",
+    key: "action",
+    width: 90,
+    render: (row: any) => h(NButton, {
+      size: "tiny", type: "primary", quaternary: true,
+      onClick: () => onStockRowClick(row),
+    }, { default: () => "查看明细" }),
+  },
+];
+
+const tripColumns = [
+  { title: "买入日期", key: "entryDate", width: 105 },
+  { title: "卖出日期", key: "exitDate", width: 105 },
+  { title: "买入价", key: "buyPrice", width: 80, render: (row: any) => row.buyPrice?.toFixed(2) },
+  { title: "卖出价", key: "sellPrice", width: 80, render: (row: any) => row.sellPrice?.toFixed(2) },
+  { title: "盈亏", key: "pnlRate", width: 90, render: (row: any) => h("span", { class: row.pnlRate >= 0 ? "text-up" : "text-down" }, `${row.pnlRate >= 0 ? "+" : ""}${(row.pnlRate * 100).toFixed(2)}%`) },
+  { title: "持仓天数", key: "holdingDays", width: 85 },
+  { title: "仓位", key: "positionSize", width: 100, render: (row: any) => `¥${(row.positionSize / 1e4).toFixed(1)}万` },
+];
+
+// ---- 股票追溯（点击行选中 → 下方明细） ----
+const selectedStockSymbol = ref("");
+
+function onStockRowClick(row: any) {
+  console.log("[追溯] 点击股票行:", row?.symbol, "| 当前选中:", selectedStockSymbol.value);
+  selectedStockSymbol.value = row.symbol === selectedStockSymbol.value ? "" : row.symbol;
+}
+
+const selectedStockDetail = computed(() => {
+  if (!selectedStockSymbol.value) return null;
+  return stockGroupedTrips.value.find((s: any) => s.symbol === selectedStockSymbol.value) || null;
+});
+
+// ---- 市场背景（A2-③④：CSI500 regime 分年度 + 回撤区间行情归因） ----
+const marketCloses = ref<{ csi500: Array<{ date: string; close: number }>; hs300: Array<{ date: string; close: number }> }>({ csi500: [], hs300: [] });
+
+// regime 判定：CSI500 close vs MA250 ±3% 带（与后端 shared.market_regime.compute_regime 同源）
+function regimeOf(closes: Array<{ date: string; close: number }>, i: number): "bull" | "bear" | "range" {
+  if (i < 249) return "range";
+  let sum = 0;
+  for (let j = i - 249; j <= i; j++) sum += closes[j].close;
+  const ma = sum / 250;
+  if (closes[i].close > ma * 1.03) return "bull";
+  if (closes[i].close < ma * 0.97) return "bear";
+  return "range";
+}
+
+const REGIME_LABEL: Record<string, string> = { bull: "牛", bear: "熊", range: "震荡" };
+
+// 分年度市场情况（当年各 regime 天数占比）
+const regimeByYear = computed(() => {
+  const closes = marketCloses.value.csi500;
+  const map: Record<string, { bull: number; bear: number; range: number; total: number }> = {};
+  for (let i = 249; i < closes.length; i++) {
+    const year = closes[i].date.slice(0, 4);
+    const r = regimeOf(closes, i);
+    if (!map[year]) map[year] = { bull: 0, bear: 0, range: 0, total: 0 };
+    map[year][r]++;
+    map[year].total++;
+  }
+  return map;
+});
+
+function regimeLabelForYear(year: string | number): string {
+  const d = regimeByYear.value[String(year)];
+  if (!d || d.total === 0) return "--";
+  const parts = ["bull", "range", "bear"]
+    .filter((k) => d[k as keyof typeof d] > 0)
+    .map((k) => `${REGIME_LABEL[k]}${Math.round((d[k as keyof typeof d] / d.total) * 100)}%`);
+  return parts.join(" / ");
+}
+
+// 回撤区间行情背景（市场同期涨跌 + regime，判定「市场下跌拖累」vs「策略自身失效」）
+const drawdownMarketContext = computed(() => {
+  const period = report.value.maxDrawdownPeriod;
+  const start = String(period.start || "").slice(0, 10);
+  const end = String(period.end || "").slice(0, 10);
+  const csi = marketCloses.value.csi500;
+  const hs300 = marketCloses.value.hs300;
+  if (!start || !end || csi.length === 0) return null;
+
+  const range = (arr: Array<{ date: string; close: number }>) => {
+    const seg = arr.filter((d) => d.date >= start && d.date <= end);
+    if (seg.length < 2) return null;
+    const first = seg[0].close;
+    const last = seg[seg.length - 1].close;
+    return first > 0 ? (last - first) / first : null;
+  };
+  const csiRet = range(csi);
+  const hsRet = range(hs300);
+  // 回撤区间内的 regime 分布
+  const regimeCount = { bull: 0, bear: 0, range: 0 };
+  const idxStart = csi.findIndex((d) => d.date >= start);
+  if (idxStart >= 0) {
+    for (let i = idxStart; i < csi.length && csi[i].date <= end; i++) {
+      regimeCount[regimeOf(csi, i)]++;
+    }
+  }
+  return { csiRet, hsRet, regimeCount, start, end };
+});
+
+// ---- 回撤结论与建议（严重度 + 归因 + 对应动作） ----
+const drawdownConclusion = computed(() => {
+  const period = report.value.maxDrawdownPeriod;
+  if (!period || !period.start) return null;
+  const depth = Number(period.depth || 0);
+  const consec = Number(report.value.maxConsecutiveLosses || 0);
+  const ctx = drawdownMarketContext.value;
+  const marketDrop = ctx && ((ctx.csiRet ?? 0) < -0.05 || (ctx.hsRet ?? 0) < -0.05);
+  const severity = depth >= 0.2 ? "较大" : depth >= 0.1 ? "偏高" : "可控";
+  const cause = marketDrop ? "主要受市场系统性下跌拖累" : "以策略自身因素为主";
+  const advice = marketDrop
+    ? "对冲逻辑可能正常，维持现有风控，关注市场企稳信号后再加仓"
+    : "复盘止盈止损纪律与仓位控制，必要时收紧止损、降低单一持仓集中度";
+  return { depth, consec, severity, cause, advice };
+});
+
 const report = ref({
   summary: {
     annualReturn: 0,
@@ -335,39 +658,6 @@ const report = ref({
   maxConsecutiveLosses: 0,
 });
 
-// ---- 交易分析 K 线（2026-08 修复：复用 K 线组件；须在 report 声明之后） ----
-const tradeSymbols = computed(() => [...new Set(report.value.trades.map((t: any) => t.symbol).filter(Boolean))] as string[]);
-const selectedTradeSymbol = ref("");
-const tradeKline = ref<any[]>([]);
-const tradeKlineLoading = ref(false);
-const tradeMarkers = ref<SignalMarker[]>([]);
-watch(selectedTradeSymbol, async (sym: string) => {
-  if (!sym) { tradeKline.value = []; tradeMarkers.value = []; return; }
-  tradeKlineLoading.value = true;
-  try {
-    const data = await marketAPI.getStockKline(sym, "daily");
-    tradeKline.value = (data || []).map((d: any) => ({
-      trade_date: d.trade_date,
-      open: d.open, high: d.high, low: d.low, close: d.close, vol: d.vol,
-    }));
-  } catch { tradeKline.value = []; }
-  const symTrades = report.value.trades.filter((t: any) => t.symbol === sym);
-  tradeMarkers.value = symTrades.map((t: any) => ({
-    time: String(t.date).slice(0, 10),
-    position: t.direction === "buy" ? "belowBar" : "aboveBar",
-    color: t.direction === "buy" ? "#ef5350" : "#26a69a",
-    shape: t.direction === "buy" ? "arrowUp" : "arrowDown",
-    text: `${t.direction === "buy" ? "买" : "卖"} ${t.quantity}股 @${Number(t.price).toFixed(2)}`,
-  }));
-  tradeKlineLoading.value = false;
-}, { immediate: true });
-// 成交记录加载后自动选第一个标的（便于直接看 K 线）
-watch(() => report.value.trades.length, (n: number) => {
-  if (n > 0 && !selectedTradeSymbol.value && tradeSymbols.value.length) {
-    selectedTradeSymbol.value = tradeSymbols.value[0];
-  }
-});
-
 // 月度盈亏分布统计（增强指标，基建设计 §2.3）
 const monthlyWinMonths = computed(() =>
   report.value.monthlyReturns.filter((m: any) => m.return >= 0).length,
@@ -380,6 +670,139 @@ const monthlyWinPct = computed(() => {
   return total > 0 ? Math.round((monthlyWinMonths.value / total) * 100) : 0;
 });
 
+// ---- 月度收益（热力图，百分比/金额切换）+ 分析结论 ----
+const monthlyUnit = ref<"percent" | "amount">("percent");
+
+const monthlyInitialCapital = computed(() => {
+  const eq = report.value.equityCurve;
+  return eq.length ? Number(eq[0]?.value || 0) : 0;
+});
+
+const monthlyDisplayData = computed(() => {
+  if (monthlyUnit.value === "percent") return report.value.monthlyReturns;
+  const base = monthlyInitialCapital.value;
+  return report.value.monthlyReturns.map((m: any) => ({ month: m.month, return: (m.return ?? 0) * base }));
+});
+
+const monthlyAnalysis = computed(() => {
+  const mr = report.value.monthlyReturns;
+  if (!mr.length) return null;
+  const best = mr.reduce((a, b) => (a.return > b.return ? a : b));
+  const worst = mr.reduce((a, b) => (a.return < b.return ? a : b));
+  const pos = mr.filter((m) => m.return > 0).length;
+  let maxConsecPos = 0;
+  let cur = 0;
+  for (const m of mr) { cur = m.return > 0 ? cur + 1 : 0; if (cur > maxConsecPos) maxConsecPos = cur; }
+  return { pos, total: mr.length, best, worst, maxConsecPos, winRate: pos / mr.length };
+});
+
+// ---- 分年度市场基准（CSI500 年度收益，用于「策略表现」相对结论） ----
+const csi500YearlyReturn = computed(() => {
+  const closes = marketCloses.value.csi500;
+  const map: Record<string, { first: number; last: number }> = {};
+  for (const c of closes) {
+    const y = c.date.slice(0, 4);
+    if (!map[y]) map[y] = { first: c.close, last: c.close };
+    map[y].last = c.close;
+  }
+  const ret: Record<string, number> = {};
+  for (const [y, v] of Object.entries(map)) {
+    ret[y] = v.first > 0 ? (v.last - v.first) / v.first : 0;
+  }
+  return ret;
+});
+
+const yearlyConclusion = computed(() => {
+  const yr = report.value.yearlyReturns;
+  if (!yr.length) return null;
+  const pos = yr.filter((y: any) => y.return > 0).length;
+  const best = yr.reduce((a: any, b: any) => (a.return > b.return ? a : b));
+  const worst = yr.reduce((a: any, b: any) => (a.return < b.return ? a : b));
+  return { pos, total: yr.length, best, worst };
+});
+
+// ---- 分年度归因分析（市场顺逆风 + α 有无 → 归因结论） ----
+function yearAttribution(y: any): string {
+  const excess = y.return - (csi500YearlyReturn.value[String(y.year)] ?? 0);
+  if (y.return >= 0 && excess >= 0) return "顺风+超额，α 有效";
+  if (y.return >= 0 && excess < 0) return "β 驱动，α 不足";
+  if (y.return < 0 && excess >= 0) return "逆风但跑赢，防御有效";
+  return "β+α 双弱，需复盘";
+}
+
+// ---- 每日盈亏诊断（A3：尾部风险/分布偏度/收益集中度/连续亏损/基准相关性） ----
+const dailyPnLDiagnostics = computed(() => {
+  const days = report.value.dailyReturns || [];
+  if (days.length < 2) return null;
+  const returns = days.map((d: any) => Number(d.daily_return ?? 0));
+  const pnls = days.map((d: any) => Number(d.daily_pnl ?? 0));
+
+  // 1. 尾部风险
+  const maxWin = Math.max(...pnls);
+  const maxLoss = Math.min(...pnls);
+  const lossOver3Pct = returns.filter((r) => r < -0.03).length;
+
+  // 2. 分布偏度
+  const winDays = returns.filter((r) => r > 0).length;
+  const lossDays = returns.filter((r) => r < 0).length;
+  const winRate = winDays / returns.length;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const std = Math.sqrt(returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length);
+  const skew = std > 1e-9
+    ? returns.reduce((a, b) => a + ((b - mean) / std) ** 3, 0) / returns.length
+    : 0;
+
+  // 3. 收益集中度（去掉最好/最差 10 天后总收益剩余占比）
+  const totalReturn = returns.reduce((a, b) => a + b, 0);
+  const sorted = [...returns].sort((a, b) => a - b);
+  const trim = Math.min(10, Math.floor(returns.length * 0.05));
+  const trimmedSum = sorted.slice(trim, returns.length - trim).reduce((a, b) => a + b, 0);
+  const concentration = Math.abs(totalReturn) > 1e-9 ? trimmedSum / totalReturn : 1;
+
+  // 4. 连续亏损（最长连续亏损天数）
+  let maxConsecLoss = 0;
+  let cur = 0;
+  for (const r of returns) {
+    cur = r < 0 ? cur + 1 : 0;
+    if (cur > maxConsecLoss) maxConsecLoss = cur;
+  }
+
+  // 5. 与基准日相关性（beta 暴露，日期对齐）
+  let benchmarkCorr: number | null = null;
+  const bench = report.value.benchmark || [];
+  if (bench.length >= 2) {
+    const benchByDate = new Map<string, number>();
+    for (let i = 1; i < bench.length; i++) {
+      const prev = bench[i - 1];
+      const curB = bench[i];
+      const ret = prev.value ? (curB.value - prev.value) / prev.value : 0;
+      benchByDate.set(String(curB.date).slice(0, 10), ret);
+    }
+    const paired = days
+      .map((d: any) => ({ s: Number(d.daily_return ?? 0), b: benchByDate.get(String(d.trade_date).slice(0, 10)) }))
+      .filter((p: any) => p.b != null);
+    if (paired.length >= 5) {
+      const sArr = paired.map((p: any) => p.s);
+      const bArr = paired.map((p: any) => p.b);
+      const sMean = sArr.reduce((a: number, b: number) => a + b, 0) / sArr.length;
+      const bMean = bArr.reduce((a: number, b: number) => a + b, 0) / bArr.length;
+      let cov = 0; let sVar = 0; let bVar = 0;
+      for (let i = 0; i < sArr.length; i++) {
+        cov += (sArr[i] - sMean) * (bArr[i] - bMean);
+        sVar += (sArr[i] - sMean) ** 2;
+        bVar += (bArr[i] - bMean) ** 2;
+      }
+      benchmarkCorr = sVar > 1e-9 && bVar > 1e-9 ? cov / Math.sqrt(sVar * bVar) : null;
+    }
+  }
+
+  return {
+    maxWin, maxLoss, lossOver3Pct,
+    winDays, lossDays, winRate, skew,
+    concentration, maxConsecLoss, benchmarkCorr,
+  };
+});
+
 const strategy = computed(
   () => store.state.strategy?.currentStrategy || { name: "未知策略" },
 );
@@ -388,11 +811,26 @@ const strategy = computed(
 const strategyName = ref("");
 const rangeLabel = ref("");
 
+async function loadMarketContext() {
+  try {
+    const [csi500, hs300] = await Promise.all([
+      marketAPI.getIndexHistory("000905.SH", 750).catch(() => []),
+      marketAPI.getIndexHistory("000300.SH", 750).catch(() => []),
+    ]);
+    const map = (arr: any) => (Array.isArray(arr) ? arr : [])
+      .map((d: any) => ({ date: String(d.trade_date || d.date || "").slice(0, 10), close: Number(d.close || 0) }))
+      .filter((d: any) => d.date && d.close > 0)
+      .sort((a: any, b: any) => a.date.localeCompare(b.date));
+    marketCloses.value = { csi500: map(csi500), hs300: map(hs300) };
+  } catch { /* 市场背景加载失败不阻塞报告 */ }
+}
+
 const loadReport = async () => {
   const taskId = route.params.taskId as string;
   if (!taskId) { error.value = true; return; }
   loading.value = true;
   error.value = false;
+  loadMarketContext(); // 市场背景（非阻塞，供分年度市场列 + 回撤归因）
   try {
     const [result, equity, trades] = await Promise.all([
       backtestAPI.getResult(taskId).catch(() => null),
@@ -491,6 +929,8 @@ const loadReport = async () => {
       maxConsecutiveLosses: r.max_consecutive_losses ?? 0,
     };
 
+    resolveStockNames(); // 解析股票名称（非阻塞）
+
     // 回测区间标签（页头副标题）
     const eqD = report.value.equityCurve;
     if (eqD.length >= 2) {
@@ -551,6 +991,12 @@ onUnmounted(() => {
   margin-bottom: 30px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--n-border-color);
+}
+.report-section-title {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--n-text-color-1);
 }
 .report-header h2 {
   color: var(--n-text-color-1);
@@ -614,6 +1060,9 @@ onUnmounted(() => {
   color: var(--n-text-color-1);
   margin-bottom: 16px;
 }
+.metric-card-full {
+  grid-column: 1 / -1;
+}
 
 /* 增强指标（基建设计 §二） */
 .yearly-table {
@@ -661,5 +1110,138 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+/* 每日盈亏诊断（A3） */
+.text-up { color: var(--n-error-color); }
+.text-down { color: var(--n-success-color); }
+.pnl-diagnostic {
+  margin-top: 16px;
+}
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.diag-item {
+  padding: 10px 12px;
+  background: var(--n-hover-color);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.diag-label {
+  font-size: 11px;
+  color: var(--n-text-color-3);
+}
+.diag-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--n-text-color-1);
+}
+.diag-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--n-text-color-3);
+  line-height: 1.6;
+}
+.sub-chart-title {
+  margin: 18px 0 4px;
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+.trade-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.ts-item {
+  padding: 10px 12px;
+  background: var(--n-hover-color);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ts-label {
+  font-size: 11px;
+  color: var(--n-text-color-3);
+}
+.ts-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--n-text-color-1);
+}
+.metric-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.metric-card-header h3 {
+  margin: 0;
+}
+.monthly-toggle {
+  transform: scale(0.5);
+  transform-origin: right center;
+}
+.monthly-analysis {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--n-text-color-2);
+  line-height: 1.7;
+}
+.monthly-analysis b {
+  color: var(--n-text-color-1);
+}
+.yearly-conclusion {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--n-text-color-2);
+  line-height: 1.7;
+}
+.yearly-conclusion b {
+  color: var(--n-text-color-1);
+}
+.drawdown-conclusion {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--n-hover-color);
+  border-radius: 6px;
+}
+.stock-trips-detail {
+  padding: 8px 16px;
+  background: var(--n-hover-color);
+}
+.stock-row-selected td {
+  background: var(--n-pressed-color) !important;
+}
+.stock-detail {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--n-card-color);
+  border: 1px solid var(--n-border-color);
+  border-radius: 6px;
+}
+.stock-detail-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--n-text-color-1);
+}
+.stock-detail-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+.distribution-conclusion {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--n-hover-color);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--n-text-color-2);
+  line-height: 1.6;
 }
 </style>

@@ -20,6 +20,26 @@ export interface StrategyHealthItem {
   };
 }
 
+/** 实盘监控「三个数」汇总（当日盈亏 / 总回撤 / 可用资金 + 阈值预警） */
+export interface LiveSummary {
+  daily_pnl: number;
+  daily_return: number;
+  drawdown: number;
+  available_cash: number;
+  total_balance: number;
+  available_cash_ratio: number;
+  overall_level: "normal" | "warning" | "critical";
+  alerts: Array<{
+    metric: string;
+    label: string;
+    value: number;
+    level: "normal" | "warning" | "critical";
+    warning_threshold: number;
+    critical_threshold: number;
+    unit: string;
+  }>;
+}
+
 /** 监控中心 API */
 export const monitorAPI = {
   /** 策略健康度检查：不传 strategyId 查全部运行中策略 */
@@ -33,5 +53,14 @@ export const monitorAPI = {
         const data = res?.data ?? res;
         return Array.isArray(data) ? data : [];
       });
+  },
+
+  /** 实盘监控「三个数」汇总 */
+  async getLiveSummary(): Promise<LiveSummary | null> {
+    return request
+      .get("/quantTrade/monitor/live-summary")
+      .then(handleResponse)
+      .then((res: any) => res?.data ?? res ?? null)
+      .catch(() => null);
   },
 };

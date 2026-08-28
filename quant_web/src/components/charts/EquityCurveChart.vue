@@ -24,11 +24,16 @@ export interface BenchmarkPoint {
   date: string;
   value: number;
 }
+export interface DrawdownPoint {
+  date: string;
+  value: number;
+}
 
 const props = withDefaults(
   defineProps<{
     data: EquityPoint[];
     benchmark?: BenchmarkPoint[];
+    drawdown?: DrawdownPoint[];
     height?: number;
     loading?: boolean;
     error?: boolean;
@@ -41,6 +46,7 @@ const props = withDefaults(
   {
     data: () => [],
     benchmark: () => [],
+    drawdown: () => [],
     height: 420,
     loading: false,
     error: false,
@@ -75,10 +81,13 @@ let chart: IChartApi | null = null;
 let equitySeries: ISeriesApi<"Line", Time> | null = null;
 let benchSeries: ISeriesApi<"Line", Time> | null = null;
 let excessSeries: ISeriesApi<"Line", Time> | null = null;
+let ddSeries: ISeriesApi<"Line", Time> | null = null;
 // ⚠️ 存储当前渲染的 equityData，供 crosshair handler 动态读取（避免闭包捕获过期数组）
 let _currentEquityData: LineData[] = [];
-// 十字光标浮层标签
-const eqTooltipData = ref<{ x: number; y: number; date: string; value: number; visible: boolean } | null>(null);
+let _currentBenchData: LineData[] = [];
+let _currentDDData: LineData[] = [];
+// 十字光标浮层标签（含净值/基准/超额/回撤）
+const eqTooltipData = ref<{ x: number; y: number; date: string; value: number; benchValue?: number; ddValue?: number; excessValue?: number; visible: boolean } | null>(null);
 
 // ---- 数据转换 ----
 // ⚠️ 返回 epoch 秒，强制 lightweight-charts 使用线性时间轴
@@ -142,6 +151,7 @@ function renderChart() {
 
   // 基准曲线（与策略共用同一 Y 轴，JoinQuant 风格）
   const benchData = toLineData(props.benchmark || []);
+  _currentBenchData = benchData;
   if (benchData.length > 0) {
     if (!benchSeries && chart) {
       benchSeries = chart.addSeries(LineSeries, {
@@ -185,6 +195,30 @@ function renderChart() {
     excessSeries = null;
   }
 
+  // 回撤曲线（独立 priceScale 置于底部，与净值共用时间轴）
+  const ddData = toLineData(props.drawdown || []);
+  _currentDDData = ddData;
+  if (ddData.length > 0) {
+    if (!ddSeries && chart) {
+      ddSeries = chart.addSeries(LineSeries, {
+        priceScaleId: 'drawdown',
+        color: "rgba(239,68,68,0.85)",
+        lineWidth: 1 as const,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceFormat: { type: "custom", formatter: (v: number) => `${(v * 100).toFixed(1)}%` },
+        crosshairMarkerVisible: false,
+      }) as ISeriesApi<"Line", Time>;
+      chart.priceScale('drawdown').applyOptions({
+        scaleMargins: { top: 0.85, bottom: 0 },
+      });
+    }
+    ddSeries?.setData(ddData);
+  } else if (ddSeries) {
+    chart?.removeSeries(ddSeries);
+    ddSeries = null;
+  }
+
   // 绑定 primitive manager + 十字光标浮层标签（首次创建时）
   if (isNew && equitySeries) {
     primitiveManager.bind(equitySeries, () => {
@@ -214,7 +248,14 @@ function renderChart() {
       if (point) {
         if (_eqTooltipTimer) clearTimeout(_eqTooltipTimer);
         const dateStr = new Date(crosshairTimeVal * 1000).toISOString().slice(0, 10);
-        eqTooltipData.value = { x: param.point.x, y: param.point.y, date: dateStr, value: point.value, visible: true };
+        const benchPoint = _currentBenchData.find(d => (d.time as number) === crosshairTimeVal);
+        const ddPoint = _currentDDData.find(d => (d.time as number) === crosshairTimeVal);
+        eqTooltipData.value = {
+          x: param.point.x, y: param.point.y, date: dateStr, value: point.value, visible: true,
+          benchValue: benchPoint?.value,
+          ddValue: ddPoint?.value,
+          excessValue: benchPoint ? (point.value - benchPoint.value) : undefined,
+        };
         _eqTooltipTimer = setTimeout(() => { eqTooltipData.value = null; }, 3000);
       }
     });
@@ -290,6 +331,7 @@ watch(
       equitySeries = null;
       benchSeries = null;
       excessSeries = null;
+      ddSeries = null;
       return;
     }
     await nextTick();
@@ -325,6 +367,7 @@ onBeforeUnmount(() => {
   equitySeries = null;
   benchSeries = null;
   excessSeries = null;
+  ddSeries = null;
   unbindGlobalEvents();
 });
 
@@ -375,6 +418,13 @@ defineExpose({
         height: hasData && !loading && !error ? height + 'px' : '',
       }"
     />
+    <!-- 图例（多线说明：净值/基准/超额/回撤） -->
+    <div class="chart-legend">
+      <span class="legend-item"><i class="legend-dot" style="background:#7C3AED"></i>净值</span>
+      <span v-if="benchmark && benchmark.length" class="legend-item"><i class="legend-dot" style="background:rgba(24,160,88,0.7)"></i>基准</span>
+      <span v-if="showExcess && benchmark && benchmark.length" class="legend-item"><i class="legend-dot" style="background:rgba(255,152,0,0.5)"></i>超额</span>
+      <span v-if="drawdown && drawdown.length" class="legend-item"><i class="legend-dot" style="background:rgba(239,68,68,0.85)"></i>回撤（右轴）</span>
+    </div>
     <!-- 十字光标浮层 -->
     <div
       v-if="eqTooltipData?.visible"
@@ -383,6 +433,9 @@ defineExpose({
     >
       <div class="tooltip-date">{{ eqTooltipData.date }}</div>
       <div class="tooltip-row"><span>净值</span><span>{{ eqTooltipData.value.toFixed(2) }}</span></div>
+      <div v-if="eqTooltipData.benchValue != null" class="tooltip-row"><span>基准</span><span>{{ eqTooltipData.benchValue.toFixed(2) }}</span></div>
+      <div v-if="eqTooltipData.excessValue != null" class="tooltip-row"><span>超额</span><span>{{ eqTooltipData.excessValue.toFixed(2) }}</span></div>
+      <div v-if="eqTooltipData.ddValue != null" class="tooltip-row"><span>回撤</span><span>{{ (eqTooltipData.ddValue * 100).toFixed(1) }}%</span></div>
     </div>
   </div>
 </template>
@@ -411,6 +464,24 @@ defineExpose({
 .equity-chart {
   width: 100%;
   zoom: 1.25; /* 抵消 html { zoom: 0.8 } */
+}
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--color-text-tertiary, #8898b8);
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 /* 十字光标浮层标签 */

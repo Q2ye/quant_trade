@@ -45,7 +45,9 @@ class PerformanceTrackerEngine(EngineBase):
 
     async def _on_day_end(self, event):
         """日终结算完成 → 计算所有活跃策略的当日绩效"""
-        trade_date = event.data.get("trade_date") if hasattr(event, "data") else None
+        # 结算完成事件 data 字段为 settlement_date（非 trade_date），此前读错键恒回退为今天
+        data = getattr(event, "data", {}) or {}
+        trade_date = data.get("settlement_date") or data.get("trade_date")
         if not trade_date:
             from datetime import date as _date
             trade_date = _date.today()

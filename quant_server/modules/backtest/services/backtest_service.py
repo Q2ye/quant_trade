@@ -842,12 +842,27 @@ class BacktestService:
 			filters = {"user_id": user_id}
 			if request.status:
 				filters["status"] = request.status
+			if getattr(request, "strategy_id", None):
+				filters["strategy_id"] = request.strategy_id
+
+			# 创建时间范围过滤（ISO → datetime）
+			created_from = None
+			created_to = None
+			try:
+				if getattr(request, "start_date", None):
+					created_from = datetime.fromisoformat(request.start_date)
+				if getattr(request, "end_date", None):
+					created_to = datetime.fromisoformat(request.end_date)
+			except (ValueError, TypeError):
+				pass
 
 			# ---- 2. 分页查询 ----
 			tasks, total = await self.task_repo.get_list(
 				filters=filters,
 				page=request.page or 1,
-				page_size=request.page_size or 20
+				page_size=request.page_size or 20,
+				created_from=created_from,
+				created_to=created_to,
 			)
 
 			# ---- 3. 格式化结果（只返回摘要字段，不含完整 config/result） ----
@@ -1169,6 +1184,69 @@ class BacktestService:
 		except Exception as e:
 			logger.error(f"获取回测结果失败: {str(e)}")
 			raise
+
+	async def get_top_rankings(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+		"""获取回测绩效 Top N 排行（每策略取净值窗口最长的已完成任务，按年化收益降序）。
+
+		直接走 SQL 提取 result JSONB 的标量指标（annual_return / max_drawdown /
+		total_return / sharpe_ratio / win_rate / num_trades）+ equity_curve 长度，
+		避免加载完整 result 大字段（equity_curve/trades）。
+
+		Args:
+			user_id: 当前用户 ID（数据隔离）。
+			limit: 返回条数（默认 5，最大 50）。
+
+		Returns:
+			[{strategy_id, strategy_name, task_id, task_name, annual_return,
+			  total_return, max_drawdown, sharpe_ratio, win_rate, num_trades,
+			  equity_len}, ...] — 按 annual_return 降序，最多 limit 条。
+		"""
+		from sqlalchemy import text
+		stmt = text(
+			"""
+			SELECT t.id AS task_id, t.strategy_id, t.name AS task_name,
+			       t.created_at AS task_date,
+			       s.name AS strategy_name,
+			       COALESCE((t.result->>'annual_return')::float, 0.0) AS annual_return,
+			       COALESCE((t.result->>'total_return')::float, 0.0) AS total_return,
+			       COALESCE((t.result->>'max_drawdown')::float, 0.0) AS max_drawdown,
+			       COALESCE((t.result->>'sharpe_ratio')::float, 0.0) AS sharpe_ratio,
+			       COALESCE((t.result->>'win_rate')::float, 0.0) AS win_rate,
+			       COALESCE((t.result->>'num_trades')::int, 0) AS num_trades,
+			       COALESCE(jsonb_array_length(t.result->'equity_curve'), 0) AS equity_len
+			FROM backtest_tasks t
+			LEFT JOIN strategies s ON s.id = t.strategy_id
+			WHERE t.user_id = :uid AND t.status = 'completed'
+			"""
+		)
+		rows = (await self.db.execute(stmt, {"uid": user_id})).fetchall()
+
+		# 每策略取净值窗口最长（equity_len 最大）的任务，避免参数扫描/冒烟短窗口抢占排行
+		best: Dict[str, Dict[str, Any]] = {}
+		for r in rows:
+			sid = r.strategy_id
+			if not sid:
+				continue
+			cur = best.get(sid)
+			if cur is None or (r.equity_len or 0) > (cur.get("equity_len") or 0):
+				best[sid] = {
+					"strategy_id": sid,
+					"strategy_name": r.strategy_name or "",
+					"task_id": r.task_id,
+					"task_name": r.task_name or "",
+					"task_date": r.task_date.isoformat()[:10] if r.task_date else "",
+					"annual_return": float(r.annual_return or 0),
+					"total_return": float(r.total_return or 0),
+					# 回撤统一负值口径（-15% = 回撤 15%），与全站展示一致
+					"max_drawdown": -abs(float(r.max_drawdown or 0)),
+					"sharpe_ratio": float(r.sharpe_ratio or 0),
+					"win_rate": float(r.win_rate or 0),
+					"num_trades": int(r.num_trades or 0),
+					"equity_len": int(r.equity_len or 0),
+				}
+
+		ranked = sorted(best.values(), key=lambda x: x["annual_return"], reverse=True)
+		return ranked[:limit]
 
 	def _enrich_extra_metrics(self, result: Dict[str, Any]) -> Dict[str, Any]:
 		"""基建设计 §二：旧任务 result 补算 5 个增强指标（数据在 result 内，无需重跑回测）。

@@ -27,6 +27,7 @@ from modules.monitor.handlers import (
     get_health_status,
     get_performance_stats,
     get_strategy_health,
+    get_live_summary,
     check_monitor_module_health,
 )
 from modules.monitor.schemas import (
@@ -153,6 +154,26 @@ async def get_strategy_health_api(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="获取策略健康状态失败",
+        )
+
+
+@router.get("/live-summary")
+async def get_live_summary_api(
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """实盘监控「三个数」：当日盈亏 / 总回撤 / 可用资金 + 阈值预警"""
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求实盘监控汇总")
+        return await get_live_summary(
+            session=db_session,
+            user_id=current_user.get("id"),
+        )
+    except Exception as e:
+        logger.error(f"获取实盘监控汇总失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取实盘监控汇总失败",
         )
 
 

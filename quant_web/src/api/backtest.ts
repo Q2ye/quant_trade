@@ -58,6 +58,21 @@ export interface BacktestTaskResult {
   };
 }
 
+/** 回测绩效排行项 — 对齐后端 get_top_rankings 返回 */
+export interface BacktestRankingItem {
+  strategy_id: string;
+  strategy_name: string;
+  task_id: string;
+  task_name: string;
+  annual_return: number;
+  total_return: number;
+  max_drawdown: number; // 负值口径（-15% = 回撤 15%）
+  sharpe_ratio: number;
+  win_rate: number;
+  num_trades: number;
+  equity_len: number;
+}
+
 /** 创建回测任务参数 */
 export interface BacktestCreateParams {
   name?: string;
@@ -238,6 +253,17 @@ export default {
       .post(`${BASE}/tasks/results/batch`, { task_ids: taskIds })
       .then(handleResponse)
       .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 获取回测绩效 Top N 排行
+   * GET /quantTrade/backtest/tasks/rankings
+   */
+  async getRankings(limit = 5): Promise<BacktestRankingItem[]> {
+    return request
+      .get(`${BASE}/tasks/rankings`, { params: { limit } })
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res ?? []);
   },
 
   /**

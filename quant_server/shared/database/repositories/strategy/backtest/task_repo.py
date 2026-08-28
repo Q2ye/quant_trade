@@ -144,7 +144,7 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 		result = await self.session.execute(stmt) # type: ignore
 		return result.rowcount or 0
 
-	async def get_list (self, filters: Dict[str, Any], page: int = 1, page_size: int = 20) -> Tuple[List[BacktestTask], int]:
+	async def get_list (self, filters: Dict[str, Any], page: int = 1, page_size: int = 20, created_from=None, created_to=None) -> Tuple[List[BacktestTask], int]:
 		"""获取任务列表（带分页）"""
 		# 构建查询
 		query = select(self.model)
@@ -153,6 +153,12 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 		for key, value in filters.items():
 			if hasattr(self.model, key):
 				query = query.where(getattr(self.model, key) == value)
+
+		# 创建时间范围过滤（可选）
+		if created_from is not None:
+			query = query.where(self.model.created_at >= created_from)
+		if created_to is not None:
+			query = query.where(self.model.created_at <= created_to)
 
 		# 计算总数
 		total_query = select(func.count()).select_from(query.subquery())

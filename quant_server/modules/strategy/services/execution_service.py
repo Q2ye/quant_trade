@@ -239,8 +239,12 @@ class ExecutionService:
             if not strategy:
                 return {"success": False, "error": f"策略不存在: {strategy_id}"}
 
-            if new_capital < 10000:
-                return {"success": False, "error": "allocated_capital 不低于 10,000"}
+            # 2026-08 修复：移除固定 1 万下限。rebalance 已按账户比例动态下限
+            # （max(1000, 账户×5%)，weight=0 时置 0），此处旧 1 万下限会架空 rebalance
+            # 的小权重分配（如 2 万账户 attack 10% → 2055 被拒），致 allocated_capital
+            # 长期虚高、合计 > 账户总资产。仅保留非负校验。
+            if new_capital < 0:
+                return {"success": False, "error": "allocated_capital 不能为负数"}
 
             old_capital = float(getattr(strategy, "allocated_capital", 0) or 0)
             strategy.allocated_capital = new_capital

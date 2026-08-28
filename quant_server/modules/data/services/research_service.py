@@ -1341,13 +1341,31 @@ class FactorResearchService:
 		updated_rows = 0
 		trade_dates_processed = 0
 
-		for trade_date, group in df.groupby("trade_date"):
-			values = group["factor_value"].values.astype(float)
+		from sqlalchemy import text as _text
+		from datetime import datetime as _dt, date as _date
+
+		for trade_date in df["trade_date"].unique():
+			# C1 修复：z_score 基于「全市场全集」——factor_data 中该因子当日所有股票，
+			# 而非研究篮子。避免同因子换篮子研究时标准化结果互相覆盖。
+			_td = trade_date
+			if isinstance(_td, str):
+				_td = _dt.strptime(_td[:10], "%Y-%m-%d")
+			elif isinstance(_td, _date) and not isinstance(_td, _dt):
+				_td = _dt.combine(_td, _dt.min.time())
+			rows = (await self.session.execute(_text(
+				"SELECT ts_code, factor_value FROM factor_data "
+				"WHERE factor_code = :fn AND trade_date = :td AND factor_value IS NOT NULL"
+			), {"fn": factor_name, "td": _td})).fetchall()
+			if len(rows) < 10:
+				continue  # 样本太少，跨截面无统计意义
+
+			codes = [r.ts_code for r in rows]
+			values = np.array([float(r.factor_value) for r in rows], dtype=float)
 			valid_mask = ~np.isnan(values)
 			n_valid = valid_mask.sum()
 
 			if n_valid < 10:
-				continue  # 样本太少，跨截面无统计意义
+				continue
 
 			# Winsorize (5%/95%)
 			lo, hi = np.percentile(values[valid_mask], [5, 95])
@@ -1370,7 +1388,6 @@ class FactorResearchService:
 			percentiles[valid_mask] = ranks[valid_mask] / n_valid
 
 			# 批量更新 DB
-			codes = group["ts_code"].values
 			batch_updated = 0
 			try:
 				for i, ts in enumerate(codes):

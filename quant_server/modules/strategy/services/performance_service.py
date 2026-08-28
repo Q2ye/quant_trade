@@ -33,17 +33,26 @@ class PerformanceService:
         paused = await repo.get_by_status("paused")
         return (running or []) + (paused or [])
 
-    async def _get_total_account_assets(self) -> float:
-        """全账户总资产合计（修复 2026-08 A30：绩效计算资产基准）"""
+    async def _get_strategy_assets(self, strategy_id: str) -> float:
+        """策略当日资产基准 = 分配资金（strategies.allocated_capital）。
+
+        修复 2026-08（Bug2）：此前用全账户 SUM(total_balance) 当作每个策略的
+        total_assets，导致所有策略收益趋同。共享账户 + CapitalAllocator 架构下，
+        策略资产以其分配资金为基准（rebalance 每日同步 allocated_capital =
+        账户总资产 × 权重），而非全局账户合计。
+
+        注意：allocated_capital 仅在 rebalance 触发时更新（阈值 1000 元），存在
+        步进式滞后；精确的 per-strategy 每日盈亏需后续补 per-strategy 净值追踪。
+        """
         try:
             from sqlalchemy import text
             r = await self.session.execute(text(
-                "SELECT COALESCE(SUM(total_balance), 0) FROM accounts"
-            ))
+                "SELECT COALESCE(allocated_capital, 0) FROM strategies WHERE id = :sid"
+            ), {"sid": strategy_id})
             val = r.scalar()
             return float(val) if val else 0.0
         except Exception as e:
-            logger.warning("查询账户总资产失败: %s", str(e))
+            logger.warning("查询策略分配资金失败: %s", str(e))
             return 0.0
 
     async def _get_active_run(self, strategy_id: str):
@@ -64,7 +73,9 @@ class PerformanceService:
             StrategyDailyPerformanceRepository,
         )
         repo = StrategyDailyPerformanceRepository(self.session)
-        records = await repo.get_latest_performance(strategy_id, days=1)
+        # days 回看窗口加长到 10 天：跨周末/节假日结算间隔后仍能取到上一有效快照，
+        # 避免 prev=None 退化回 run_initial 导致 daily_return 与 total_return 恒相等
+        records = await repo.get_latest_performance(strategy_id, days=10)
         return records[0] if records else None
 
     async def _get_run_daily_returns(self, strategy_id: str, run_id: Optional[str]) -> List[float]:
@@ -93,10 +104,10 @@ class PerformanceService:
             绩效记录 dict or None
         """
         try:
-            # 修复 2026-08（A30）：total_assets 未传时自动取全账户总资产合计，
-            # 此前恒置 0 导致每日绩效写成 -100% 幽灵数据
+            # 修复 2026-08（A30 + Bug2）：total_assets 未传时取该策略分配资金，
+            # 而非全账户总资产合计（Bug2：后者致所有策略收益趋同）
             if total_assets is None:
-                total_assets = await self._get_total_account_assets()
+                total_assets = await self._get_strategy_assets(strategy_id)
             if total_assets <= 0:
                 logger.info("策略 %s 无有效资产数据，跳过绩效写入", strategy_id)
                 return None
@@ -173,7 +184,8 @@ class PerformanceService:
                 StrategyDailyPerformanceRepository,
             )
             repo = StrategyDailyPerformanceRepository(self.session)
-            await repo.create(perf)
+            # 幂等 upsert（按 strategy_id + trade_date）：重结算不产生重复行，避免首尾差被污染
+            await repo.upsert_performance(perf["strategy_id"], perf["trade_date"], perf)
             return True
         except Exception as e:
             logger.warning(f"绩效记录保存失败: {e}")

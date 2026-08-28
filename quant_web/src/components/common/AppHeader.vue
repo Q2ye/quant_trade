@@ -11,26 +11,23 @@
     <div class="status-section">
       <!-- 市场状态 -->
       <div class="status-item market-status">
-        <div class="status-indicator status-open"></div>
-        <div class="market-data">
-          <span class="market-name">上证</span>
-          <span class="market-value">3,245.68</span>
-          <n-tag :type="getMarketChangeType('positive')" size="small">
-            +1.25%
-          </n-tag>
-        </div>
-        <div class="market-data">
-          <span class="market-name">深证</span>
-          <span class="market-value">10,845.32</span>
-          <n-tag :type="getMarketChangeType('positive')" size="small">
-            +0.87%
-          </n-tag>
-        </div>
-        <div class="market-data">
-          <span class="market-name">创业</span>
-          <span class="market-value">2,245.67</span>
-          <n-tag :type="getMarketChangeType('negative')" size="small">
-            -0.23%
+        <div
+          class="status-indicator"
+          :class="isMarketOpen ? 'status-open' : 'status-closed'"
+        ></div>
+        <div
+          v-for="idx in marketIndices"
+          :key="idx.code"
+          class="market-data"
+        >
+          <span class="market-name">{{ idx.name }}</span>
+          <span class="market-value">{{ idx.value }}</span>
+          <n-tag
+            v-if="idx.change != null"
+            :type="getMarketChangeType(idx.change)"
+            size="small"
+          >
+            {{ formatPct(idx.change) }}
           </n-tag>
         </div>
       </div>
@@ -39,7 +36,7 @@
       <div class="status-item trading-session">
         <!-- 使用 SmartIcon 组件 -->
         <smart-icon name="Time" :size="16" class="session-icon" />
-        <span>交易时段: 09:30-11:30</span>
+        <span>{{ sessionText }}</span>
       </div>
     </div>
 
@@ -161,6 +158,12 @@ import { useRouter } from "vue-router";
 import { NIcon, NTooltip, NTag, NDropdown, NAvatar } from "naive-ui";
 // 导入 SmartIcon 组件
 import SmartIcon from "../common/SmartIcon.vue";
+// 真实数据源 API
+import strategyAPI from "@/api/strategy";
+import { monitorAPI } from "@/api/monitor";
+import riskAPI from "@/api/risk";
+import marketAPI from "@/api/market";
+import tradeAPI from "@/api/trade";
 
 export default defineComponent({
   name: "AppHeader",
@@ -184,37 +187,52 @@ export default defineComponent({
     const formattedTime = ref("");
     const formattedDate = ref("");
 
+    // 市场指数（真实数据，加载前占位）
+    const marketIndices = ref([
+      { name: "上证", code: "000001.SH", value: "--", change: null },
+      { name: "深证", code: "399001.SZ", value: "--", change: null },
+      { name: "创业", code: "399006.SZ", value: "--", change: null },
+    ]);
+
+    // 交易时段
+    const isMarketOpen = ref(false);
+    const sessionText = ref("交易时段: --");
+
     // 策略状态
     const strategyStatus = ref({
-      running: 3,
-      total: 5,
+      running: 0,
+      total: 0,
       health: "healthy",
     });
 
-    // 用户菜单可见性
-    // 2026-08: 移除受控 :show（Naive UI Dropdown 受控会触发 Binder slot 渲染外调用警告）
-    // 菜单由组件内部管理可见性，选中/外部点击自动关闭
-
     // 信号统计
     const signalStats = ref({
-      today: 12,
-      triggered: 8,
+      today: 0,
+      triggered: 0,
     });
 
     // 订单统计
     const orderStats = ref({
-      pending: 2,
-      executed: 15,
+      pending: 0,
+      executed: 0,
     });
 
     // 风险等级
-    const riskLevel = computed(() => {
-      const levels = {
-        low: { class: "risk-low", text: "低" },
-        medium: { class: "risk-medium", text: "中" },
-        high: { class: "risk-high", text: "高" },
-      };
-      return levels.medium;
+    const riskLevel = ref({ class: "risk-medium", text: "--" });
+
+    // 用户名：优先从 user store 持久化数据读取，回退 prop 默认值
+    const userName = computed(() => {
+      try {
+        const raw = localStorage.getItem("user");
+        if (raw) {
+          const u = JSON.parse(raw);
+          if (u?.username) return u.username;
+          if (u?.name) return u.name;
+        }
+      } catch {
+        /* ignore malformed storage */
+      }
+      return props.userName;
     });
 
     // 用户菜单选项
@@ -255,9 +273,16 @@ export default defineComponent({
       return descriptions[riskLevel] || "风险等级未知";
     };
 
-    // 获取市场变化类型 — A 股红涨绿跌：正→红(error)，负→绿(success)
+    // 市场涨跌类型 — A 股红涨绿跌：正→红(error)，负→绿(success)
     const getMarketChangeType = (change) => {
-      return change === "positive" ? "error" : "success";
+      return Number(change) >= 0 ? "error" : "success";
+    };
+
+    // 涨跌幅格式化（pct_chg 已是百分比单位）
+    const formatPct = (v) => {
+      const n = Number(v);
+      if (Number.isNaN(n)) return "--";
+      return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
     };
 
     // 时间格式化
@@ -302,32 +327,177 @@ export default defineComponent({
       formattedDate.value = formatDate(currentTime.value);
     };
 
-    // 模拟交易状态更新
-    const updateTradingStatus = () => {
-      const healthStates = ["healthy", "warning", "danger"];
-      strategyStatus.value.health = healthStates[Math.floor(Math.random() * 3)];
-      signalStats.value.today = Math.max(
-        5,
-        Math.min(20, signalStats.value.today + (Math.random() > 0.5 ? 1 : -1)),
+    // 更新交易时段（A 股：09:30-11:30 / 13:00-15:00）
+    const updateSession = () => {
+      const now = new Date();
+      const minutes = now.getHours() * 60 + now.getMinutes();
+      const day = now.getDay();
+      const isWeekend = day === 0 || day === 6;
+      if (isWeekend) {
+        isMarketOpen.value = false;
+        sessionText.value = "休市（周末）";
+        return;
+      }
+      if (minutes >= 570 && minutes < 690) {
+        isMarketOpen.value = true;
+        sessionText.value = "交易时段: 09:30-11:30";
+      } else if (minutes >= 780 && minutes < 900) {
+        isMarketOpen.value = true;
+        sessionText.value = "交易时段: 13:00-15:00";
+      } else if (minutes < 570) {
+        isMarketOpen.value = false;
+        sessionText.value = "未开盘";
+      } else if (minutes < 780) {
+        isMarketOpen.value = false;
+        sessionText.value = "午间休市";
+      } else {
+        isMarketOpen.value = false;
+        sessionText.value = "已收盘";
+      }
+    };
+
+    // ---- 真实数据加载（失败时保留占位，不抛错） ----
+
+    async function loadMarketIndices() {
+      await Promise.all(
+        marketIndices.value.map(async (item) => {
+          try {
+            const detail = await marketAPI.getIndexDetail(item.code);
+            if (detail && detail.close != null) {
+              item.value = Number(detail.close).toLocaleString("zh-CN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              });
+            }
+            if (detail && detail.pct_chg != null) {
+              item.change = Number(detail.pct_chg);
+            }
+          } catch {
+            /* 保留 "--" 占位 */
+          }
+        }),
       );
-      orderStats.value.pending = Math.max(
-        0,
-        Math.min(5, orderStats.value.pending + (Math.random() > 0.7 ? 1 : -1)),
-      );
+    }
+
+    async function loadStrategyStatus() {
+      try {
+        const list = (await strategyAPI.getStrategies()) || [];
+        const arr = Array.isArray(list) ? list : [];
+        strategyStatus.value.total = arr.length;
+        strategyStatus.value.running = arr.filter(
+          (s) => s?.status === "running",
+        ).length;
+      } catch {
+        /* 保留占位 */
+      }
+      try {
+        const health = (await monitorAPI.getStrategyHealth()) || [];
+        const arr = Array.isArray(health) ? health : [];
+        const statuses = arr.map((h) => h?.status).filter(Boolean);
+        if (statuses.includes("stop") || statuses.includes("danger")) {
+          strategyStatus.value.health = "danger";
+        } else if (statuses.includes("warning")) {
+          strategyStatus.value.health = "warning";
+        } else {
+          strategyStatus.value.health = "healthy";
+        }
+      } catch {
+        /* 保留占位 */
+      }
+    }
+
+    // 从分页响应中防御性提取列表（兼容多种响应包裹）
+    function pickList(res) {
+      const items = res?.data?.items ?? res?.items ?? res?.data ?? res ?? [];
+      return Array.isArray(items) ? items : [];
+    }
+
+    async function loadSignalStats() {
+      try {
+        const res = await tradeAPI.getSignals({ page: 1, page_size: 200 });
+        const list = pickList(res);
+        const today = new Date().toISOString().slice(0, 10);
+        signalStats.value.today = list.filter((s) => {
+          const t = s?.signal_time ?? s?.created_at ?? "";
+          return String(t).slice(0, 10) === today;
+        }).length;
+        const triggered = new Set([
+          "confirmed",
+          "executed",
+          "filled",
+          "partial",
+        ]);
+        signalStats.value.triggered = list.filter((s) =>
+          triggered.has(s?.signal_status ?? s?.status),
+        ).length;
+      } catch {
+        /* 保留占位 */
+      }
+    }
+
+    async function loadOrderStats() {
+      try {
+        const res = await tradeAPI.getOrders({ page_size: 200 });
+        const list = pickList(res);
+        const pending = new Set(["pending", "submitted", "partial"]);
+        const executed = new Set(["filled", "executed", "done", "completed"]);
+        orderStats.value.pending = list.filter((o) =>
+          pending.has(o?.status ?? o?.order_status),
+        ).length;
+        orderStats.value.executed = list.filter((o) =>
+          executed.has(o?.status ?? o?.order_status),
+        ).length;
+      } catch {
+        /* 保留占位 */
+      }
+    }
+
+    async function loadRiskLevel() {
+      try {
+        const metrics = await riskAPI.getRiskMetrics();
+        const level = String(
+          metrics?.overall_risk_level ?? "",
+        ).toLowerCase();
+        const map = {
+          low: { class: "risk-low", text: "低" },
+          medium: { class: "risk-medium", text: "中" },
+          high: { class: "risk-high", text: "高" },
+          低: { class: "risk-low", text: "低" },
+          中: { class: "risk-medium", text: "中" },
+          高: { class: "risk-high", text: "高" },
+        };
+        riskLevel.value = map[level] ?? { class: "risk-medium", text: "--" };
+      } catch {
+        /* 保留占位 */
+      }
+    }
+
+    // 刷新全部真实数据
+    const refreshAll = () => {
+      loadMarketIndices();
+      loadStrategyStatus();
+      loadSignalStats();
+      loadOrderStats();
+      loadRiskLevel();
     };
 
     let timeInterval;
-    let tradingInterval;
+    let dataInterval;
 
     onMounted(() => {
       updateTime();
-      timeInterval = setInterval(updateTime, 1000);
-      tradingInterval = setInterval(updateTradingStatus, 10000);
+      updateSession();
+      timeInterval = setInterval(() => {
+        updateTime();
+        updateSession();
+      }, 1000);
+      refreshAll();
+      dataInterval = setInterval(refreshAll, 30000); // 每 30 秒刷新真实数据
     });
 
     onUnmounted(() => {
       if (timeInterval) clearInterval(timeInterval);
-      if (tradingInterval) clearInterval(tradingInterval);
+      if (dataInterval) clearInterval(dataInterval);
     });
 
     const handleCommand = (key) => {
@@ -341,6 +511,9 @@ export default defineComponent({
     return {
       formattedTime,
       formattedDate,
+      marketIndices,
+      isMarketOpen,
+      sessionText,
       strategyStatus,
       signalStats,
       orderStats,
@@ -350,7 +523,8 @@ export default defineComponent({
       getHealthText,
       getRiskDescription,
       getMarketChangeType,
-      userName: props.userName,
+      formatPct,
+      userName,
     };
   },
 });
@@ -433,6 +607,10 @@ export default defineComponent({
 
 .status-open {
   background-color: var(--n-success-color);
+}
+
+.status-closed {
+  background-color: var(--n-text-color-3);
 }
 
 .market-data {

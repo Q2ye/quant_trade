@@ -61,6 +61,9 @@ class BacktestDetailResponse(BaseModel):
 class BacktestListRequest(PaginationParams):
 	"""回测列表请求"""
 	status: Optional[str] = Field(default=None, description="状态筛选")
+	strategy_id: Optional[str] = Field(default=None, description="按策略ID筛选")
+	start_date: Optional[str] = Field(default=None, description="创建时间起（ISO 格式）")
+	end_date: Optional[str] = Field(default=None, description="创建时间止（ISO 格式）")
 
 
 class BacktestListResponse(BaseModel):

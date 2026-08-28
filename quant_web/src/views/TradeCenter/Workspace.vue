@@ -136,7 +136,7 @@ const refreshAfterTrade = async () => {
 // 当日盈亏/收益率取日终结算快照字段（daily_pnl/daily_return），非累计 pnl
 // ============================================================
 const accountStats = computed(() => {
-  if (accounts.value.length === 0) return { totalAsset: 0, availableCash: 0, marketValue: 0, pnl: 0, pnlRate: 0 };
+  if (accounts.value.length === 0) return { totalAsset: 0, availableCash: 0, marketValue: 0, pnl: 0, pnlRate: 0, pnlDate: null };
   const a = accounts.value.find((ac) => String(ac.id) === selectedAccountId.value) || accounts.value[0];
   return {
     totalAsset: (a as any).total_asset ?? 0,
@@ -144,6 +144,7 @@ const accountStats = computed(() => {
     marketValue: (a as any).market_value ?? 0,
     pnl: (a as any).daily_pnl ?? 0,
     pnlRate: (a as any).daily_return ?? 0,
+    pnlDate: (a as any).daily_pnl_date ?? null,
   };
 });
 
@@ -674,10 +675,14 @@ onMounted(() => loadAllData());
               <span class="summary-value">¥{{ accountStats.marketValue.toLocaleString() }}</span>
             </div>
             <div class="summary-item">
-              <span class="summary-label">当日盈亏</span>
+              <span class="summary-label"
+                >当日盈亏<template v-if="accountStats.pnlDate"
+                  >（{{ accountStats.pnlDate.slice(5) }}）</template
+                ></span
+              >
               <span class="summary-value" :class="accountStats.pnl >= 0 ? 'text-up' : 'text-down'">
                 {{ accountStats.pnl >= 0 ? '+' : '' }}¥{{ accountStats.pnl.toLocaleString() }}
-                <small>({{ accountStats.pnlRate >= 0 ? '+' : '' }}{{ accountStats.pnlRate.toFixed(2) }}%)</small>
+                <small>({{ accountStats.pnlRate >= 0 ? '+' : '' }}{{ (accountStats.pnlRate * 100).toFixed(2) }}%)</small>
               </span>
             </div>
           </div>

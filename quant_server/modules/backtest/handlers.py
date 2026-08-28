@@ -163,6 +163,17 @@ class BacktestHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取回测结果失败: {str(e)}")
 
+	async def get_top_rankings(self, user_id: str, limit: int = 5) -> Dict[str, Any]:
+		"""获取回测绩效 Top N 排行（每策略取最长窗口任务，按年化降序）"""
+		try:
+			result = await self.backtest_service.get_top_rankings(user_id, limit)
+			return {
+				"success": True,
+				"data": result
+			}
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"获取回测排行失败: {str(e)}")
+
 	async def export_report(self, task_id: str, user_id: str, report_format: str = 'json') -> Dict[str, Any]:
 		"""导出回测报告"""
 		try:
@@ -303,6 +314,11 @@ async def get_backtest_positions (session: AsyncSession, task_id: str, trade_dat
 async def get_backtest_result (session: AsyncSession, task_id: str, user_id: str):
 	handler = BacktestHandler(session)
 	return await handler.get_backtest_result(task_id, user_id)
+
+
+async def get_backtest_rankings (session: AsyncSession, user_id: str, limit: int = 5):
+	handler = BacktestHandler(session)
+	return await handler.get_top_rankings(user_id, limit)
 
 
 async def optimize_backtest_parameters (session: AsyncSession, request):

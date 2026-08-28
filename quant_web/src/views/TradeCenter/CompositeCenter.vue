@@ -118,7 +118,7 @@
       <!-- 净值曲线 -->
       <div class="nav-section">
         <h4>组合净值</h4>
-        <v-chart v-if="navData.length" class="nav-chart" :option="navOption" autoresize />
+        <LightweightLineChart v-if="navData.length" :line-series="navLineSeries" :height="260" />
         <n-empty v-else description="暂无净值数据（每日 rebalance 后生成）" size="small" />
       </div>
     </n-card>
@@ -188,15 +188,9 @@ import { useMessage } from "naive-ui";
 import { NButton, NPopconfirm, NTag } from "naive-ui";
 import { Icon } from "@iconify/vue";
 import SmartIcon from "@/components/common/SmartIcon.vue";
-import { use } from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
-import { LineChart } from "echarts/charts";
-import { GridComponent, TooltipComponent, LegendComponent } from "echarts/components";
-import VChart from "vue-echarts";
+import LightweightLineChart from "@/components/charts/LightweightLineChart.vue";
 import compositeAPI, { CompositeGroup } from "@/api/composite";
 import strategyAPI from "@/api/strategy";
-
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
 const msg = useMessage();
 const loading = ref(false);
@@ -422,23 +416,13 @@ async function createGroup() {
   }
 }
 
-// 净值曲线 option
-const navOption = computed(() => ({
-  tooltip: { trigger: "axis" },
-  legend: { data: ["组合净值"], bottom: 0 },
-  grid: { left: 50, right: 16, top: 16, bottom: 32 },
-  xAxis: { type: "category", data: navData.value.map((d) => d.trade_date), boundaryGap: false },
-  yAxis: { type: "value", scale: true },
-  series: [{
-    name: "组合净值",
-    type: "line",
-    smooth: true,
-    symbol: "none",
-    data: navData.value.map((d) => d.total_nav),
-    areaStyle: { opacity: 0.12 },
-    lineStyle: { width: 2 },
-  }],
-}));
+// 组合净值曲线（复用 lightweight 线图组件，与回测报告图表交互一致）
+const navLineSeries = computed(() => [{
+  name: "组合净值",
+  color: "#7C3AED",
+  lineWidth: 2,
+  data: navData.value.map((d) => ({ time: String(d.trade_date || ""), value: Number(d.total_nav ?? 0) })),
+}]);
 
 const memberColumns = [
   { title: "策略 ID", key: "strategy_id", ellipsis: { tooltip: true } },

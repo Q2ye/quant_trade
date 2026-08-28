@@ -40,6 +40,101 @@ async def get_strategy_health (
 		return {"success": False, "data": [], "error": str(e)}
 
 
+async def get_live_summary(session: AsyncSession, user_id: str) -> Dict[str, Any]:
+    """实盘监控「三个数」汇总：当日盈亏 / 总回撤 / 可用资金 + 阈值预警。
+
+    数据源：
+    - 当日盈亏：account_daily_performance 最新结算日（跨账户聚合）
+    - 总回撤：composite_account_snapshots 净值峰值回撤（正深度口径）
+    - 可用资金：accounts.available_balance / total_balance
+
+    阈值（与 risk 模块一致）：单日亏损 3%/5%、总回撤 10%/20%、可用资金占比 <10%/<5%。
+    """
+    from sqlalchemy import text
+
+    def _level(value: float, warn: float, crit: float, higher_is_worse: bool) -> str:
+        if higher_is_worse:
+            if value >= crit:
+                return "critical"
+            if value >= warn:
+                return "warning"
+            return "normal"
+        if value <= crit:
+            return "critical"
+        if value <= warn:
+            return "warning"
+        return "normal"
+
+    try:
+        # 1. 当日盈亏（最新结算日，跨账户聚合）
+        daily_pnl_row = (await session.execute(text(
+            "SELECT COALESCE(SUM(daily_pnl), 0) "
+            "FROM account_daily_performance "
+            "WHERE trade_date = (SELECT MAX(trade_date) FROM account_daily_performance)"
+        ))).first()
+        daily_pnl = float(daily_pnl_row[0] or 0)
+
+        # 2. 总回撤（组合净值峰值回撤，正深度口径）
+        navs = [
+            float(r[0]) for r in (await session.execute(text(
+                "SELECT total_nav FROM composite_account_snapshots ORDER BY trade_date ASC"
+            ))).fetchall()
+            if r[0] is not None
+        ]
+        drawdown = 0.0
+        peak = 0.0
+        for n in navs:
+            if n > peak:
+                peak = n
+            if peak > 0:
+                dd = (peak - n) / peak
+                if dd > drawdown:
+                    drawdown = dd
+
+        # 3. 可用资金
+        acct = (await session.execute(text(
+            "SELECT COALESCE(SUM(available_balance), 0), COALESCE(SUM(total_balance), 0) FROM accounts"
+        ))).first()
+        available_cash = float(acct[0] or 0)
+        total_balance = float(acct[1] or 0)
+        available_cash_ratio = available_cash / total_balance if total_balance > 0 else 0.0
+        # 组合级当日收益率（SUM(daily_pnl) / SUM(total_balance)，避免 AVG 被零账户稀释）
+        daily_return = daily_pnl / total_balance if total_balance > 0 else 0.0
+        daily_loss_pct = -daily_return * 100 if daily_return < 0 else 0.0
+
+        # 4. 阈值评估
+        alerts = [
+            {"metric": "daily_loss", "label": "当日亏损", "value": round(daily_loss_pct, 2),
+             "level": _level(daily_loss_pct, 3.0, 5.0, True),
+             "warning_threshold": 3.0, "critical_threshold": 5.0, "unit": "%"},
+            {"metric": "drawdown", "label": "总回撤", "value": round(drawdown * 100, 2),
+             "level": _level(drawdown * 100, 10.0, 20.0, True),
+             "warning_threshold": 10.0, "critical_threshold": 20.0, "unit": "%"},
+            {"metric": "available_cash", "label": "可用资金占比", "value": round(available_cash_ratio * 100, 2),
+             "level": _level(available_cash_ratio * 100, 10.0, 5.0, False),
+             "warning_threshold": 10.0, "critical_threshold": 5.0, "unit": "%"},
+        ]
+        overall = "normal"
+        if any(a["level"] == "critical" for a in alerts):
+            overall = "critical"
+        elif any(a["level"] == "warning" for a in alerts):
+            overall = "warning"
+
+        return {"success": True, "data": {
+            "daily_pnl": round(daily_pnl, 2),
+            "daily_return": round(daily_return, 6),
+            "drawdown": round(drawdown, 6),
+            "available_cash": round(available_cash, 2),
+            "total_balance": round(total_balance, 2),
+            "available_cash_ratio": round(available_cash_ratio, 6),
+            "overall_level": overall,
+            "alerts": alerts,
+        }}
+    except Exception as e:
+        logger.error(f"实盘监控汇总失败: {e}", exc_info=True)
+        return {"success": False, "data": None, "error": str(e)}
+
+
 async def get_system_metrics (
 		session: AsyncSession,
 		request,

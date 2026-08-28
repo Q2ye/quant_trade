@@ -401,6 +401,8 @@ class PerformanceService:
                         'total_asset': float(latest.total_asset),
                         'cash': float(latest.cash),
                         'market_value': float(latest.market_value),
+                        'daily_pnl': float(latest.daily_pnl) if getattr(latest, 'daily_pnl', None) is not None else 0.0,
+                        'daily_return': float(latest.daily_return) if getattr(latest, 'daily_return', None) is not None else 0.0,
                         'trade_date': str(latest.trade_date)[:10] if hasattr(latest.trade_date, '__str__') else str(latest.trade_date),
                     }
                 # 附加区间成交笔数 + 当前持仓（退化场景同样补充）

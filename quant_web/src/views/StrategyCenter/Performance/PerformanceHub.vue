@@ -113,70 +113,29 @@ const goHealth = () => router.push("/performance/health");
 const loadData = async () => {
   loading.value = true; error.value = false;
   try {
-    // 1. 获取策略列表
+    // 1. 策略总数/运行数（仍从策略列表取）
     const strategies = await strategyAPI.getStrategies().catch(() => []);
     const strategyList = Array.isArray(strategies) ? strategies : [];
     stats.value.strategyCount = strategyList.length;
     stats.value.runningCount = strategyList.filter((s: any) => s.status === "running").length;
 
-    // 2. 获取所有已完成回测任务，构建 per-strategy 最新完成任务映射
-    const tasksRes: any = await backtestAPI.getTasks({ page_size: 200 }).catch(() => ({}));
-    const taskItems: any[] = Array.isArray(tasksRes) ? tasksRes : (tasksRes?.data || tasksRes?.items || []);
-    const completedTasks = taskItems.filter((t: any) => t.status === 'completed');
-
-    // 3. 批量加载全部已完成任务结果（用于按净值窗口选最长回测；列表 config 为空，无法用配置算窗口）
-    const allTaskIds = completedTasks.map((t: any) => t.id || t.task_id);
-    const batchResults: Record<string, any> = allTaskIds.length > 0
-      ? await backtestAPI.getBatchResults(allTaskIds).catch(() => ({}))
-      : {};
-
-    // 窗口跨度：用 result.equity_curve 首末日期（最代表实际回测区间）
-    const taskSpan = (r: any) => {
-      const ec = r?.equity_curve || [];
-      if (ec.length >= 2) {
-        const f = new Date(ec[0].trade_date || ec[0].date);
-        const l = new Date(ec[ec.length - 1].trade_date || ec[ec.length - 1].date);
-        if (!isNaN(f.getTime()) && !isNaN(l.getTime())) return l.getTime() - f.getTime();
-      }
-      return 0;
-    };
-    // 每策略选「净值窗口最长」的已完成回测（避免冒烟/参数扫描短窗口抢占）
-    const strategyBest = new Map<string, { task: any; result: any; span: number }>();
-    for (const t of completedTasks) {
-      const sid = t.strategy_id;
-      if (!sid) continue;
-      const tid = t.id || t.task_id;
-      const r = batchResults[tid];
-      const span = taskSpan(r);
-      const existing = strategyBest.get(sid);
-      if (!existing || span > existing.span) {
-        strategyBest.set(sid, { task: t, result: r, span });
-      }
-    }
-
-    const rankings: RankItem[] = [];
-    for (const s of strategyList.slice(0, 15)) {
-      const best = strategyBest.get(s.id);
-      if (!best) continue;
-      const { task, result: r } = best;
-      if (!r) continue;
-      rankings.push({
-        id: s.id,
-        name: s.name || s.id,
-        taskId: task.id || task.task_id,
-        taskDate: (task.created_at || "").slice(0, 10),
-        annualReturn: r.annual_return ?? 0,
-        sharpeRatio: r.sharpe_ratio ?? 0,
-        maxDrawdown: r.max_drawdown ?? 0,
-        winRate: r.win_rate,
-        tradesCount: r.num_trades ?? 0,
-        totalReturn: r.total_return ?? 0,
-      });
-    }
-    rankings.sort((a, b) => b.annualReturn - a.annualReturn);
+    // 2. 后端下沉排行（每策略取净值窗口最长任务，按年化降序，最多 50）
+    const raw: any[] = await backtestAPI.getRankings(50).catch(() => []);
+    const rankings: RankItem[] = (Array.isArray(raw) ? raw : []).map((r: any) => ({
+      id: r.strategy_id,
+      name: r.strategy_name || r.strategy_id,
+      taskId: r.task_id,
+      taskDate: r.task_date || "",
+      annualReturn: r.annual_return ?? 0,
+      sharpeRatio: r.sharpe_ratio ?? 0,
+      maxDrawdown: r.max_drawdown ?? 0,
+      winRate: r.win_rate ?? null,
+      tradesCount: r.num_trades ?? 0,
+      totalReturn: r.total_return ?? 0,
+    }));
     strategyRankings.value = rankings;
 
-    // 4. 摘要卡片 — 从 rankings 聚合真实数据（回测口径，标注"平均/最差"）
+    // 3. 摘要卡片 — 从 rankings 聚合真实数据（回测口径，标注"平均/最差"）
     stats.value.rankedCount = rankings.length;
     if (rankings.length > 0) {
       stats.value.avgAnnualReturn = rankings.reduce((s, r) => s + r.annualReturn, 0) / rankings.length;
