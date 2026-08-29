@@ -838,12 +838,17 @@ class BacktestService:
 			}
 		"""
 		try:
-			# ---- 1. 构建查询条件 ----
-			filters = {"user_id": user_id}
+			from sqlalchemy import text
+
+			# ---- 1. 构建查询条件（直接拼 SQL，只查摘要字段，避免加载 result/config 大字段） ----
+			_where = ["user_id = :uid"]
+			_params = {"uid": user_id}
 			if request.status:
-				filters["status"] = request.status
+				_where.append("status = :status")
+				_params["status"] = request.status
 			if getattr(request, "strategy_id", None):
-				filters["strategy_id"] = request.strategy_id
+				_where.append("strategy_id = :sid")
+				_params["sid"] = request.strategy_id
 
 			# 创建时间范围过滤（ISO → datetime）
 			created_from = None
@@ -855,34 +860,50 @@ class BacktestService:
 					created_to = datetime.fromisoformat(request.end_date)
 			except (ValueError, TypeError):
 				pass
+			if created_from is not None:
+				_where.append("created_at >= :created_from")
+				_params["created_from"] = created_from
+			if created_to is not None:
+				_where.append("created_at <= :created_to")
+				_params["created_to"] = created_to
 
-			# ---- 2. 分页查询 ----
-			tasks, total = await self.task_repo.get_list(
-				filters=filters,
-				page=request.page or 1,
-				page_size=request.page_size or 20,
-				created_from=created_from,
-				created_to=created_to,
-			)
+			_where_clause = " AND ".join(_where)
+			_page = request.page or 1
+			_page_size = request.page_size or 20
+			_offset = (_page - 1) * _page_size
 
-			# ---- 3. 格式化结果（只返回摘要字段，不含完整 config/result） ----
+			# ---- 2. 轻量分页查询（COUNT + 摘要列，不加载 result/config） ----
+			total = int((await self.db.execute(
+				text(f"SELECT COUNT(*) FROM backtest_tasks WHERE {_where_clause}"), _params
+			)).scalar() or 0)
+
+			_rows = (await self.db.execute(
+				text(
+					f"SELECT id, name, strategy_id, status, created_at, updated_at "
+					f"FROM backtest_tasks WHERE {_where_clause} "
+					f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+				),
+				{**_params, "limit": _page_size, "offset": _offset},
+			)).fetchall()
+
+			# ---- 3. 格式化结果 ----
 			data = []
-			for task in tasks:
+			for r in _rows:
 				data.append({
-					"id": task.id,
-					"name": task.name,
-					"strategy_id": task.strategy_id,
-					"status": task.status,
-					"created_at": task.created_at,
-					"updated_at": task.updated_at
+					"id": r.id,
+					"name": r.name,
+					"strategy_id": r.strategy_id,
+					"status": r.status,
+					"created_at": r.created_at.isoformat() if r.created_at else None,
+					"updated_at": r.updated_at.isoformat() if r.updated_at else None,
 				})
 
 			return {
 				"data": data,
 				"pagination": {
-					"page": request.page or 1,
-					"page_size": request.page_size or 20,
-					"total": total
+					"page": _page,
+					"page_size": _page_size,
+					"total": total,
 				}
 			}
 		except Exception as e:

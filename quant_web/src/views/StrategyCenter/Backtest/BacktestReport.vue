@@ -471,15 +471,13 @@ const stockNames = ref<Record<string, string>>({});
 
 async function resolveStockNames() {
   const codes = [...new Set(roundTrips.value.map((t: any) => t.symbol).filter(Boolean))];
-  console.log("[追溯] 待解析股票代码:", codes);
   if (!codes.length) return;
-  const results = await Promise.all(codes.map((c) => marketAPI.getStockDetail(c).catch((e) => { console.log("[追溯] 名称解析失败:", c, e); return null; })));
+  const results = await Promise.all(codes.map((c) => marketAPI.getStockDetail(c).catch(() => null)));
   const map: Record<string, string> = {};
   codes.forEach((c, i) => {
     const s: any = results[i];
     map[c] = s?.name || s?.stock_name || s?.ts_name || c;
   });
-  console.log("[追溯] 解析结果:", map);
   stockNames.value = map;
 }
 
@@ -535,7 +533,6 @@ const tripColumns = [
 const selectedStockSymbol = ref("");
 
 function onStockRowClick(row: any) {
-  console.log("[追溯] 点击股票行:", row?.symbol, "| 当前选中:", selectedStockSymbol.value);
   selectedStockSymbol.value = row.symbol === selectedStockSymbol.value ? "" : row.symbol;
 }
 

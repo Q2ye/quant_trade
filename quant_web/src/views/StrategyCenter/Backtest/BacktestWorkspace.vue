@@ -98,10 +98,14 @@
             <template #header-extra>
               <n-button size="tiny" text @click.stop="loadTaskList" :loading="taskListLoading">刷新</n-button>
             </template>
+            <div class="task-toolbar">
+              <n-input v-model:value="taskSearchQuery" size="tiny" placeholder="搜索任务名" clearable style="width: 150px" />
+              <n-select v-model:value="taskStatusFilter" :options="taskStatusOptions" size="tiny" style="width: 100px" @update:value="loadTaskList" />
+            </div>
             <n-spin :show="taskListLoading" size="small">
-              <n-empty v-if="!taskListLoading && taskList.length === 0" description="暂无任务" size="small" style="padding:8px 0" />
+              <n-empty v-if="!taskListLoading && filteredTaskList.length === 0" description="暂无任务" size="small" style="padding:8px 0" />
               <div v-else class="task-list">
-                <div v-for="t in taskList" :key="t.task_id" class="task-row" @click="loadResultDetails(t.task_id)" :class="{ active: activeCompareTaskId === t.task_id }">
+                <div v-for="t in filteredTaskList" :key="t.task_id" class="task-row" @click="loadResultDetails(t.task_id)" :class="{ active: activeCompareTaskId === t.task_id }">
                   <div class="task-main"><span class="task-name">{{ t.name || t.task_id?.slice(0, 8) }}</span><n-tag :type="statusType(t.status)" size="tiny">{{ statusLabel(t.status) }}</n-tag></div>
                   <div class="task-meta">{{ t.created_at?.slice(0, 10) || '' }}</div>
                   <div class="task-actions" @click.stop>
@@ -374,6 +378,21 @@ const historyList = ref<HistoryItem[]>([]);
 interface TaskListItem { task_id: string; name?: string; strategy_id?: string; status: string; created_at?: string; updated_at?: string; config?: any; }
 const taskList = ref<TaskListItem[]>([]);
 const taskListLoading = ref(false);
+const taskStatusFilter = ref("all");
+const taskSearchQuery = ref("");
+const taskStatusOptions = [
+  { label: "全部", value: "all" },
+  { label: "已完成", value: "completed" },
+  { label: "运行中", value: "running" },
+  { label: "失败", value: "failed" },
+  { label: "已取消", value: "cancelled" },
+  { label: "等待中", value: "pending" },
+];
+const filteredTaskList = computed(() => {
+  if (!taskSearchQuery.value) return taskList.value;
+  const q = taskSearchQuery.value.toLowerCase();
+  return taskList.value.filter((t) => (t.name || t.task_id || "").toLowerCase().includes(q));
+});
 
 const statusType = (s: string) => {
   const map: Record<string, any> = { running: 'info', completed: 'success', failed: 'error', cancelled: 'warning', pending: 'default' };
@@ -405,7 +424,7 @@ const loadTaskList = async () => {
   }
   taskListLoading.value = true;
   try {
-    const res = await backtestAPI.getTasks({ page_size: 50 }) as any;
+    const res = await backtestAPI.getTasks({ page_size: 100, status: taskStatusFilter.value === "all" ? undefined : taskStatusFilter.value }) as any;
     // API returns { data: [], pagination: {...} } or array
     const items = Array.isArray(res) ? res : (res?.data || res?.items || []);
     taskList.value = items.map((t: any) => ({
@@ -693,6 +712,7 @@ onMounted(async () => {
 .date-row { margin-bottom: 8px; display: flex; }
 .param-row { margin-bottom: 8px; display: flex; }
 .run-btn { margin-top: 4px; }
+.task-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
 .task-list { max-height: 260px; overflow-y: auto; }
 .task-row { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: all 0.15s;
   &:hover { background: rgba(124,111,247,0.06); }
