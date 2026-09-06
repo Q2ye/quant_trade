@@ -62,7 +62,8 @@ class LightGBMBottomStrategy(BaseStrategy):
         "regime_trail_act":     {0: 0.06, 1: 0.04, 2: 0.05},
         "regime_trail_dist":    {0: 0.10, 1: 0.06, 2: 0.08},
         "regime_max_hold":      {0: 25, 1: 14, 2: 20},
-        # P3: 量能确认
+        # P3: 量能确认（2026-08-30 撤销关停：关掉后防守腿放行 177 笔假底，组合 73.44%→66.86% 回撤恶化，
+        # 证实 vol_ratio>=1.0 正确过滤缩量假底，恢复 True）
         "vol_confirm_enabled": True,
         # v9: 大盘 regime 目标仓位（防守策略：熊/震生效，牛市空仓让位进攻）
         "use_market_gate": True,
@@ -874,7 +875,7 @@ class LightGBMBottomStrategy(BaseStrategy):
         """
         rn = {0: "熊", 1: "震", 2: "牛"}
         # 买入数量 = 可用资金 × 权重 / 价格，按 100 股/手向下取整（至少 1 手）
-        capital = float(getattr(self.context, "available_capital", 0) or 0) if self.context else 0.0
+        capital = self.resolve_available_cash()
         amount = max(capital * float(weight), 0.0)
         price = float(bar.close) if bar.close else 0.0
         quantity = 0

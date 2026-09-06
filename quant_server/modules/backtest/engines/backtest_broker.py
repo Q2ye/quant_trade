@@ -311,7 +311,7 @@ class BacktestBroker(EngineBase):
 
 
     def _validate_order(self, ts_code: str, direction: str, price: float,
-                        quantity: int) -> None:
+                        quantity: int, order_mode: str = "open") -> None:
         """v1.5: 独立订单验证，所有拒绝原因以 ValueError 抛出。"""
         if price <= 0:
             raise ValueError(f"[{ts_code}] 价格无效: {price}")
@@ -327,11 +327,17 @@ class BacktestBroker(EngineBase):
                 raise ValueError(f"[{ts_code}] 资金不足: 需{estimated:.0f}, 可用{self.cash:.0f}")
         if direction in ("SHORT", "CLOSE_LONG"):
             pos = self.positions.get(ts_code)
-            # 修复 2026-08（C7）：T+1 可卖校验——用可卖数量而非总持仓，
-            # 此前当日买入部分也可卖出（违反 T+1）
             if not pos:
                 raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用0")
-            avail = pos.available_quantity if self.config.t_plus_1 else pos.quantity
+            # [契约] T+1 可卖校验按「成交时机」区分（修复 2026-08 C7 的过度收紧）：
+            # - open（T+1 开盘成交）→ 成交日持仓已解锁，按总持仓校验（否则「当天买入当天止损」被误拒）
+            # - close/trigger（当日成交）→ 当日仍锁定，按可卖数量校验
+            same_day = order_mode in ("close", "trigger")
+            avail = (
+                pos.available_quantity
+                if (self.config.t_plus_1 and same_day)
+                else pos.quantity
+            )
             if avail < quantity:
                 raise ValueError(f"[{ts_code}] 可卖数量不足(T+1): 需{quantity}, 可卖{avail}")
 
@@ -483,7 +489,7 @@ class BacktestBroker(EngineBase):
 
         # ---- v1.5: 独立验证 ----
         try:
-            self._validate_order(ts_code, direction, price, quantity)
+            self._validate_order(ts_code, direction, price, quantity, order_mode)
         except ValueError as e:
             logger.warning(f"订单验证失败: {e}")
             return None
@@ -660,6 +666,10 @@ class BacktestBroker(EngineBase):
                 if (order.direction == "SHORT" and _tp and _tp > 0
                         and bar.low is not None and bar.low <= _tp):
                     # 多头止损触发：开盘已跳穿止损 → 按更差的开盘价；否则按止损价
+                    # 改动3：跌停封板卖不出（顺延到次日，贴近实盘）
+                    if self.config.price_limit and not self._can_trade(order.ts_code, order.direction, bar.open):
+                        remaining_orders.append(order)
+                        continue
                     _raw = _tp
                     if bar.open is not None and bar.open > 0 and bar.open < _raw:
                         _raw = bar.open
@@ -911,6 +921,10 @@ class BacktestBroker(EngineBase):
                 _tp = order.trigger_price
                 if (order.direction == "SHORT" and _tp and _tp > 0
                         and bar.low is not None and bar.low <= _tp):
+                    # 改动3：跌停封板卖不出（顺延到次日，贴近实盘）
+                    if self.config.price_limit and not self._can_trade(order.ts_code, order.direction, bar.open):
+                        remaining_orders.append(order)
+                        continue
                     _raw = _tp
                     if bar.open is not None and bar.open > 0 and bar.open < _raw:
                         _raw = bar.open

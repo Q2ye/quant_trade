@@ -70,15 +70,17 @@ class PerformanceTrackerEngine(EngineBase):
                 )
                 svc = PerformanceService(session)
                 strategies = await svc.get_active_strategies()
-                if not strategies:
-                    logger.info("绩效追踪: 无活跃策略需要追踪")
+                # 活跃策略 ∪ 当日有成交的策略（含已停用但当天有清算成交的）
+                active_ids = [getattr(s, "id", "") or "" for s in strategies]
+                traded_ids = await svc.get_strategy_ids_with_trades(trade_date)
+                strategy_ids = list(dict.fromkeys(active_ids + traded_ids))
+                strategy_ids = [sid for sid in strategy_ids if sid]
+                if not strategy_ids:
+                    logger.info("绩效追踪: 无策略需要追踪")
                     return
 
                 written = 0
-                for s in strategies:
-                    sid = getattr(s, "id", None) or ""
-                    if not sid:
-                        continue
+                for sid in strategy_ids:
                     try:
                         perf = await svc.calculate_daily_performance(
                             strategy_id=sid, trade_date=trade_date
@@ -91,7 +93,7 @@ class PerformanceTrackerEngine(EngineBase):
 
                 await session.commit()
                 logger.info(
-                    f"绩效追踪完成: {trade_date}, {written}/{len(strategies)} 条已写入"
+                    f"绩效追踪完成: {trade_date}, {written}/{len(strategy_ids)} 条已写入"
                 )
 
         except Exception as e:

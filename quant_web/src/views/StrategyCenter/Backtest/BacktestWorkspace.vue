@@ -99,7 +99,7 @@
               <n-button size="tiny" text @click.stop="loadTaskList" :loading="taskListLoading">刷新</n-button>
             </template>
             <div class="task-toolbar">
-              <n-input v-model:value="taskSearchQuery" size="tiny" placeholder="搜索任务名" clearable style="width: 150px" />
+              <n-input v-model:value="taskSearchQuery" size="tiny" placeholder="搜索任务名" clearable style="width: 140px" />
               <n-select v-model:value="taskStatusFilter" :options="taskStatusOptions" size="tiny" style="width: 100px" @update:value="loadTaskList" />
             </div>
             <n-spin :show="taskListLoading" size="small">
@@ -107,12 +107,15 @@
               <div v-else class="task-list">
                 <div v-for="t in filteredTaskList" :key="t.task_id" class="task-row" @click="loadResultDetails(t.task_id)" :class="{ active: activeCompareTaskId === t.task_id }">
                   <div class="task-main"><span class="task-name">{{ t.name || t.task_id?.slice(0, 8) }}</span><n-tag :type="statusType(t.status)" size="tiny">{{ statusLabel(t.status) }}</n-tag></div>
-                  <div class="task-meta">{{ t.created_at?.slice(0, 10) || '' }}</div>
+                  <div class="task-meta">{{ (t.created_at || '').slice(0, 16).replace('T', ' ') }}</div>
                   <div class="task-actions" @click.stop>
-                    <n-button v-if="t.status === 'running'" size="tiny" type="warning" text @click="cancelTask(t.task_id)" title="取消">✕</n-button>
-                    <n-button size="tiny" type="error" text @click="deleteTaskItem(t.task_id)" title="删除">🗑</n-button>
-                    <n-button size="tiny" type="primary" text @click="rerunTask(t)" title="重新回测">↻</n-button>
+                    <n-button v-if="t.status === 'running'" size="tiny" type="warning" text @click="cancelTask(t.task_id)" title="取消">取消</n-button>
+                    <n-button size="tiny" type="error" text @click="deleteTaskItem(t.task_id)" title="删除">删除</n-button>
+                    <n-button size="tiny" type="primary" text @click="rerunTask(t)" title="重新回测">重跑</n-button>
                   </div>
+                </div>
+                <div class="task-more">
+                  <n-button size="tiny" text type="primary" @click="router.push('/backtest/records')">查看更多 →</n-button>
                 </div>
               </div>
             </n-spin>
@@ -424,8 +427,7 @@ const loadTaskList = async () => {
   }
   taskListLoading.value = true;
   try {
-    const res = await backtestAPI.getTasks({ page_size: 100, status: taskStatusFilter.value === "all" ? undefined : taskStatusFilter.value }) as any;
-    // API returns { data: [], pagination: {...} } or array
+    const res = await backtestAPI.getTasks({ page_size: 20, status: taskStatusFilter.value === "all" ? undefined : taskStatusFilter.value }) as any;
     const items = Array.isArray(res) ? res : (res?.data || res?.items || []);
     taskList.value = items.map((t: any) => ({
       task_id: t.id || t.task_id,
@@ -713,6 +715,7 @@ onMounted(async () => {
 .param-row { margin-bottom: 8px; display: flex; }
 .run-btn { margin-top: 4px; }
 .task-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+.task-more { text-align: center; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.04); }
 .task-list { max-height: 260px; overflow-y: auto; }
 .task-row { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: all 0.15s;
   &:hover { background: rgba(124,111,247,0.06); }

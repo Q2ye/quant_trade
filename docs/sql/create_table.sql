@@ -3329,7 +3329,9 @@ CREATE TABLE strategy_daily_performance (
     total_return NUMERIC(10,6),                              -- v3.3: 改为可选
     max_drawdown NUMERIC(10,6),                              -- v3.3: 改为可选
     sharpe_ratio NUMERIC(10,6),
-    total_assets NUMERIC(16,4),                              -- v3.3: 当日总资产
+    total_assets NUMERIC(16,4),                              -- v3.3: 当日总资产（策略真实净值）
+    cash NUMERIC(18,2),                                      -- 策略现金台账（虚拟子账户）
+    peak_nav NUMERIC(18,2),                                  -- 运行峰值净值（用于回撤计算）
     strategy_run_id VARCHAR(36),                             -- v3.3: 关联 strategy_runs.id
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -3341,6 +3343,9 @@ COMMENT ON COLUMN strategy_daily_performance.daily_return IS '当日收益率（
 COMMENT ON COLUMN strategy_daily_performance.total_return IS '累计收益率（%）';
 COMMENT ON COLUMN strategy_daily_performance.max_drawdown IS '最大回撤（%）';
 COMMENT ON COLUMN strategy_daily_performance.sharpe_ratio IS '夏普比率';
+COMMENT ON COLUMN strategy_daily_performance.total_assets IS '当日总资产（策略真实净值）';
+COMMENT ON COLUMN strategy_daily_performance.cash IS '策略现金台账（虚拟子账户）';
+COMMENT ON COLUMN strategy_daily_performance.peak_nav IS '运行峰值净值（用于回撤计算）';
 
 -- 信号记录表（TimescaleDB超表）
 CREATE TABLE signals (

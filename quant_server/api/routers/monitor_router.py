@@ -141,7 +141,7 @@ async def get_strategy_health_api(
 ) -> dict[str, Any]:
     """策略健康度检查（基建设计 §三）：healthy / warning / stop 分级 + 预警原因"""
     try:
-        logger.info(f"用户 {current_user.get('username')} 请求策略健康检查")
+        logger.debug(f"用户 {current_user.get('username')} 请求策略健康检查")
         return await get_strategy_health(
             session=db_session,
             user_id=current_user.get("id"),

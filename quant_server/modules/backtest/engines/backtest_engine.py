@@ -675,6 +675,14 @@ class BacktestEngine(EngineBase):
 			# ---- 4a. 撮合昨日挂单（T+1 成交） ----
 			broker.match_orders(trade_date, bar_dict)
 
+			# [契约] 撮合后同步 broker 现金/持仓到策略 context（available_cash 取当日新鲜现金，防超买）
+			if manager:
+				manager.sync_backtest_account(
+					strategy_id,
+					available_cash=broker.cash,
+					broker_positions=broker.positions,
+				)
+
 			# ---- 4b. 推送 BarData 给策略 → 生成信号 ----
 			day_signals = 0
 			signals = []  # 修复 2026-08（C11）：manager 为 None 时未定义，后续遍历 UnboundLocalError
@@ -722,6 +730,11 @@ class BacktestEngine(EngineBase):
 			broker.settle_intraday_orders(bar_dict, trade_date=trade_date)
 			# ---- 4d. 盯市计价（按当日收盘价重估持仓，更新净值曲线） ----
 			broker.mark_to_market(bar_dict, trade_date=trade_date)
+
+			# [契约] 收盘后同步 total_assets（持仓 market_value 已更新，权益才正确）
+			if manager:
+				_snap = broker.get_account_snapshot()
+				manager.sync_backtest_account(strategy_id, total_assets=_snap["total_assets"])
 
 			# ---- 当日信号（仅DEBUG级别，里程碑用INFO） ----
 			if day_signals and logger.isEnabledFor(logging.DEBUG):
@@ -1010,9 +1023,20 @@ class BacktestEngine(EngineBase):
 
 			broker.match_orders(trade_date, bar_dict)
 			allocator.rebalance(trade_date, bar_dict)
+			# [契约] 撮合后同步 broker 现金/持仓到各策略 context（方案 B：available_cash 取当日新鲜现金，防超买）
+			for _sid in strategy_ids:
+				_aid = allocator_id_map.get(_sid, _sid)
+				_w = allocator.get_weight(_aid)
+				manager.sync_backtest_account(
+					_sid,
+					available_cash=broker.cash * _w,
+					broker_positions=broker.positions,
+				)
 			signals = await manager.handle_bar_batch(trade_date, bars)
 
-			# ---- 信号权重缩放 + 统计 ----
+			# ---- 信号权重缩放（仅显示）+ 统计 ----
+			# [契约] 资金分配已通过 sync_backtest_account 写入各策略 context.total_assets（方案 B），
+			# 不再缩放 quantity；此处仅保留 sig.weight 缩放供日志/展示（QuantitySizer 不看 weight）。
 			scale_stats: Dict[str, int] = {}
 			for sig in signals:
 				sid = getattr(sig, "strategy_id", "")
@@ -1022,12 +1046,6 @@ class BacktestEngine(EngineBase):
 					w = allocator.get_weight(aid)
 					orig_w = getattr(sig, "weight", 1.0) or 1.0
 					sig.weight = orig_w * w
-					# P1-3: 策略自算 quantity 的信号走 QuantitySizer，不受 weight 缩放影响，
-					# 必须同步缩放 quantity，否则 allocator 资金分配被旁路。
-					# 仅入场信号（quantity>0）缩放；平仓信号 quantity=0 → CloseAllSizer 不受影响。
-					sig_qty = getattr(sig, "quantity", 0) or 0
-					if sig_qty > 0 and 0.0 < w < 1.0:
-						sig.quantity = int(sig_qty * w // 100) * 100
 					scale_stats[aid] = scale_stats.get(aid, 0) + 1
 
 			# ---- 每日信号日志（首日或有信号时 INFO） ----
@@ -1076,6 +1094,13 @@ class BacktestEngine(EngineBase):
 
 			broker.settle_intraday_orders(bar_dict, trade_date=trade_date)
 			broker.mark_to_market(bar_dict, trade_date=trade_date)
+
+			# [契约] 收盘后同步 total_assets（持仓 market_value 已更新，权益才正确）
+			_snap = broker.get_account_snapshot()
+			for _sid in strategy_ids:
+				_aid = allocator_id_map.get(_sid, _sid)
+				_w = allocator.get_weight(_aid)
+				manager.sync_backtest_account(_sid, total_assets=_snap["total_assets"] * _w)
 
 			if day_idx in progress_milestones:
 				pct = day_idx * 100 // total_days

@@ -835,10 +835,7 @@ class StockLowHighStrategy(BaseStrategy):
 
         today = str(self._last_trade_date)[:10]
         lot_size = int(self.parameters.get("min_lot_size", 100))
-        capital = float(
-            getattr(self.context, "initial_capital", 0)
-            or self.parameters.get("allocated_capital", 100000)
-        )
+        capital = self.resolve_sizing_capital()
 
         pending = dict(self._buy_pending)
         self._buy_pending.clear()

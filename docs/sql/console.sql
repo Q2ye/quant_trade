@@ -207,6 +207,10 @@ select * from trades;
 select * from signals where ts_code = '512400.SH';
 select * from  account_daily_performance;
 
+ALTER TABLE strategy_daily_performance ADD COLUMN IF NOT EXISTS cash NUMERIC(18,2);
+ALTER TABLE strategy_daily_performance ADD COLUMN IF NOT EXISTS peak_nav NUMERIC(18,2);
+ALTER TABLE market_state_daily ADD COLUMN above_ma250_pct NUMERIC(6,3)
+ALTER TABLE market_state_daily ADD COLUMN IF NOT EXISTS above_ma250_pct NUMERIC(6,3);
 
   -- 候选 → 买入信号（子查询）
 SELECT * FROM signals WHERE parent_id = '<候选id>';

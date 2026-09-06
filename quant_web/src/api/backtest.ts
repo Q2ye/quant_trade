@@ -162,6 +162,24 @@ export default {
   },
 
   /**
+   * 获取回测任务列表（含分页信息）
+   * GET /quantTrade/backtest/tasks
+   */
+  async getTasksPaged(params?: {
+    status?: string; page?: number; page_size?: number; strategy_id?: string;
+  }): Promise<{ data: any[]; pagination: { page: number; page_size: number; total: number } }> {
+    return request
+      .get(`${BASE}/tasks`, {
+        params: { page: 1, page_size: 20, ...params },
+      })
+      .then(handleResponse)
+      .then((res: any) => ({
+        data: res?.data ?? [],
+        pagination: res?.pagination ?? { page: 1, page_size: 20, total: 0 },
+      }));
+  },
+
+  /**
    * 获取回测任务详情
    * GET /quantTrade/backtest/tasks/{taskId}
    */

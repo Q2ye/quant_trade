@@ -618,12 +618,9 @@ class EventEngine(EngineBase):
 			priority=priority
 		)
 
-		async def _register () -> None:
-			async with self._handler_lock:
-				self._event_handlers[event_type].append(handler_wrapper)
-
-		# 异步注册
-		asyncio.create_task(_register())
+		# 同步注册（修复：原 create_task 异步注册存在竞态——事件可能早于注册完成到达而被漏掉；
+		# 单线程事件循环下对 defaultdict 的 append 是原子的，无需异步锁）
+		self._event_handlers[event_type].append(handler_wrapper)
 
 		logger.debug(f"注册事件处理器: {event_type} -> {handler_id} (priority={priority})")
 

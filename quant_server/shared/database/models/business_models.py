@@ -220,7 +220,9 @@ class StrategyDailyPerformance(Base):
     # 2026-08-26 修复：模型对齐 DB 表缺失字段——perf dict 含 total_assets，
     # 此前模型缺该字段导致 save 报 "total_assets is an invalid keyword argument"。
     strategy_run_id = Column(String(36), nullable=True, comment='策略运行ID')
-    total_assets = Column(Numeric(18, 2), nullable=True, comment='当日总资产')
+    total_assets = Column(Numeric(18, 2), nullable=True, comment='当日总资产（策略真实净值）')
+    cash = Column(Numeric(18, 2), nullable=True, comment='策略现金台账（虚拟子账户）')
+    peak_nav = Column(Numeric(18, 2), nullable=True, comment='运行峰值净值（用于回撤计算）')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系

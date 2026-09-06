@@ -65,8 +65,8 @@ v1.0: 初始版本 — 回测 CRUD + 执行 + 结果查询
 import asyncio
 import importlib
 import logging
-import uuid
-from datetime import date as date_type, datetime
+from datetime import datetime
+from os import name
 from typing import Dict, List, Any, Optional
 
 import pandas as pd
@@ -367,7 +367,8 @@ class BacktestService:
 			# ---- 2. v3.3: 获取策略版本 + 参数快照 ----
 			strategy_version_id = None
 			try:
-				from shared.database.repositories.strategy.management.strategy_version_repo import StrategyVersionRepository
+				from shared.database.repositories.strategy.management.strategy_version_repo import \
+					StrategyVersionRepository
 				version_repo = StrategyVersionRepository(self.db)
 				ver = await version_repo.get_current_version(str(request.strategy_id))
 				if ver:
@@ -578,7 +579,7 @@ class BacktestService:
 		return sid
 
 	async def _default_composite_allocator_params(
-		self, configs: List[Dict[str, Any]]
+			self, configs: List[Dict[str, Any]]
 	) -> Dict[str, Any]:
 		"""按策略角色生成默认组合分配 REGIME_BASE_ALLOCATION（牛市防守让位进攻）。
 
@@ -879,7 +880,8 @@ class BacktestService:
 
 			_rows = (await self.db.execute(
 				text(
-					f"SELECT id, name, strategy_id, status, created_at, updated_at "
+					f"SELECT id, name, strategy_id, status, created_at, updated_at, "
+					f"started_at, completed_at, config "
 					f"FROM backtest_tasks WHERE {_where_clause} "
 					f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
 				),
@@ -889,6 +891,7 @@ class BacktestService:
 			# ---- 3. 格式化结果 ----
 			data = []
 			for r in _rows:
+				_cfg = r.config or {}
 				data.append({
 					"id": r.id,
 					"name": r.name,
@@ -896,6 +899,11 @@ class BacktestService:
 					"status": r.status,
 					"created_at": r.created_at.isoformat() if r.created_at else None,
 					"updated_at": r.updated_at.isoformat() if r.updated_at else None,
+					"started_at": r.started_at.isoformat() if r.started_at else None,
+					"completed_at": r.completed_at.isoformat() if r.completed_at else None,
+					"start_date": _cfg.get("start_date"),
+					"end_date": _cfg.get("end_date"),
+					"initial_capital": _cfg.get("initial_capital"),
 				})
 
 			return {
@@ -947,7 +955,7 @@ class BacktestService:
 				cancel_event.set()
 				logger.info(f"已发送取消信号: {task_id}")
 
-		# ---- 4. 更新状态 ----
+			# ---- 4. 更新状态 ----
 			await self.task_repo.update(task_id, {
 				"status": "cancelled",
 				"updated_at": datetime.now()
@@ -998,7 +1006,6 @@ class BacktestService:
 			# ---- 2. 获取净值曲线数据 ----
 			equity_curves = await self.equity_curve_repo.get_equity_curve(task_id)
 
-
 			# ---- 3. 格式化 + 滚动计算回撤 ----
 			data = []
 			peak = 0.0
@@ -1019,7 +1026,7 @@ class BacktestService:
 			raise
 
 	async def get_backtest_trades(self, task_id: str, user_id: str,
-		                               page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+	                              page: int = 1, page_size: int = 20) -> Dict[str, Any]:
 		"""
 		获取回测交易记录列表。
 
@@ -1234,6 +1241,8 @@ class BacktestService:
 			       COALESCE((t.result->>'sharpe_ratio')::float, 0.0) AS sharpe_ratio,
 			       COALESCE((t.result->>'win_rate')::float, 0.0) AS win_rate,
 			       COALESCE((t.result->>'num_trades')::int, 0) AS num_trades,
+			       COALESCE(t.config->>'start_date', '') AS start_date,
+			       COALESCE(t.config->>'end_date', '') AS end_date,
 			       COALESCE(jsonb_array_length(t.result->'equity_curve'), 0) AS equity_len
 			FROM backtest_tasks t
 			LEFT JOIN strategies s ON s.id = t.strategy_id
@@ -1263,6 +1272,8 @@ class BacktestService:
 					"sharpe_ratio": float(r.sharpe_ratio or 0),
 					"win_rate": float(r.win_rate or 0),
 					"num_trades": int(r.num_trades or 0),
+					"start_date": r.start_date or "",
+					"end_date": r.end_date or "",
 					"equity_len": int(r.equity_len or 0),
 				}
 
@@ -1800,7 +1811,8 @@ class BacktestService:
 			# ---- B1. 构建 exec 沙箱环境 ----
 			from modules.strategy.strategies.base.base_strategy import BaseStrategy
 			from datetime import datetime as _dt
-			from modules.strategy.constants import StrategyType as ST, SignalDirection, TimeFrame, SignalType as SigType, RunMode
+			from modules.strategy.constants import StrategyType as ST, SignalDirection, TimeFrame, \
+				SignalType as SigType, RunMode
 			from modules.strategy.models import TradingSignal, Position
 			from core.engines.types.entities import BarData
 			import numpy as np
@@ -2159,8 +2171,8 @@ class BacktestService:
 	# =========================================================================
 
 	async def run_scenario(
-		self, user_id, name, code, parameters=None, config=None,
-		template_id=None, source_strategy_id=None,
+			self, user_id, name, code, parameters=None, config=None,
+			template_id=None, source_strategy_id=None,
 	):
 		"""独立场景回测：不依赖策略，直接用代码+参数运行回测。"""
 		try:
@@ -2190,7 +2202,8 @@ class BacktestService:
 			import re as _re
 			from shared.database.repositories.strategy.backtest.scenario_repo import BacktestScenarioRepository
 			from shared.database.repositories.strategy.management.strategy_repo import StrategyRepository
-			from shared.database.repositories.strategy.management.strategy_parameter_repo import StrategyParameterRepository
+			from shared.database.repositories.strategy.management.strategy_parameter_repo import \
+				StrategyParameterRepository
 			from shared.database.repositories.strategy.management.strategy_version_repo import StrategyVersionRepository
 			from modules.strategy.constants import StrategyType
 			scenario_repo = BacktestScenarioRepository(self.db)
@@ -2213,14 +2226,15 @@ class BacktestService:
 			param_repo = StrategyParameterRepository(self.db)
 			for key, value in params.items():
 				await param_repo.create({"strategy_id": strategy.id, "param_name": key,
-					"param_type": type(value).__name__, "param_value": value})
+				                         "param_type": type(value).__name__, "param_value": value})
 			version_repo = StrategyVersionRepository(self.db)
 			await version_repo.create({"strategy_id": strategy.id, "version_number": "1.0.0",
-				"code_content": scenario.code or "", "parameters": params,
-				"is_current": True, "description": f"从场景 {scenario_id} 晋升", "created_at": datetime.now()})
+			                           "code_content": scenario.code or "", "parameters": params,
+			                           "is_current": True, "description": f"从场景 {scenario_id} 晋升",
+			                           "created_at": datetime.now()})
 			from sqlalchemy import update as _up, text as _txt
 			await self.db.execute(_up(_txt("backtest_tasks")).where(_txt("scenario_id = :sid"))
-				.values(strategy_id=strategy.id), {"sid": scenario_id})
+			                      .values(strategy_id=strategy.id), {"sid": scenario_id})
 			await scenario_repo.update_by({"id": scenario_id}, {"status": "promoted"})
 			await self.db.commit()
 			return {"success": True, "strategy_id": strategy.id}
@@ -2229,9 +2243,6 @@ class BacktestService:
 			await self.db.rollback()
 			raise
 
-
-	# =========================================================================
-	# 静态工具方法
-	# =========================================================================
-
-
+# =========================================================================
+# 静态工具方法
+# =========================================================================

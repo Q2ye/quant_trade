@@ -226,7 +226,7 @@ async def get_strategies_api (
 		StrategyListResponse: 策略列表响应
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求策略列表，参数: {request.model_dump()}")
+		logger.debug(f"用户 {current_user.get('username')} 请求策略列表，参数: {request.model_dump()}")
 
 		result = await get_strategy_list(
 			session=db_session,

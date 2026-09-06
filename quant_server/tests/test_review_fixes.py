@@ -176,8 +176,8 @@ class TestC4PerformanceMetrics:
         import inspect
 
         src = inspect.getsource(PerformanceService)
-        # 回撤公式应为 (total - peak)/peak（负值口径）
-        assert "(total_assets - peak) / peak" in src, "回撤未统一为负值口径"
+        # 回撤公式应为 (nav - peak)/peak（负值口径）
+        assert "(nav_t - peak_t) / peak_t" in src, "回撤未统一为负值口径"
 
 
 class TestA20EventPriority:

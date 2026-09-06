@@ -434,6 +434,27 @@ class BaseStrategy(ABC):
 			return False
 		return True
 
+	# ==================== 资金契约（单一 sizing 资本来源） ====================
+
+	def resolve_sizing_capital(self) -> float:
+		"""sizing 基准 = context.total_assets（本策略被授权部署的资本）。
+
+		context 未注入时回退 allocated_capital 参数。total_assets=0（组合零权重/实盘暂停）
+		即「无资本」，不回落 initial_capital。见 docs/01-业务设计/策略资金与仓位契约.md。
+		"""
+		if self.context is None:
+			return float(self.parameters.get("allocated_capital", 100000) or 100000)
+		return float(getattr(self.context, "total_assets", 0) or 0.0)
+
+	def resolve_available_cash(self) -> float:
+		"""sizing 封顶 = context.available_capital（本策略可用现金）。
+
+		context 未注入时回退 sizing 基准；available_capital=0 即「无现金」，不回落基准。
+		"""
+		if self.context is None:
+			return self.resolve_sizing_capital()
+		return float(getattr(self.context, "available_capital", 0) or 0.0)
+
 	def get_daily_diagnostic(self) -> Optional[dict]:
 		"""
 		返回当日运行诊断信息（可选覆写）。

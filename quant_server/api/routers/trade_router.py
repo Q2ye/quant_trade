@@ -106,7 +106,7 @@ async def get_orders_api (
 		OrderListResponse: 订单列表响应
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求订单列表，参数: {request.model_dump()}")
+		logger.debug(f"用户 {current_user.get('username')} 请求订单列表，参数: {request.model_dump()}")
 
 		result = await get_order_list(
 			session=db_session,
@@ -563,7 +563,7 @@ async def get_signals_api (
 	支持按状态（pending/approved/rejected/executed）和信号类型（buy/sell）筛选。
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求信号列表")
+		logger.debug(f"用户 {current_user.get('username')} 请求信号列表")
 
 		result = await get_signal_list(
 			session=db_session,

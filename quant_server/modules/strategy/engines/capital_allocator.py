@@ -70,7 +70,7 @@ class CapitalAllocator:
         "vol_cap": 2.0,                   # 年化波动率上限
         "rp_blend_strength": 0.3,         # 风险平价混合强度: 0=纯 Regime, 1=纯 RP
         "rp_rebalance_freq": "monthly",   # RP 重算频率: daily/weekly/monthly
-        "regime_gate_band": 0.03,         # CSI500 vs MA250 偏离阈值（±3% 回测验证最优，±1% 致震荡参与减少/组合MDD恶化）
+        "regime_gate_band": 0.0,          # CSI500 vs MA250 偏离阈值（0=二元，与高波动 annual_gate_band 对齐，消除口径不一致）
     }
 
     def __init__(

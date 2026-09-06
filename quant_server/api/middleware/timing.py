@@ -23,11 +23,18 @@ _SKIP_PATHS: set[str] = {
     "/quantTrade/analysis/health",
     "/quantTrade/monitor/health",
     "/quantTrade/account/health",
+    # 2026-08-30：前端仪表盘 60s 轮询的只读接口（交易驾驶舱/绩效中心自动刷新）
+    "/quantTrade/risk/metrics",
+    "/quantTrade/strategy",
+    "/quantTrade/trade/signals",
+    "/quantTrade/trade/orders",
+    "/quantTrade/monitor/strategies/health",
 }
 
 _SKIP_PREFIXES: tuple[str, ...] = (
     "/quantTrade/backtest/tasks/",   # 回测任务详情轮询（含 UUID 路径段）
     "/quantTrade/data/sync/status/", # 指定 task_id 的同步状态轮询
+    "/quantTrade/data/indexes/",     # 指数行情轮询（000001.SH 等）
 )
 
 

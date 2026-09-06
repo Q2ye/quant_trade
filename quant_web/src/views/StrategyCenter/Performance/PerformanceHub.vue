@@ -20,7 +20,12 @@
             <template #icon><SmartIcon name="Pulse" /></template>
             策略健康
           </n-button>
-          <n-button size="small" :loading="loading" @click="loadData">刷新</n-button>
+          <n-button size="small" quaternary :loading="loading" @click="loadData">
+            <template #icon><SmartIcon name="Refresh" /></template>
+          </n-button>
+          <n-button size="small" quaternary @click="goBack">
+            <template #icon><SmartIcon name="ArrowLeft" /></template>
+          </n-button>
         </div>
       </div>
     </div>
@@ -48,11 +53,13 @@
               <span class="rt-col col-rank">#</span>
               <span class="rt-col col-name">策略</span>
               <span class="rt-col col-metric">年化收益</span>
+              <span class="rt-col col-metric">总收益</span>
               <span class="rt-col col-metric">夏普</span>
               <span class="rt-col col-metric">最大回撤</span>
               <span class="rt-col col-metric">胜率</span>
               <span class="rt-col col-metric">交易</span>
               <span class="rt-col col-date">回测日期</span>
+              <span class="rt-col col-range">回测区间</span>
             </div>
             <div
               v-for="(s, idx) in strategyRankings" :key="idx"
@@ -63,11 +70,13 @@
               </span>
               <span class="rt-col col-name">{{ s.name }}</span>
               <span class="rt-col col-metric" :class="s.annualReturn >= 0 ? 'text-up' : 'text-down'">{{ (s.annualReturn*100).toFixed(1) }}%</span>
+              <span class="rt-col col-metric" :class="s.totalReturn >= 0 ? 'text-up' : 'text-down'">{{ (s.totalReturn*100).toFixed(1) }}%</span>
               <span class="rt-col col-metric">{{ (s.sharpeRatio||0).toFixed(2) }}</span>
               <span class="rt-col col-metric text-down">{{ ((s.maxDrawdown||0)*100).toFixed(1) }}%</span>
               <span class="rt-col col-metric">{{ s.winRate ? (s.winRate*100).toFixed(0)+'%' : '--' }}</span>
               <span class="rt-col col-metric">{{ s.tradesCount || '--' }}</span>
               <span class="rt-col col-date">{{ s.taskDate || '--' }}</span>
+              <span class="rt-col col-range">{{ s.startDate && s.endDate ? `${s.startDate} ~ ${s.endDate}` : '--' }}</span>
             </div>
           </div>
         </n-card>
@@ -94,7 +103,7 @@ const router = useRouter();
 const loading = ref(true);
 const error = ref(false);
 
-interface RankItem { id: string; name: string; taskId?: string; taskDate?: string; annualReturn: number; sharpeRatio: number; maxDrawdown: number; winRate?: number; tradesCount?: number; totalReturn?: number; }
+interface RankItem { id: string; name: string; taskId?: string; taskDate?: string; startDate?: string; endDate?: string; annualReturn: number; totalReturn: number; sharpeRatio: number; maxDrawdown: number; winRate?: number; tradesCount?: number; }
 
 // 点击排名行 → 直达该策略最新回测任务报告
 const goReport = (s: RankItem) => {
@@ -109,6 +118,7 @@ const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 const goDashboard = () => router.push("/performance");
 const goAccount = () => router.push("/performance/account");
 const goHealth = () => router.push("/performance/health");
+const goBack = () => router.back();
 
 const loadData = async () => {
   loading.value = true; error.value = false;
@@ -126,6 +136,8 @@ const loadData = async () => {
       name: r.strategy_name || r.strategy_id,
       taskId: r.task_id,
       taskDate: r.task_date || "",
+      startDate: r.start_date || "",
+      endDate: r.end_date || "",
       annualReturn: r.annual_return ?? 0,
       sharpeRatio: r.sharpe_ratio ?? 0,
       maxDrawdown: r.max_drawdown ?? 0,
@@ -194,6 +206,7 @@ onMounted(() => loadData());
 .col-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--color-text-primary); }
 .col-metric { width: 72px; text-align: right; color: var(--color-text-secondary); font-weight: 500; }
 .col-date { width: 90px; text-align: right; color: var(--color-text-tertiary); font-size: 11px; }
+.col-range { width: 155px; text-align: right; color: var(--color-text-tertiary); font-size: 11px; }
 .rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 700; color: var(--color-text-tertiary); background: rgba(255,255,255,0.05);
   &.top-1 { background: #FFD700; color: #000; } &.top-2 { background: #C0C0C0; color: #000; } &.top-3 { background: #CD7F32; color: #fff; }
 }

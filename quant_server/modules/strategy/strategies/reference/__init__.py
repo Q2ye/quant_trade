@@ -6,8 +6,10 @@
 """
 
 from modules.strategy.strategies.reference.stock_low_high_strategy import StockLowHighStrategy
+from modules.strategy.strategies.reference.deep_drop_rebound_strategy import DeepDropReboundStrategy
 
 __all__ = [
-    "StockLowHighStrategy"
+    "StockLowHighStrategy",
+    "DeepDropReboundStrategy",
 ]
 

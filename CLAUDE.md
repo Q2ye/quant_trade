@@ -111,18 +111,22 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 
 ## 策略开发
 
-策略实现位于 `quant_server/modules/strategy/strategies/`，继承 `base/base_strategy.py`。**实际策略清单（代码实证，见白皮书 §4）**：
+策略实现位于 `quant_server/modules/strategy/strategies/`，继承 `base/base_strategy.py`。
+
+> ⚠️ **策略运行时从 DB `strategies.code` 加载代码（`exec()`），回测引擎同样如此**——改磁盘 `.py` 文件**必须同步 `strategies.code` 才生效**，否则实盘/回测仍跑旧代码。改参数默认值还须同步 DB `strategy_parameters` 覆盖（JSON 列会盖掉 `DEFAULT_PARAMS`）。快速冒烟验证（磁盘加载、不走 DB）：`python scripts/backtest_high_vol_momentum.py [start] [end]`（默认 2025-01-01~2026-08-07，信号级验证有交易/无 NaN/收益率合理）。
+
+**实际策略清单（代码实证，见白皮书 §4）**：
 
 | 定位 | 策略 | 文件 |
 |:---|:---|:---|
-| 主池进攻 | 高波动动量轮动 7.1（实盘确认 2026-08；代码注释 v7.3） | `rotation/high_vol_momentum_strategy.py` |
+| 主池进攻 | 高波动动量轮动 7.1（实盘确认 2026-08；磁盘代码 v9.0） | `rotation/high_vol_momentum_strategy.py` |
 | 主池防守 | ETF 底部抄底（LightGBM） | `etf/bottom_strategy.py` |
 | 卫星·事件 | 恐慌抄底（阶段 4b，模拟盘 draft） | `panic/panic_bottom_strategy.py` |
 | 卫星·进攻 | 微盘股 + 双指数择时（阶段 4c，模拟盘 draft） | `microcap/microcap_strategy.py` |
 | 参考/历史 | 低吸轮动 | `reference/stock_low_high_strategy.py` |
 | 基类 | BaseStrategy 生命周期 | `base/base_strategy.py` + `base/strategy_context.py` |
 
-> ⚠️ 旧文档所列 industry_rotation / dl / ml 等策略**代码中不存在**；`rotation/` 下 `high_vol_momentum_v71_restore.py`、`v90.py` 为版本快照文件，非活动策略。
+> ⚠️ 旧文档所列 industry_rotation / dl / ml 等策略**代码中不存在**（`rotation/` 下仅 `high_vol_momentum_strategy.py` 一个活动策略，历史快照文件已删除）。
 
 ## 自动化守卫（`.claude/settings.json`）
 
@@ -140,7 +144,7 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 | 代码现状基线 | `docs/01-业务设计/系统建设现状白皮书.md` | 冲突裁决 / 现状核对 |
 | 系统设计 | `docs/01-业务设计/量化交易系统详细设计.md` | 架构/数据/策略体系 |
 | 技术实现 | `docs/01-业务设计/技术实现设计.md` | 引擎/事件/API 契约/Repository |
-| 策略体系入口 | `docs/00-核心策略体系/`（5 份） | 策略规划/设计/基建/可行性/实施 |
+| 策略体系入口 | `docs/00-核心策略体系/`（见 `docs/README.md`） | 策略规划/设计/基建/可行性/实施/迭代记录 |
 | 后端开发 SOP | `.claude/skills/quantsys-architect/SKILL.md` | 后端编码 |
 | 策略开发 SOP | `.claude/skills/strategy-dev/SKILL.md` | 策略开发 |
 | 策略质量门 | `.claude/skills/strategy-auditor/SKILL.md` | 上线前/回测前检查 |

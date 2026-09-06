@@ -26,6 +26,9 @@
           <n-button quaternary @click="refreshAll" :loading="loading">
             <template #icon><Icon icon="mdi:refresh" /></template>
           </n-button>
+          <n-button quaternary @click="goBack">
+            <template #icon><Icon icon="mdi:arrow-left" /></template>
+          </n-button>
         </div>
       </div>
     </div>
@@ -139,7 +142,7 @@
                   </div>
                   <div class="metric">
                     <div class="metric-label">近段回撤</div>
-                    <div class="metric-value text-fall">{{ s.metrics.recent_days > 0 ? fmtPct(s.metrics.recent_mdd) : '--' }}</div>
+                    <div class="metric-value text-fall">{{ s.metrics.recent_days > 0 ? fmtPct(-s.metrics.recent_mdd) : '--' }}</div>
                   </div>
                   <div class="metric">
                     <div class="metric-label">近段信号</div>
@@ -153,7 +156,7 @@
                     <div class="compare-row">
                       <span class="compare-label">回撤 vs 历史最大</span>
                       <span class="compare-value">
-                        近段 {{ fmtPct(s.metrics.recent_mdd) }} / 历史 {{ fmtPct(s.metrics.hist_max_mdd) }}
+                        近段 {{ fmtPct(-s.metrics.recent_mdd) }} / 历史 {{ fmtPct(-s.metrics.hist_max_mdd) }}
                         <span
                           class="compare-hint"
                           :class="mddWarn(s.metrics) ? 'hint-danger' : 'hint-ok'"
@@ -436,6 +439,7 @@ const refreshAll = async () => {
 // ── 绩效中心互跳快捷入口 ──
 const goPerformance = () => router.push("/performance");
 const goAccount = () => router.push("/performance/account");
+const goBack = () => router.back();
 
 onMounted(refreshAll);
 </script>

@@ -265,6 +265,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "backtest", layout: "main", title: "回测报告" },
   },
   {
+    path: "/backtest/records",
+    name: "BacktestRecords",
+    component: () =>
+      import("@/views/StrategyCenter/Backtest/BacktestRecords.vue"),
+    meta: { menu: "backtest", layout: "main", title: "回测记录" },
+  },
+  {
     path: "/backtest/config",
     redirect: "/backtest",
   },

@@ -1015,6 +1015,45 @@ class StrategyManager(EngineBase):
         logger.info(f"更新策略 {strategy_id} 运行资本: {capital:,.0f}（组合 rebalance）")
         return True
 
+    def sync_backtest_account(
+        self,
+        strategy_id: str,
+        total_assets: Optional[float] = None,
+        available_cash: Optional[float] = None,
+        broker_positions: Optional[Dict] = None,
+    ) -> bool:
+        """[契约] 回测每日同步：只写 total_assets/available_capital/positions，不碰 initial_capital。
+
+        参数均可选（按需分时同步，避免时点错位）：
+        - total_assets = 本策略被授权资本（单策略=broker.total_assets，组合=× 权重）
+          → 须在 mark_to_market 后同步（持仓 market_value 才正确）
+        - available_capital = 本策略可用现金 → 须在 match_orders 后同步（现金才新鲜）
+        - positions = broker 实际持仓（反馈闭环）→ 须在 match_orders 后同步
+        见 docs/01-业务设计/策略资金与仓位契约.md。
+        """
+        context = self._contexts.get(strategy_id)
+        if context is None:
+            return False
+        if total_assets is not None:
+            context.total_assets = float(total_assets)
+        if available_cash is not None:
+            context.available_capital = float(available_cash)
+        if broker_positions is not None:
+            from modules.strategy.models import Position, PositionSide
+            context.positions = {
+                ts_code: Position(
+                    id=f"{strategy_id}_{ts_code}",
+                    strategy_id=strategy_id,
+                    ts_code=ts_code,
+                    side=PositionSide.LONG,
+                    quantity=int(getattr(pos, "quantity", 0) or 0),
+                    avg_cost=float(getattr(pos, "avg_cost", 0) or 0),
+                )
+                for ts_code, pos in broker_positions.items()
+                if int(getattr(pos, "quantity", 0) or 0) > 0
+            }
+        return True
+
     def get_all_running_strategies(self) -> List[StrategyState]:
         return list(self.running_states.values())
 
@@ -2411,6 +2450,7 @@ class StrategyManager(EngineBase):
                     )
                 )
                 all_codes = [r[0] for r in all_codes_result.fetchall()]
+                all_codes_result.close()
                 if not all_codes:
                     logger.warning("策略 %s 全市场预热: 未找到主板股票代码", strategy_id)
                     return
@@ -2464,7 +2504,7 @@ class StrategyManager(EngineBase):
                         continue
                     df = pd.DataFrame(recs)
                     df = df.sort_values("trade_date").reset_index(drop=True)
-                    df = df[["close", "volume", "amount", "open", "high", "low"]]
+                    df = df[["trade_date", "open", "high", "low", "close", "volume", "amount"]]
                     # 限制缓存行数（按策略 lookback 适配：MA200 需 250 天，
                     # 低吸轮动等 60 天策略保持 120。下限 120 防极短。）
                     _max_rows = max(lookback + 60, 120)

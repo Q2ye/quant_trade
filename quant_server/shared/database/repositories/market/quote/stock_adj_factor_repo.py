@@ -849,6 +849,7 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 				{"symbols": symbols, "start_date": start_date, "end_date": end_date},
 			)
 			rows = result.fetchall()
+			result.close()
 			return [
 				{
 					"ts_code": r[0],
