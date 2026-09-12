@@ -387,6 +387,17 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # 1. 走弱期判定
         self._update_weak_period(td)
 
+        # 1.5 F9 守卫：当日行情整体缺失时不调仓（见 _has_fresh_data）。
+        #     必须早于止损与选股——两者都以价格为判据，数据缺失时会用陈旧收盘价
+        #     误触发止损、或误判「无候选」而卖出持仓切国债。
+        #     放在 _update_weak_period 之后：判据依赖 _is_weak 决定候选池范围。
+        if not self._has_fresh_data(td):
+            logger.warning(
+                f"[{self.name}] 候选池无任何标的带当日({td})行情，判定为数据缺失，"
+                f"跳过本次调仓（不发信号、不动仓）"
+            )
+            return signals
+
         # 2. 硬止损（持仓）
         signals.extend(self._check_stop_loss(td))
 
@@ -510,6 +521,28 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 f"[{self.name}] 走弱期={self._is_weak} above={above} below={below} "
                 f"days={self._weak_days_count}/{self.max_weak_days}"
             )
+
+    def _has_fresh_data(self, td: str) -> bool:
+        """池内是否至少有一个标的带**当日** bar（F9 数据完整性守卫）。
+
+        背景：F6 停牌守卫（`_bar_dates.get(code) == _last_trade_date`）会在标的
+        当日无 bar 时排除该候选。若某日 ETF 数据**整体缺失**（同步故障），29 只
+        候选会被全部排除 → 误判「无候选」→ `_defensive_target()` 卖出当前持仓并
+        切国债 → 数据恢复后再切回来，白付两轮换手成本，且期间的止损判据也不可信。
+
+        故：**当前 regime 下的候选池**无一带当日 bar 时，判定为数据缺失，
+        `_run_rebalance` 直接返回、不动仓。
+
+        判据用「候选池」（全球池 / 走弱期下的全球+中国池），**不含防御标的**——
+        否则「只有国债有数据、候选全缺」会被误判为数据到位，仍然导致切国债。
+        也正因为依赖 `_is_weak`，本守卫须在 `_update_weak_period()` 之后调用。
+
+        Args:
+            td: 本次调仓对应的交易日（调仓日，非 `_last_trade_date`——后者在
+                今日无任何 bar 时会停留在昨日，导致判据失效）。
+        """
+        pool = self.global_pool if self._is_weak else (self.global_pool + self.china_pool)
+        return any(self._bar_dates.get(c) == td for c in pool)
 
     def _candidate_pool(self) -> List[str]:
         """走弱期只用全球/商品池，正常期用全球+中国池（排除防御标的）。"""
