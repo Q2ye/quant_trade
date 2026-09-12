@@ -74,11 +74,24 @@ export interface StrategyPerformanceResponse extends ApiResponse<ApiStrategyPerf
 // API 方法
 // ============================================================
 
+/**
+ * 策略列表一次取全量（不分页）。
+ *
+ * 原为 50：策略数超过 50 后，靠后的策略（**含运行中的**）会被挤到第 2 页，
+ * 而策略列表页只取第 1 页 → 「🟢 运行中」标签下空白
+ * （2026-09-12 实测：54 个策略时 `27c2993b` 不可见，标签计数为 0）。
+ *
+ * 后端 `strategy_service` 用 `limit=page_size` / `skip=(page-1)*page_size`，
+ * **不调用 `get_effective_page_size()`**，故不受 `MAX_PAGE_SIZE=100` 约束。
+ * 调用方仍可通过 `params` 显式覆盖 `page` / `page_size`。
+ */
+const STRATEGY_LIST_PAGE_SIZE = 1000;
+
 export default {
   async getStrategies(params?: StrategyQueryParams): Promise<ApiStrategy[]> {
     return request
       .get("/quantTrade/strategy", {
-        params: { page: 1, page_size: 50, ...params },
+        params: { page: 1, page_size: STRATEGY_LIST_PAGE_SIZE, ...params },
       })
       .then(handleResponse)
       .then((data: any) => data.data);
