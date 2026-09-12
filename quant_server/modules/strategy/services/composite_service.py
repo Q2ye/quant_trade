@@ -436,6 +436,22 @@ class CompositeService:
             logger.info("无活跃组合，跳过每日 rebalance")
             return {"processed": 0}
 
+        # 跨组合超配校验（2026-09-12）：多个活跃组合共用同一 account_id 时，各自按
+        # `account_total × 权重` 独立分配（权重在组内归一化），合计会超过账户权益，
+        # 且原实现无任何校验。此处只告警不阻断，避免影响既有配置，仅用于暴露失误。
+        _by_account = {}
+        for _g in active:
+            _aid = _g.get("account_id")
+            if _aid:
+                _by_account.setdefault(str(_aid), []).append(_g.get("name") or _g.get("id"))
+        for _aid, _names in _by_account.items():
+            if len(_names) > 1:
+                logger.warning(
+                    "⚠️ 账户 %s 被 %d 个活跃组合共用 %s —— 各组合独立按账户总资产分配，"
+                    "合计将超过账户权益（超配）。请确保同一账户任一时刻只有一个活跃组合。",
+                    str(_aid)[:8], len(_names), _names,
+                )
+
         results = []
         for group in active:
             try:

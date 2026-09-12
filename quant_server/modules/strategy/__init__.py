@@ -145,6 +145,23 @@ async def initialize (
                 except Exception as e:
                     logger.exception("日终策略驱动失败: %s", e)
 
+            async def _task_capital_sync(today):
+                """B1: 非组合 live 策略的 sizing 基准，每日按绑定账户权益同步。
+
+                必须排在日终结算（daily_settlement, pre_gate order=40）之后，故用
+                phase=post_gate；order=5 早于 composite_rebalance(10)，保证组合内外
+                互不覆盖（两类策略由 composite_group_id IS NULL 硬隔离）。
+                """
+                strategy_mgr = await main_engine.get_module_engine("strategy_manager")
+                try:
+                    if strategy_mgr and hasattr(strategy_mgr, "sync_standalone_strategy_capital"):
+                        _n = await strategy_mgr.sync_standalone_strategy_capital()
+                        if _n:
+                            logger.info("独立策略 sizing 基准同步完成: %d 个策略", _n)
+                except Exception as e:
+                    logger.warning("独立策略 sizing 基准同步失败（非致命）: %s", e)
+
+            await main_engine.register_daily_task("strategy_capital_sync", _task_capital_sync, phase="post_gate", order=5)
             await main_engine.register_daily_task("composite_rebalance", _task_rebalance, phase="post_gate", order=10)
             await main_engine.register_daily_task("strategy_drive", _task_drive, phase="post_gate", order=20)
         return success

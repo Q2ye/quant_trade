@@ -1016,6 +1016,74 @@ class StrategyManager(EngineBase):
         logger.info(f"更新策略 {strategy_id} 运行资本: {capital:,.0f}（组合 rebalance）")
         return True
 
+    async def sync_standalone_strategy_capital(self) -> int:
+        """把「未加入组合」的 running+live 策略的 sizing 基准同步为其绑定账户权益。
+
+        B1 修复（2026-09-12）：`update_strategy_capital` 此前只被组合 rebalance 调用，
+        因此不在任何组合里的实盘策略，其 `context.total_assets` 启动后**永不更新** ——
+        sizing 基准恒为启动资金，净值上涨不加仓、下跌不减仓，与回测口径（每日同步
+        真实权益）严重背离。
+
+        与组合互斥：只处理 `composite_group_id IS NULL` 的策略。组合内策略由
+        `composite_rebalance` 按 `account_total × weight` 写入，二者不可同时写同一
+        context（否则互相覆盖）。
+
+        写字段边界（资金契约 §2.2）：只写 `total_assets` / `available_capital`，
+        **不覆写 `initial_capital`**（其语义是「初始资金」）。
+        注意 available_capital 取账户的 available_balance（而非 total_balance），
+        否则用 `resolve_available_cash()` 的策略会高估可用现金。
+
+        Returns:
+            实际同步的策略数（0 表示无需处理或全部跳过）。
+        """
+        if not self.session_factory:
+            return 0
+        try:
+            from sqlalchemy import text as _text
+
+            async with self.session_factory() as session:
+                # 批量取策略与其绑定账户，避免 N+1
+                rows = (await session.execute(_text(
+                    "SELECT id, name, account_id FROM strategies "
+                    "WHERE run_mode = 'live' AND status = 'running' "
+                    "AND composite_group_id IS NULL AND account_id IS NOT NULL"
+                ))).fetchall()
+                if not rows:
+                    return 0
+                acct_ids = list({str(r[2]) for r in rows})
+                bal_rows = (await session.execute(_text(
+                    "SELECT id, total_balance, available_balance FROM accounts "
+                    "WHERE id = ANY(:ids)"
+                ), {"ids": acct_ids})).fetchall()
+                balances = {
+                    str(b[0]): (float(b[1] or 0), float(b[2] or 0)) for b in bal_rows
+                }
+        except Exception as e:
+            logger.warning("独立策略 sizing 基准同步（查询阶段）失败（非致命）: %s", e)
+            return 0
+
+        synced = 0
+        for sid, sname, aid in rows:
+            context = self._contexts.get(str(sid))
+            if context is None:
+                continue  # 已停止/未运行，无需同步
+            total, avail = balances.get(str(aid), (0.0, 0.0))
+            if total <= 0:
+                logger.warning(
+                    "策略 %s 绑定账户 %s 权益为 0，跳过 sizing 基准同步（保持现值）",
+                    sname, str(aid)[:8],
+                )
+                continue
+            old = float(getattr(context, "total_assets", 0) or 0)
+            context.total_assets = total
+            context.available_capital = avail
+            logger.info(
+                "sizing 基准同步: 策略=%s 账户=%s 权益 %.0f → %.0f（可用 %.0f）",
+                sname, str(aid)[:8], old, total, avail,
+            )
+            synced += 1
+        return synced
+
     def sync_backtest_account(
         self,
         strategy_id: str,
