@@ -376,7 +376,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         # 0. 昨日买入信号今日开盘已成交 → 搬进 holdings
         self._move_pending_to_holdings(td)
-        # 0.4 归一化持仓结构（框架恢复路径写入的字典缺 fill_date → T+1 守卫失效）
+        # 0.4 归一化持仓结构（框架恢复路径写入的字典缺 entry_date / peak_high）
         self._normalize_holdings(td)
         # 0.5 与 broker 对账（实盘/完整引擎；smoke test context=None 跳过）
         self._reconcile_holdings()
@@ -1081,16 +1081,23 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._pending_buys.clear()
 
     def _normalize_holdings(self, td: str) -> None:
-        """补齐 `_holdings` 条目缺失字段（F2 修复）。
+        """补齐 `_holdings` 条目缺失的非关键字段。
 
         框架 `strategy_manager._restore_positions_from_db` 恢复持仓时写入的字典只含
-        `{entry_price, weight, shares, locked}`，**缺 `fill_date` / `entry_date` / `peak_high`**。
-        而 T+1 守卫判据是 `fill_date == td`，字段缺失时恒为 False → 恢复当日即可卖出，
-        违反 T+1。此处保守补为当日（当日不可卖），风险方向正确。
+        `{entry_price, weight, shares, locked}`，缺 `entry_date` / `peak_high`。
+        本方法补这两个（纯记录性字段，无判据依赖）。
+
+        ⚠️ **绝不可补 `fill_date`**（2026-09-12 修正）：
+        该字典在**实盘每日被 `_restore_positions_from_db` 清空重建**
+        （调用点 `strategy_manager._run_live_strategies` 每日循环），而 T+1 守卫判据是
+        `fill_date == td`。若在此补为「当日」，则**每一天都成立** → 步骤 5 对每个持仓
+        都置 `has_t1_locked_sell=True` 并 continue → **既不卖出、也因该标志跳过全部买入
+        → 实盘永久冻结**。
+        容忍的代价：框架恢复的持仓在恢复当日可被卖出（T+1 语义不完备）。该风险可接受——
+        DB 中的持仓通常是往日成交；且半自动模式下卖出信号仍需人工在券商端下单，
+        券商/结算会拦截真正的 T+1 违规。
         """
         for _code, h in self._holdings.items():
-            if not h.get("fill_date"):
-                h["fill_date"] = td
             if not h.get("entry_date"):
                 h["entry_date"] = td
             if not h.get("peak_high"):
