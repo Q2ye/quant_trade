@@ -187,7 +187,16 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         "exit_retry_days": 3,
 
         # —— 资金 ——
+        # 仅当 context 未注入时作为 sizing 基准的兜底（resolve_sizing_capital 的 fallback）。
+        # 回测/实盘下 sizing 基准一律取 context.total_assets（见资金契约），**本值不生效**。
         "allocated_capital": 1000000.0,
+
+        # —— 信号展示字段（不参与任何计算）——
+        # confidence 仅被 BaseStrategy.validate_signal 校验范围 [0, 2]，
+        # sizer（backtest/engines/sizer.py）与引擎均不消费它 → 改它不改变成交。
+        # 取值范围 0~2；仅影响下游展示与人工核单时的信心提示。
+        "entry_confidence": 0.7,
+        "exit_confidence": 0.8,
 
         # —— 运行 ——
         "verbose_logging": True,
@@ -266,6 +275,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self.stop_loss_pct = float(merged["stop_loss_pct"])
         self.min_hold_days = int(merged.get("min_hold_days", 3))
         self.exit_retry_days = max(1, int(merged.get("exit_retry_days", 3)))
+        self.entry_confidence = float(merged.get("entry_confidence", 0.7))
+        self.exit_confidence = float(merged.get("exit_confidence", 0.8))
         self.verbose_logging = bool(merged.get("verbose_logging", True))
 
         # ---- 状态 ----
@@ -955,13 +966,18 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             price=price,
             quantity=shares,
             amount=shares * price,
-            confidence=0.7,
+            confidence=self.entry_confidence,
             reason=(
                 f"跨市场轮动买入: score={metrics.get('score', 0):.2f} "
                 f"R²={metrics.get('r2', 0):.2f} 仓{weight:.0%}"
             ),
             timestamp=beijing_now(),
             order_mode="open",
+            # ⚠️ 名义止损价（基于**信号日收盘价**）。实际成交在次日开盘（order_mode="open"），
+            #    真实硬止损基准是**成交价**，由 _check_stop_loss 用 `_holdings["entry_price"]`
+            #    （= 次日开盘，见 _move_pending_to_holdings）判定。
+            #    本字段仅供下游展示/人工核单参考——**不要据此直接挂止损单**，
+            #    人工应按实际成交价重算。这是「信号先于成交」的固有事实，无法在代码内消除。
             stop_loss_price=round(price * (1.0 - self.stop_loss_pct), 4),
         )
         sig.weight = weight
@@ -992,7 +1008,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             price=price,
             quantity=shares,
             amount=shares * price,
-            confidence=0.8,
+            confidence=self.exit_confidence,
             reason=reason,
             timestamp=beijing_now(),
             order_mode="open",
