@@ -470,13 +470,12 @@ const accountColumns: DataTableColumns<Account> = [
   {
     title: "账户", key: "account_name", width: 180,
     render: (row: any) => {
-      const broker = row.broker || "";
       const name = row.account_name || row.account_number || row.id || "";
       const typeTag = row.account_type === "simulation" ? h(NTag, { size: "tiny", type: "warning", bordered: false }, { default: () => "仿真" })
         : row.account_type === "cash" ? h(NTag, { size: "tiny", type: "success", bordered: false }, { default: () => "现金" })
         : h(NTag, { size: "tiny", bordered: false }, { default: () => row.account_type || "未知" });
       return h("div", { style: { display: "flex", alignItems: "center", gap: "6px" } }, [
-        h("span", { style: { fontWeight: 600 } }, broker || name),
+        h("span", { style: { fontWeight: 600 } }, name),
         typeTag,
       ]);
     },
