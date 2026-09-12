@@ -23,7 +23,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from modules.strategy.constants import SignalDirection
+from modules.strategy.constants import RunMode, SignalDirection
 from modules.strategy.strategies.rotation.cross_market_momentum_strategy import (
     CrossMarketMomentumStrategy,
 )
@@ -81,6 +81,39 @@ def _dirs(signals, direction):
 
 
 EXIT = SignalDirection.CLOSE_LONG
+
+
+# ---------------- V1：重启后不丢持仓 ----------------
+
+def test_v1_live_does_not_wipe_holdings_on_empty_context_positions():
+    """F1（实盘阻断项）：实盘路径**从不写** `context.positions`（恒为空 dict）。
+
+    原 `_reconcile_holdings` 把空快照当作「broker 已无持仓」的可信证据 → 每日把
+    框架 `_restore_positions_from_db` 刚恢复的 `_holdings` 全部 pop 掉 → 策略永久
+    自认空仓并反复发建仓信号。修复后：有 `_active_positions`（框架注入的 DB 真相）
+    可用时不整体抹除。
+    """
+    s = _strategy()
+    s.context.run_mode = RunMode.LIVE
+    s.context.positions = {}                                        # 实盘恒为空
+    s._active_positions = {HELD: SimpleNamespace(quantity=1000)}    # 框架注入的 DB 真相
+    _hold(s)
+
+    s._reconcile_holdings()
+
+    assert HELD in s._holdings, "实盘不得因 context.positions 为空而抹掉持仓"
+
+
+def test_v1_backtest_empty_positions_still_cleans_ghosts():
+    """对照组：回测路径下「broker 空仓」是可信证据（引擎每日注入），仍应清理幽灵。"""
+    s = _strategy()
+    s.context.run_mode = RunMode.BACKTEST
+    s.context.positions = {}
+    _hold(s)
+
+    s._reconcile_holdings()
+
+    assert HELD not in s._holdings, "回测下 broker 无持仓 → 幽灵持仓应被清理"
 
 
 # ---------------- V2：T+1 守卫不误锁 ----------------
