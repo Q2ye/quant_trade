@@ -2292,6 +2292,19 @@ class StrategyManager(EngineBase):
                                             "重启恢复: 策略 %s 恢复了 %d 只股票的 _holdings 运行时字段(is_bear/peak_high)",
                                             sid, _restored_h,
                                         )
+                                # B4 修复：恢复「持有交易日数」。缺失会让 min_hold_days
+                                # 守卫把重启后的持仓当作「刚买入」→ 多锁 N 天；重启频繁
+                                # 时计数永远到不了阈值 → 策略永不轮动。
+                                # 快照缺失时由策略侧启发式兜底（_normalize_holdings）。
+                                if hasattr(strategy_obj, "_held_days") and snap.get("_held_days"):
+                                    strategy_obj._held_days = {
+                                        str(k): int(v)
+                                        for k, v in snap["_held_days"].items()
+                                    }
+                                    logger.info(
+                                        "重启恢复: 策略 %s 恢复了 %d 只持仓的 _held_days",
+                                        sid, len(strategy_obj._held_days),
+                                    )
                                 logger.info(
                                     "重启恢复: 策略 %s 累积状态已恢复 "
                                     "(exited_entry=%.2f, exited_cash=%.2f, peak=%.4f)",
@@ -2659,6 +2672,13 @@ class StrategyManager(EngineBase):
             }
         if hasattr(strategy, "_track_high") and strategy._track_high:
             snapshot["_track_high"] = dict(strategy._track_high)
+        # B4 修复（2026-09-12）：持久化「持有交易日数」。
+        # 与 v7.1 的 is_bear/peak_high 同类 —— positions 表无此信息，重启即丢；
+        # 丢失后 min_hold_days 守卫会把持仓当「刚买入」多锁 N 天，重启间隔小于 N
+        # 个交易日时计数永远到不了阈值 → 策略永不轮动。
+        # 用 hasattr 守卫，无该属性的策略不受影响。
+        if hasattr(strategy, "_held_days") and strategy._held_days:
+            snapshot["_held_days"] = {k: int(v) for k, v in strategy._held_days.items()}
         # v3.2: 持久化累积状态（防 phantom drawdown + 回撤计算连续性）
         if hasattr(strategy, "_exited_entry_value"):
             snapshot["_exited_entry_value"] = strategy._exited_entry_value

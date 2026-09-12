@@ -1135,6 +1135,16 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 h["entry_date"] = td
             if not h.get("peak_high"):
                 h["peak_high"] = _finite_or(h.get("entry_price", 0), 0.0)
+            # B4 兜底（正常路径由 state_snapshot 精确恢复，见 strategy_manager
+            # `_recover_running_strategies`）：框架 `_restore_positions_from_db` 每日
+            # 重建 `_holdings`，且 positions 表无建仓日信息，故重启后 `_held_days`
+            # 会缺记录 → `min_hold_days` 守卫把持仓当「刚买入」多锁 N 天；
+            # **重启间隔小于 N 个交易日时计数永远到不了阈值 → 策略永不轮动**。
+            # 判据：有持仓但无计数 = 非本策略这些天买入的（本策略买入的经
+            # `_move_pending_to_holdings` 写入 fill_date 并置 _held_days=0）。
+            # 恢复来源无建仓日，保守假设「已持有足够久」，方向取不至于冻结的一侧。
+            if not h.get("fill_date") and _code not in self._held_days:
+                self._held_days[_code] = self.min_hold_days
 
     def _reconcile_holdings(self) -> None:
         """与持仓真相源对账（只做「幽灵删除」，不新增）。
