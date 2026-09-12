@@ -9,7 +9,7 @@ BacktestBroker 是回测系统的「虚拟券商」，模拟 A 股真实交易�
   1. 订单管理 — 接收策略信号 → 创建订单 → 挂单队列
   2. 撮合成交 — T+1 次日开盘价成交（考虑涨跌停 / 滑点）
   3. 持仓管理 — T+1 制度下可用持仓追踪、成本均价计算
-  4. 费用计算 — 佣金（≥5 元/笔）+ 印花税（仅卖出 0.1%）+ 过户费（0.002%）
+  4. 费用计算 — 佣金 + 印花税（仅卖出）+ 过户费；场内基金（ETF/LOF）免征后两者
   5. 盯市结算 — 每日按收盘价重估持仓，记录账户快照和净值曲线
   6. 查询接口 — 提供净值曲线、交易记录、持仓、账户快照给绩效计算和前端
 
@@ -29,8 +29,8 @@ A 股核心规则实现
 │ T+1 制度    │ 当日买入 → available_quantity = 0，次日释放              │
 │ 涨跌停限制  │ 主板 ±10% / 科创板 688 ±20% / ST ±5%，涨停不买跌停不卖   │
 │ 最低佣金    │ max(成交额 × 0.03%, 5 元)                                │
-│ 印花税      │ 成交额 × 0.1%（仅卖出方向征收）                           │
-│ 过户费      │ 成交额 × 0.002%（买卖双向）                               │
+│ 印花税      │ 股票：成交额 × 0.1%（仅卖出）；场内基金免征               │
+│ 过户费      │ 股票：成交额 × 0.002%（双向）；场内基金免征               │
 │ 滑点        │ 买入 × (1 + slippage)，卖出 × (1 - slippage)              │
 │ 最小交易单位│ 100 股（1 手），数量自动取整                              │
 │ 涨停价成交  │ 涨停价 = 前收 × (1 + 涨跌幅)，触及涨停则买单无法成交      │
@@ -61,13 +61,14 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 import pandas as pd
 
 from core.engines.base.engine_base import EngineBase, EngineConfigEntity
 from core.engines.types.entities import BarData
 from core.engines.types.enums import EngineType
+from shared.utils.instrument import is_etf
 
 logger = logging.getLogger(__name__)
 
@@ -191,10 +192,16 @@ class BacktestBrokerConfig:
     initial_capital: float = 1_000_000    # 初始资金（默认 100 万）
 
     # ---- 费率（A 股标准） ----
-    commission_rate: float = 0.0001       # 佣金费率 万分之一（0.01%），万一免五
+    commission_rate: float = 0.0001       # 佣金费率 万分之一（0.01%），万一免五；股票/基金同
     min_commission: float = 0.0           # 最低佣金 0 元（免五，无最低限制）
-    stamp_tax: float = 0.001              # 印花税 千分之一（0.1%），仅卖出方向征收
-    transfer_fee_rate: float = 0.00002    # 过户费 十万分之二（0.002%），买卖双向
+    stamp_tax: float = 0.001              # 印花税 千分之一（0.1%），股票仅卖出方向征收
+    transfer_fee_rate: float = 0.00002    # 过户费 十万分之二（0.002%），股票买卖双向
+
+    # ---- 费率（场内基金 ETF/LOF：免征印花税与过户费） ----
+    # 依据：证券交易印花税仅对股票及以股票为基础的存托凭证征收，基金免征；
+    #       过户费为股票登记结算费用，场内基金不收。默认 0 即按实际规则执行。
+    stamp_tax_etf: float = 0.0            # 场内基金印花税率（免征 → 0）
+    transfer_fee_rate_etf: float = 0.0    # 场内基金过户费率（免征 → 0）
 
     # ---- 执行 ----
     slippage: float = 0.001               # 滑点 0.1%（买入向上滑，卖出向下滑）
@@ -722,6 +729,23 @@ class BacktestBroker(EngineBase):
         self.pending_orders = remaining_orders
         return trades
 
+    def _fee_rates(self, ts_code: str) -> Tuple[float, float]:
+        """取该标的适用的（印花税率, 过户费率）。
+
+        场内基金（ETF/LOF）免征印花税与过户费，与股票使用不同费率。
+        集中在此处判别，供 `_execute_fill` 的首次计算与「买入量缩减」重算路径共用，
+        避免两处口径分叉。
+
+        Args:
+            ts_code: 标的代码。
+
+        Returns:
+            (stamp_tax_rate, transfer_fee_rate) 元组。
+        """
+        if is_etf(ts_code):
+            return self.config.stamp_tax_etf, self.config.transfer_fee_rate_etf
+        return self.config.stamp_tax, self.config.transfer_fee_rate
+
     def _execute_fill(
         self,
         order: "BrokerOrder",
@@ -750,17 +774,18 @@ class BacktestBroker(EngineBase):
             order.status = "cancelled"
             return None
 
-        # ---- 计算交易费用 ----
+        # ---- 计算交易费用（股票与场内基金费率不同：ETF/LOF 免征印花税与过户费）----
+        stamp_tax_rate, transfer_fee_rate = self._fee_rates(order.ts_code)
         commission = max(
             fill_amount * self.config.commission_rate,
             self.config.min_commission,    # A 股最低佣金 5 元
         )
         stamp_tax = (
-            fill_amount * self.config.stamp_tax
+            fill_amount * stamp_tax_rate
             if order.direction == "SHORT"   # 印花税仅卖出方向征收
             else 0.0
         )
-        transfer_fee = fill_amount * self.config.transfer_fee_rate  # 过户费双向
+        transfer_fee = fill_amount * transfer_fee_rate  # 过户费双向
 
         # ---- 资金结算（在标记成交之前，LONG 方向可能需要缩减/取消） ----
         total_cost = fill_amount + commission + stamp_tax + transfer_fee
@@ -791,7 +816,7 @@ class BacktestBroker(EngineBase):
                 fill_amount = fill_price * affordable_qty
                 commission = max(fill_amount * self.config.commission_rate, self.config.min_commission)
                 stamp_tax = 0.0  # 买入无印花税
-                transfer_fee = fill_amount * self.config.transfer_fee_rate
+                transfer_fee = fill_amount * transfer_fee_rate
                 total_cost = fill_amount + commission + stamp_tax + transfer_fee
                 order.quantity = affordable_qty
                 order.fill_price = fill_price
@@ -1372,7 +1397,8 @@ class BacktestBroker(EngineBase):
             f"BacktestBroker 初始化完成: "
             f"初始资金={self.initial_capital:,.0f}, "
             f"佣金={self.config.commission_rate:.4%} (万一免五), "
-            f"印花税={self.config.stamp_tax:.3%}"
+            f"印花税=股票{self.config.stamp_tax:.3%}/场内基金{self.config.stamp_tax_etf:.3%}, "
+            f"过户费=股票{self.config.transfer_fee_rate:.4%}/场内基金{self.config.transfer_fee_rate_etf:.4%}"
         )
 
     async def _on_start(self) -> None:

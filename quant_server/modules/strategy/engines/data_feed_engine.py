@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.engines.base.engine_base import EngineBase, EngineConfigEntity
 from core.engines.types.entities import BarData
 from core.engines.types.enums import EngineType
+from shared.utils.instrument import is_etf
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class DataFeedEngine(EngineBase):
 
     @staticmethod
     def _is_etf(ts_code: str) -> bool:
-        """v2.4: 根据代码规则判断是否为 ETF
+        """v2.4: 根据代码规则判断是否为 ETF（单一事实源见 shared.utils.instrument.is_etf）
 
         A 股 ETF 代码规则:
         - 上交所 (SH):
@@ -94,14 +95,7 @@ class DataFeedEngine(EngineBase):
           - 159xxx (159915, 159919 等) — 各类 ETF
           - 16xxxx — LOF/ETF
         """
-        code = ts_code.split(".")[0] if "." in ts_code else ts_code
-        return (
-            code.startswith("51")
-            or code.startswith("159")
-            or code.startswith("16")
-            or code.startswith("56")
-            or code.startswith("58")
-        )
+        return is_etf(ts_code)
 
     @staticmethod
     def _is_sw_index(ts_code: str) -> bool:

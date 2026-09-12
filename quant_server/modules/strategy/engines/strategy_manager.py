@@ -33,6 +33,7 @@ from modules.strategy.strategies.base.strategy_context import StrategyContext
 from modules.strategy.engines.strategy_registry import StrategyRegistry
 from modules.trade import OrderFilledEvent
 from shared.database.repositories import strategy
+from shared.utils.instrument import is_etf
 
 logger = logging.getLogger(__name__)
 
@@ -1458,13 +1459,8 @@ class StrategyManager(EngineBase):
 
     @staticmethod
     def _is_etf(ts_code: str) -> bool:
-        """判断是否为 ETF 代码（与 DataFeedEngine._is_etf 保持一致）。"""
-        if not ts_code:
-            return False
-        return (
-            ts_code.endswith(".OF")
-            or (len(ts_code) >= 6 and ts_code[:2] in ("51", "56", "58", "15"))
-        )
+        """判断是否为 ETF 代码（单一事实源见 shared.utils.instrument.is_etf）。"""
+        return is_etf(ts_code)
 
     async def _apply_online_stock_qfq(
         self,
