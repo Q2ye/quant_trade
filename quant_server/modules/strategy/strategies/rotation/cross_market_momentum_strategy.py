@@ -27,18 +27,32 @@ import logging
 import math
 import uuid
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from core.engines.types.entities import BarData
-from modules.strategy.constants import StrategyType, SignalDirection, SignalType
+from modules.strategy.constants import RunMode, StrategyType, SignalDirection, SignalType
 from modules.strategy.models import TradingSignal
 from modules.strategy.strategies.base.base_strategy import BaseStrategy
 from shared.utils.time_utils import BEIJING_TZ, beijing_now
 
 logger = logging.getLogger(__name__)
+
+
+def _finite_or(value: Any, fallback: float = 0.0) -> float:
+    """转 float 并拦截 NaN/Inf，非法值回退 fallback。
+
+    F5 修复（对齐 high_vol_momentum_strategy._finite_or）：NaN 参与比较恒为 False，
+    会绕过 `price <= 0` 这类判据——静默关闭止损、放行异常价、让异常值穿过打分门槛。
+    故所有价格类取值统一经此收口。
+    """
+    try:
+        _v = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return _v if np.isfinite(_v) else fallback
 
 
 class CrossMarketMomentumStrategy(BaseStrategy):
@@ -87,7 +101,19 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         "weak_period_ma_lookback": 10,   # 指数 MA 周期
         "weak_enter_votes": 3,            # below >= 3 → 进入走弱期
         "weak_exit_votes": 3,             # above >= 3 → 退出走弱期
-        "max_weak_days": 20,              # 走弱期最长持续交易日，超时强制退出
+        # ⚠️ 实测（2021-2026 全区间）：该守卫**从未触发过**。`_weak_days_count` 的历史最大值
+        #    只有 4（分布 0×2307 / 1×103 / 2×26 / 3×12 / 4×2），远达不到 20（甚至 10）。
+        #    根因：弱态分支里的 `elif enter_cond` 每日重置计数器，只有「模糊投票区」
+        #    （below<3 且 above<3）才累积，而该区间从未连续超过 4 天。
+        #    保留不删（语义上仍是兜底），但**不要指望它能限制走弱期时长**。
+        "max_weak_days": 20,
+        # regime 连续确认天数：需连续 N 天满足投票条件才允许翻转（去抖）。
+        #   取值范围 1~5；1 = 当日即翻转（原行为，与本参数引入前逐字等价）；
+        #   调参方向：调大 → 翻转更少、更抗震荡，但进/出更滞后。
+        #   离线实测（4 指数 MA10 投票，5269 个交易日）：N=1 年均翻转 15.8 次，
+        #   N=2 → 9.8、N=3 → 7.6、N=5 → 5.0；而走弱期天数占比仅 43.6% → 41.4%（N=3），
+        #   即「去抖而不改变长期仓位分布」。
+        "weak_confirm_days": 1,
 
         # —— 动量打分 ——
         "lookback_days": 25,              # 动量得分回溯窗口
@@ -95,12 +121,38 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         "max_score_threshold": 5.0,       # 动量得分上限（排除已暴涨的极端高分）
 
         # —— 过滤 ——
-        "enable_r2_filter": True, "r2_threshold": 0.4,        # R² 趋势质量
+        # R² 趋势质量门槛。0.40 是聚宽原版移植的**未优化值**；2026-09-12 经四层验证上调至 0.47：
+        #   ① 全窗口：243.94% → 293.58%
+        #   ② 两段样本外（观察段 2021-07~2023-12 / 验证段 2024-01~2026-09）收益/夏普/MDD 全改善
+        #   ③ 6 个滚动起始日：6/6 收益胜、6/6 回撤胜
+        #      （注：6 个窗口均结束于 2026-09-11，重叠度高，不等于 6 份独立证据）
+        #   ④ 候选区邻域扫描 {0.42,0.45,0.47,0.50,0.52}：**0.47 是唯一在两段都不低于
+        #      各段最优值 95% 的取值**（观察段 100.0% / 验证段 99.1%）；
+        #      该结论对 90%~95% 的阈值不敏感（0.47 始终在交集内）。
+        #   机制：门槛越高只留「走得干净、像直线趋势」的标的——与趋势跟随第一性原理一致。
+        #         太松（0.42）选进走势零散的噪音标的（两段均仅 85.3%）；
+        #         太严（0.52）候选过少、持仓切换时资金调度失败（验证段 177.75% → 126.83%）。
+        #   取值范围 0.45~0.50 为平坦区；⚠️ **上沿在 0.50~0.52 之间，不要再往上调**。
+        "enable_r2_filter": True, "r2_threshold": 0.47,
         "enable_ma_filter": True, "ma_lookback": 10, "ma_threshold": 1.0,  # 站上 MA10
         "enable_volume_check": True, "volume_lookback": 5, "volume_threshold": 1.8,  # 量比 <1.8 拒绝放量冲顶
         "enable_loss_filter": True, "loss": 0.97,             # 近3日单日跌幅 >=3% 剔除
+        # 入场涨幅门：信号日单日涨幅超过阈值则不买。
+        #   机制：策略用 25 日动量在「月频尺度」选标的，却在信号**次日开盘**进场（日频尺度）。
+        #         日频短期反转与月频动量方向相反 → 「当日已大涨」是负期望的入场点。
+        #   实证（240 笔往返分组）：信号日涨 2~5% → 胜率 31%、平均 -0.55%、合计 -553,835；
+        #         信号日下跌 0~-2% → 胜率 58%、平均 +1.38%、合计 +2,149,476。
+        #   取值范围 0.01~0.20；调小 → 门更严（可能误伤真突破）；调大 → 更宽松。
+        #   默认 False = 不改变引入该参数前的行为（便于 A/B 对照）。
+        "enable_entry_gain_filter": False,
+        "entry_max_gain_pct": 0.05,
 
         # —— B型阶梯主线（score 5~20 早期识别，绕过 max_score=5 天花板）——
+        # ⚠️ 实测（2021-2026 全区间）：该旁路**从未触发过**。它要求 current_score > 5.0，
+        #    而 1323 个 score 样本中无一超过 5.0（最高 4.99，顶在 max_score_threshold 上）；
+        #    开/关该开关的 2 段回测结果**逐位相同**。
+        #    保留不删：score>5 在极端趋势行情下理论可达（需 25 日约 +18.7% 且 R²≈0.9），
+        #    删除会改变未来极端市况下的行为。
         "enable_super_mainline": True,
         "mainline_score_min": 5.0,
         "mainline_score_max": 20.0,
@@ -128,6 +180,11 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # —— 风控（本项目补充，原版无止损）——
         "stop_loss_pct": 0.08,            # 硬止损：现价 <= 入场价×(1-此值) → 卖出
         "min_hold_days": 3,               # 最小持有交易日数：未满且未止损不换仓（降换手，~28% 成本损耗）
+        # 退出信号重发间隔（调仓日）。原实现 `_exit_pending` 是单向阀：登记后卖出/买入/止损
+        # 三处全部跳过，唯一出口是 broker 持仓归零 → 一旦退出信号丢失（价格缺失/订单被拒/
+        # 长期不可成交），持仓被永久冻结且硬止损同时失效。
+        #   取值范围 1~10；调小 → 重发更积极（可能重复挂单）；调大 → 更保守。
+        "exit_retry_days": 3,
 
         # —— 资金 ——
         "allocated_capital": 1000000.0,
@@ -159,6 +216,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self.weak_enter_votes = int(merged["weak_enter_votes"])
         self.weak_exit_votes = int(merged["weak_exit_votes"])
         self.max_weak_days = int(merged["max_weak_days"])
+        self.weak_confirm_days = max(1, int(merged["weak_confirm_days"]))
 
         # 动量
         self.lookback_days = int(merged["lookback_days"])
@@ -176,6 +234,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self.volume_threshold = float(merged["volume_threshold"])
         self.enable_loss_filter = bool(merged["enable_loss_filter"])
         self.loss = float(merged["loss"])
+        self.enable_entry_gain_filter = bool(merged["enable_entry_gain_filter"])
+        self.entry_max_gain_pct = float(merged["entry_max_gain_pct"])
 
         # 主线
         self.enable_super_mainline = bool(merged["enable_super_mainline"])
@@ -205,6 +265,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # 风控
         self.stop_loss_pct = float(merged["stop_loss_pct"])
         self.min_hold_days = int(merged.get("min_hold_days", 3))
+        self.exit_retry_days = max(1, int(merged.get("exit_retry_days", 3)))
         self.verbose_logging = bool(merged.get("verbose_logging", True))
 
         # ---- 状态 ----
@@ -212,11 +273,15 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._index_cache: Dict[str, Dict[str, float]] = {}  # {index_code: {date: close}}
         self._holdings: Dict[str, Dict] = {}    # {code: {entry_price, weight, shares, entry_date, fill_date, peak_high}}
         self._pending_buys: Dict[str, dict] = {}  # 已发买入信号待次日成交
-        self._exit_pending: Set[str] = set()
+        # {code: 上次发出退出信号时的 _rebalance_seq}，用于超期重发（F3 修复）
+        self._exit_pending: Dict[str, int] = {}
+        self._rebalance_seq: int = 0   # 调仓序号（每调用一次 _run_rebalance 自增）
         self._pending_rows: Dict[str, list] = {}  # on_bar 累积待 flush
         self._is_weak: bool = False
         self._weak_start_date: Optional[str] = None
         self._weak_days_count: int = 0
+        self._enter_streak: int = 0   # 连续满足进入条件的天数（weak_confirm_days 去抖用）
+        self._exit_streak: int = 0    # 连续满足退出条件的天数
         self._last_trade_date: str = ""
         self._bar_dates: Dict[str, str] = {}
         self._held_days: Dict[str, int] = {}  # {code: 持有交易日数}，最小持有期守卫用
@@ -238,10 +303,13 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._holdings.clear()
         self._pending_buys.clear()
         self._exit_pending.clear()
+        self._rebalance_seq = 0
         self._pending_rows.clear()
         self._is_weak = False
         self._weak_start_date = None
         self._weak_days_count = 0
+        self._enter_streak = 0
+        self._exit_streak = 0
         self._last_trade_date = ""
         self._bar_dates.clear()
         self._held_days.clear()
@@ -304,9 +372,12 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         signals: List[TradingSignal] = []
         if len(self._data_cache) < 3:
             return signals
+        self._rebalance_seq += 1
 
         # 0. 昨日买入信号今日开盘已成交 → 搬进 holdings
         self._move_pending_to_holdings(td)
+        # 0.4 归一化持仓结构（框架恢复路径写入的字典缺 fill_date → T+1 守卫失效）
+        self._normalize_holdings(td)
         # 0.5 与 broker 对账（实盘/完整引擎；smoke test context=None 跳过）
         self._reconcile_holdings()
         # 0.6 持有交易日数 +1（最小持有期守卫用）
@@ -337,16 +408,20 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         target_codes = [m["etf"] for m in targets]
 
         # 5. 卖出：持仓不在目标池（order_mode=open，次日开盘成交，broker 会提前释放现金）
+        #    F4 修复：已登记退出的标的（含刚触发的硬止损）即便今日仍在目标池也不保留，
+        #             否则「止损卖出成交 → 次日对账摘除 → 再被选为目标 → 立刻买回」。
         has_t1_locked_sell = False
         for code in list(self._holdings.keys()):
-            if code in target_codes:
+            if code in target_codes and code not in self._exit_pending:
                 continue
             if self._holdings[code].get("fill_date") == td:
                 has_t1_locked_sell = True  # T+1 未解锁，当日买入不可卖，现金未释放
                 continue
-            if code in self._exit_pending:
+            # F3 修复：已登记且未到重发间隔 → 跳过；到期仍持有则重发退出信号，
+            #          防「退出信号丢失（价格缺失/订单被拒/长期不可成交）→ 持仓永久冻结」。
+            if not self._should_retry_exit(code):
                 continue
-            self._exit_pending.add(code)
+            self._exit_pending[code] = self._rebalance_seq
             sig = self._make_exit_signal(code, "轮动换仓: 不在目标池")
             if sig:
                 signals.append(sig)
@@ -379,7 +454,13 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     # 走弱期 regime（L2）
     # =========================================================================
     def _update_weak_period(self, td: str) -> None:
-        """4 指数 MA10 投票判走弱期，状态跨日保持，带 max_weak_days 强制退出。"""
+        """4 指数 MA10 投票判走弱期，状态跨日保持。
+
+        - `weak_confirm_days`：需连续 N 天满足投票条件才允许翻转（去抖，默认 1 = 当日即翻转，
+          与引入该参数前逐字等价）。震荡市中 MA10 被反复击穿会导致 regime 高频翻转，
+          资金被在「全球池 / 中国池」之间来回甩，每次踩在错误一边。
+        - `max_weak_days`：走弱期最长持续交易日，超时强制退出。
+        """
         if not self._index_cache:
             return
         above, below = 0, 0
@@ -399,13 +480,19 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         enter_cond = below >= self.weak_enter_votes
         exit_cond = above >= self.weak_exit_votes
 
+        # 连续确认计数：条件不成立的当天即清零（要求「连续」而非「累计」）
+        self._enter_streak = self._enter_streak + 1 if enter_cond else 0
+        self._exit_streak = self._exit_streak + 1 if exit_cond else 0
+        enter_ready = enter_cond and self._enter_streak >= self.weak_confirm_days
+        exit_ready = exit_cond and self._exit_streak >= self.weak_confirm_days
+
         if self._is_weak:
             self._weak_days_count += 1
             if self._weak_days_count >= self.max_weak_days:
                 self._is_weak = False
                 self._weak_start_date = None
                 self._weak_days_count = 0
-            elif exit_cond:
+            elif exit_ready:
                 self._is_weak = False
                 self._weak_start_date = None
                 self._weak_days_count = 0
@@ -413,7 +500,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 self._weak_start_date = td
                 self._weak_days_count = 0
         else:
-            if enter_cond:
+            if enter_ready:
                 self._is_weak = True
                 self._weak_start_date = td
                 self._weak_days_count = 0
@@ -441,7 +528,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         if closes.size < lookback + 1:
             return None, None, None
         recent = closes[-(lookback + 1):]
-        if np.any(recent <= 0):
+        # F5: np.any(recent <= 0) 对 NaN 恒 False，NaN 会穿透到 np.log → 打分污染
+        if not np.all(np.isfinite(recent)) or np.any(recent <= 0):
             return None, None, None
         y = np.log(recent)
         x = np.arange(len(y), dtype=np.float64)
@@ -471,7 +559,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         vols = np.asarray(vols, dtype=np.float64)
         if vols.size < lookback + 1:
             return None
-        today = float(vols[-1])
+        today = _finite_or(vols[-1], 0.0)
+        if today <= 0:
+            return None  # F6: 停牌/无成交（volume==0）不得按「量比 0 < 阈值」放行
         base = vols[-(lookback + 1):-1]
         if np.any(base <= 0) or np.any(np.isnan(base)):
             return None
@@ -537,6 +627,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         df = self._data_cache.get(code)
         if df is None or df.empty:
             return None
+        # F6: 停牌/无当日行情不得用陈旧数据打分——否则停牌 ETF 会被反复选中反复挂单
+        if self._bar_dates.get(code) != self._last_trade_date:
+            return None
         closes = df["close"].values.astype(np.float64)
         vols = df["volume"].values.astype(np.float64) if "volume" in df.columns else np.zeros_like(closes)
         if closes.size < self.lookback_days + 1:
@@ -559,6 +652,16 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             day3 = closes[-3] / closes[-4]
             if min(day1, day2, day3) < self.loss:
                 passed_loss = False
+
+        # 入场涨幅门：信号日单日涨幅（t 时刻已知，无未来函数）。
+        # 见 DEFAULT_PARAMS 注释——月频动量选股 + 次日开盘进场，当日已大涨是负期望入场点。
+        gain_1d: Optional[float] = None
+        passed_entry_gain = True
+        if closes.size >= 2 and closes[-2] > 0:
+            gain_1d = float(closes[-1] / closes[-2] - 1.0)
+            passed_entry_gain = gain_1d <= self.entry_max_gain_pct
+        else:
+            passed_entry_gain = False  # 数据不足 fail-closed，不产生信号
 
         passed_r2 = r2 > self.r2_threshold
 
@@ -583,15 +686,19 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             "passed_ma": passed_ma,
             "passed_volume": passed_volume,
             "passed_loss": passed_loss,
+            "gain_1d": gain_1d,
+            "passed_entry_gain": passed_entry_gain,
             "passed_mainline": passed_mainline,
             "mainline_info": mainline_info,
         }
 
     def _apply_filters(self, metrics: List[Dict]) -> List[Dict]:
-        """走弱期只保留动量+R²，正常期全量过滤（移植五福 apply_filters）。"""
+        """走弱期保留动量+R²+入场涨幅门，正常期再叠加均线/量比/短期风控。"""
         steps: List[Tuple[str, Any, bool]] = [
             ("动量得分", lambda m: m["passed_momentum"], True),
             ("R²", lambda m: m["passed_r2"], self.enable_r2_filter),
+            # 入场涨幅门对两个时期都生效：机制是「信号次日开盘接盘」，与候选池无关
+            ("入场涨幅", lambda m: m["passed_entry_gain"], self.enable_entry_gain_filter),
         ]
         if not self._is_weak:
             steps += [
@@ -616,6 +723,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 m for m in metrics
                 if m["passed_mainline"] and m["etf"] not in normal_codes
                 and (not self.enable_loss_filter or m["passed_loss"])
+                and (not self.enable_entry_gain_filter or m["passed_entry_gain"])
                 and (not (self.enable_ma_filter and self._is_weak) or m["passed_ma"])
             ]
             filtered = filtered + mainline
@@ -744,22 +852,44 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     # =========================================================================
     # 风控（L9 本项目补充硬止损）
     # =========================================================================
+    def _stop_loss_triggered(self, entry_price: float, current_price: float) -> bool:
+        """硬止损判定核（纯函数）。
+
+        供 `_check_stop_loss`（主流程）与 `check_stop_profit_stop_loss`（审计契约）
+        共用同一判据，避免两处实现分叉。
+        """
+        if entry_price <= 0 or current_price <= 0:
+            return False
+        return current_price <= entry_price * (1.0 - self.stop_loss_pct)
+
+    def _should_retry_exit(self, code: str) -> bool:
+        """退出信号是否已到重发间隔（F3）。
+
+        `_exit_pending[code]` 记录上次发出退出信号时的调仓序号。未登记，或距上次
+        已满 `exit_retry_days` 个调仓日 → 允许（重）发。原实现把 `_exit_pending`
+        当作单向阀，卖出/买入/止损三处全部跳过，退出信号一旦丢失即永久冻结持仓。
+        """
+        last = self._exit_pending.get(code)
+        if last is None:
+            return True
+        return (self._rebalance_seq - last) >= self.exit_retry_days
+
     def _check_stop_loss(self, td: str) -> List[TradingSignal]:
         signals: List[TradingSignal] = []
         for code in list(self._holdings.keys()):
-            if code in self._exit_pending:
+            # F3: 已登记退出且未到重发间隔 → 跳过；到期仍持有则重发止损单
+            if not self._should_retry_exit(code):
                 continue
             if self._holdings[code].get("fill_date") == td:
                 continue  # T+1 未解锁
-            entry = float(self._holdings[code].get("entry_price", 0) or 0)
+            entry = _finite_or(self._holdings[code].get("entry_price", 0), 0.0)
             if entry <= 0:
                 continue
             price = self._get_price(code)
             if price <= 0:
                 continue
-            stop_price = entry * (1.0 - self.stop_loss_pct)
-            if price <= stop_price:
-                self._exit_pending.add(code)
+            if self._stop_loss_triggered(entry, price):
+                self._exit_pending[code] = self._rebalance_seq
                 sig = self._make_exit_signal(
                     code,
                     f"硬止损: 现价{price:.3f} <= 入场{entry:.3f}×(1-{self.stop_loss_pct:.0%})",
@@ -773,17 +903,15 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     # 信号构造（四大模块）
     # =========================================================================
     def _make_entry_signal(self, code: str, metrics: Dict, weight: float, price: float) -> Optional[TradingSignal]:
-        capital = self.resolve_sizing_capital()
         # 满仓买入：金额 = 基准资本×权重，不封顶到 available_capital。
         # 轮动时序为「先卖出（broker 提前释放资金）→ 后买入」，封顶到陈旧现金会致长期半仓闲置。
         # T+1 锁定持仓未卖（现金未释放）时由 _run_rebalance 的 has_t1_locked_sell 跳过买入，
         # 兜底由 broker 资金校验拒单（策略留在旧满仓位置，符合动量逻辑）。
-        amount = capital * weight
-        if amount < price * 100:
-            return None  # 现金不足一手，不买
-        shares = int(amount / price / 100) * 100
+        # 注：这是对资金契约 §2.1 `min(capital×weight, available)` 的**有意偏离**，已在案；
+        #     股数计算统一走 calculate_position_size()，与审计契约函数同源，避免分叉。
+        shares = self.calculate_position_size(weight, price)
         if shares < 100:
-            return None
+            return None  # 不足一手，不买
         sig = TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
@@ -837,8 +965,27 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             order_mode="open",
         )
 
-    # 四大模块纯函数（审计契约）
+    # 四大模块（审计契约）—— 均为**真实路径的薄封装**，不与主流程分叉。
+    #   开仓：generate_entry_signals → _make_entry_signal（仓位走 calculate_position_size）
+    #   平仓：generate_exit_signals  → _make_exit_signal
+    #   止损：check_stop_profit_stop_loss → _stop_loss_triggered（与 _check_stop_loss 同判据）
+    #   仓位：calculate_position_size → 主流程 _make_entry_signal 直接调用它
     def generate_entry_signals(self, target: Dict[str, float], reason: str = "") -> List[TradingSignal]:
+        """开仓信号（契约接口）。
+
+        Args:
+            target: {标的代码: 目标权重}。
+            reason: 附加说明（当前未拼入信号 reason，保留契约签名）。
+
+        Returns:
+            开仓信号列表；价格非法或不足一手的标的被跳过。
+
+        Note:
+            主流程走 `_run_rebalance`（携带完整 metrics）。此处 metrics 占位为
+            {"score": 0.0, "r2": 0.0}——score/r2 仅出现在信号 reason 文案中，
+            **不参与仓位计算**（仓位由显式 weight 决定），故不影响下单结果。
+        """
+        _ = reason
         signals: List[TradingSignal] = []
         for code, weight in target.items():
             price = self._get_price(code)
@@ -852,6 +999,11 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     def generate_exit_signals(
         self, codes: List[str], reason: str = "", signal_type: SignalType = SignalType.EXIT
     ) -> List[TradingSignal]:
+        """平仓信号（契约接口）：委托 `_make_exit_signal`，与主流程同源。
+
+        卖出数量取 broker 实际持仓（`self.context.positions`），非策略自维护 shares，
+        避免「broker 缩减过数量 → 策略高估 → 卖出被拒 → 资金不释放」的死锁。
+        """
         signals: List[TradingSignal] = []
         for code in codes:
             sig = self._make_exit_signal(code, reason, signal_type)
@@ -862,14 +1014,48 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     def check_stop_profit_stop_loss(
         self, code: str, entry_price: float, current_price: float
     ) -> Optional[Tuple[str, str]]:
-        if entry_price <= 0 or current_price <= 0:
-            return None
-        if current_price <= entry_price * (1.0 - self.stop_loss_pct):
-            return (SignalType.STOP_LOSS.value, f"硬止损: {current_price:.3f} <= {entry_price*(1-self.stop_loss_pct):.3f}")
+        """止盈止损（契约接口）：委托 `_stop_loss_triggered`，与 `_check_stop_loss` 同判据。
+
+        Returns:
+            (SignalType.value, 原因文案)；未触发返回 None。
+
+        Note:
+            本策略**不含止盈**——出场由选股轮动驱动（标的跌出目标池即换仓），
+            主动止盈会截断动量。故此处只可能返回止损。
+        """
+        _ = code  # 判定不依赖标的代码，保留参数以符合契约签名
+        entry_price = _finite_or(entry_price, 0.0)
+        current_price = _finite_or(current_price, 0.0)
+        if self._stop_loss_triggered(entry_price, current_price):
+            stop_price = entry_price * (1.0 - self.stop_loss_pct)
+            return (
+                SignalType.STOP_LOSS.value,
+                f"硬止损: {current_price:.3f} <= {stop_price:.3f}",
+            )
         return None
 
-    def calculate_position_size(self, weight: float) -> float:
-        return max(0.0, min(1.0, float(weight)))
+    def calculate_position_size(self, weight: float, price: float) -> int:
+        """仓位管理（契约接口）：按真实 sizing 口径算目标股数。
+
+        主流程 `_make_entry_signal` 直接调用本函数，杜绝「契约函数是摆设、与主流程分叉」。
+
+        口径：`amount = resolve_sizing_capital() × weight`，**不封顶可用现金**
+        （有意偏离资金契约 §2.1 的 `min(capital×weight, available)`，理由见
+        `_make_entry_signal` 注释：轮动时序下封顶陈旧现金会致长期半仓闲置），
+        再向下取整到 100 股整手。
+
+        Args:
+            weight: 目标权重（0~1，超出范围按 0 取）。
+            price: 委托价（元）。
+
+        Returns:
+            目标股数（100 的整数倍）；价格非法时返回 0。
+        """
+        price = _finite_or(price, 0.0)
+        if price <= 0:
+            return 0
+        amount = self.resolve_sizing_capital() * max(0.0, float(weight))
+        return int(amount / price / 100) * 100
 
     # =========================================================================
     # 持仓状态机
@@ -877,10 +1063,10 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     def _move_pending_to_holdings(self, td: str) -> None:
         """昨日买入信号（order_mode=open）今日开盘已成交 → 搬进 holdings。"""
         for code, pinfo in self._pending_buys.items():
-            entry = float(pinfo.get("price", 0) or 0)
+            entry = _finite_or(pinfo.get("price", 0), 0.0)
             df = self._data_cache.get(code)
             if df is not None and len(df) > 0 and "open" in df.columns:
-                o = float(df["open"].iloc[-1])
+                o = _finite_or(df["open"].iloc[-1], 0.0)
                 if o > 0:
                     entry = o
             self._holdings[code] = {
@@ -894,21 +1080,57 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             self._held_days[code] = 0
         self._pending_buys.clear()
 
+    def _normalize_holdings(self, td: str) -> None:
+        """补齐 `_holdings` 条目缺失字段（F2 修复）。
+
+        框架 `strategy_manager._restore_positions_from_db` 恢复持仓时写入的字典只含
+        `{entry_price, weight, shares, locked}`，**缺 `fill_date` / `entry_date` / `peak_high`**。
+        而 T+1 守卫判据是 `fill_date == td`，字段缺失时恒为 False → 恢复当日即可卖出，
+        违反 T+1。此处保守补为当日（当日不可卖），风险方向正确。
+        """
+        for _code, h in self._holdings.items():
+            if not h.get("fill_date"):
+                h["fill_date"] = td
+            if not h.get("entry_date"):
+                h["entry_date"] = td
+            if not h.get("peak_high"):
+                h["peak_high"] = _finite_or(h.get("entry_price", 0), 0.0)
+
     def _reconcile_holdings(self) -> None:
-        """与 broker 对账（smoke test context=None 跳过）。"""
+        """与持仓真相源对账（只做「幽灵删除」，不新增）。
+
+        真相源优先级：
+          1. `context.positions` —— 回测引擎每日 `sync_backtest_account` 注入；
+             **实盘路径从不写该字段，恒为空 dict**。
+          2. `self._active_positions` —— 框架 `load_live_state` 注入的 DB 持仓真相（实盘有）。
+
+        F1 修复：原实现把空 dict 当作「broker 已无持仓」的可信证据，导致实盘每日把
+        `_restore_positions_from_db` 刚恢复的 `_holdings` 全部 pop 掉，策略永久自认空仓
+        并反复发建仓信号。空快照不携带信息，故两个真相源都为空时 fail-open 返回；
+        回测路径仍按「broker 空仓」处理（引擎每日注入，空即真无持仓），保留幽灵清理。
+        """
         if self.context is None:
             return
-        broker_positions = getattr(self.context, "positions", None)
-        if broker_positions is None:
-            return
+        source = getattr(self.context, "positions", None)
+        using_context = bool(source)
+        if not using_context:
+            source = getattr(self, "_active_positions", None) or None
+        if not source:
+            if getattr(self.context, "run_mode", None) is not RunMode.BACKTEST:
+                return  # 实盘/模拟盘：无真相源 → fail-open，不做任何抹除
+            source = {}
         for code in list(self._exit_pending):
-            bp = broker_positions.get(code)
+            bp = source.get(code)
             if bp is None or int(getattr(bp, "quantity", 0) or 0) <= 0:
                 self._holdings.pop(code, None)
                 self._held_days.pop(code, None)
-                self._exit_pending.discard(code)
+                self._exit_pending.pop(code, None)
+        if not using_context and source:
+            # `_active_positions` 是 DB 真相但无成本/T+1 语义，只用于「卖出确认」，
+            # 不做整体幽灵删除，避免误删刚恢复且尚未回填的持仓。
+            return
         for code in list(self._holdings.keys()):
-            bp = broker_positions.get(code)
+            bp = source.get(code)
             if bp is None or int(getattr(bp, "quantity", 0) or 0) <= 0:
                 self._holdings.pop(code, None)
                 self._held_days.pop(code, None)
@@ -919,21 +1141,30 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     def _get_price(self, code: str) -> float:
         df = self._data_cache.get(code)
         if df is not None and len(df) > 0:
-            return float(df["close"].iloc[-1])
+            # F5: 统一经 _finite_or 收口——NaN 比较恒 False 会绕过 price<=0 判据
+            return _finite_or(df["close"].iloc[-1], 0.0)
         return 0.0
 
     def _append_data(self, ts_code: str, bar: BarData) -> None:
         bar_date = str(getattr(bar, "trade_date", "") or getattr(bar, "datetime", ""))[:10]
+        # F5: 丢弃 close 非法（NaN/Inf/<=0）的 bar——不入缓存、不登记 bar_date，
+        #     使其同时被 _score_candidate 的「当日有行情」守卫（F6）拦截。
+        close = _finite_or(getattr(bar, "close", 0.0), 0.0)
+        if close <= 0:
+            logger.warning(
+                f"[{self.name}] 丢弃非法 bar: {ts_code} {bar_date} close={getattr(bar, 'close', None)}"
+            )
+            return
         if bar_date:
             self._bar_dates[ts_code] = bar_date
         self._pending_rows.setdefault(ts_code, []).append([
             bar_date,
-            getattr(bar, "open", bar.close),
-            getattr(bar, "high", bar.close),
-            getattr(bar, "low", bar.close),
-            bar.close,
-            getattr(bar, "volume", 0.0),
-            getattr(bar, "amount", 0.0),
+            _finite_or(getattr(bar, "open", close), close),
+            _finite_or(getattr(bar, "high", close), close),
+            _finite_or(getattr(bar, "low", close), close),
+            close,
+            _finite_or(getattr(bar, "volume", 0.0), 0.0),
+            _finite_or(getattr(bar, "amount", 0.0), 0.0),
         ])
 
     def _flush_pending_rows(self) -> None:
@@ -979,5 +1210,6 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 "is_weak": self._is_weak,
                 "weak_days": self._weak_days_count,
             }
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[{self.name}] 诊断信息生成失败: {e}")
             return None
