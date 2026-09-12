@@ -611,6 +611,12 @@ class TradeHandler:
 				message="成交记录录入成功",
 			)
 		except ValueError as e:
+			# 修复 2026-09-12：重复录单属「资源冲突」，返回 409 而非 400
+			from modules.trade.services.trade_record_service import (
+				DuplicateTradeRecordError,
+			)
+			if isinstance(e, DuplicateTradeRecordError):
+				raise HTTPException(status_code=409, detail=str(e))
 			raise HTTPException(status_code=400, detail=str(e))
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"成交记录录入失败: {str(e)}")

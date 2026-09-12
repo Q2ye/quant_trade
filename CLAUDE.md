@@ -26,9 +26,13 @@ pytest tests/core/test_engines/test_event_engine.py::test_event_put  # 单条
 pytest --cov -q                             # 全量 + 覆盖率
 
 # 代码质量
-black . && isort .                           # 格式化
+black . && isort .                           # 格式化（配置见 pyproject.toml，line-length=88）
 mypy .                                       # 类型检查（无 mypy.ini，部分规则由 CLI 默认值决定）
 ```
+
+> ⚠️ **格式化器有两套**：`pyproject.toml` 声明的是 black + isort，但 PostToolUse hook 对新建 `.py` 自动跑的是 `ruff format`（ruff 既不在依赖里也无配置，恰好同为 88 列）。改动格式化相关行为时注意两者差异，不要只改一处。
+> ⚠️ `pytest` 的 `addopts = "-v"` 已全局生效（见 `pyproject.toml`），无需再手动加 `-v`。
+> ⚠️ `quant_server/scripts/` 下带正式前缀的脚本（`backtest_*` / `backfill_*` / `seed_*` / `rolling_start_analysis` / `sync_margin_hsgt` / `_rolling_start_cross_market`）是**长期资产**，已纳入 git。一次性诊断脚本（`_probe_*` / `_check_*` / `_phase*` 等 33 个）已于 2026-09-12 清理，内容存于 git 提交 `450ccf2`，需要时用 `git show 450ccf2:quant_server/scripts/<文件名>` 取回。新建诊断脚本请沿用 `_` 前缀，不要提交。
 
 ### 前端（CWD: `quant_web/`）
 
@@ -37,9 +41,12 @@ pnpm serve          # 开发服务器 (8081, proxy /api → localhost:8080)
 pnpm build          # 生产构建
 pnpm preview        # 预览生产构建
 pnpm test:unit      # 单元测试 (vitest + jsdom)
+pnpm test:e2e       # E2E（cypress open）
 pnpm format         # Prettier 格式化
 npx vue-tsc --noEmit  # TypeScript 类型检查
 ```
+
+> husky + lint-staged 已配置：提交时对 `*.{js,jsx,vue,ts,tsx}` 自动跑 `prettier --write`。
 
 ## 配置系统
 
@@ -113,20 +120,37 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 
 策略实现位于 `quant_server/modules/strategy/strategies/`，继承 `base/base_strategy.py`。
 
-> ⚠️ **策略运行时从 DB `strategies.code` 加载代码（`exec()`），回测引擎同样如此**——改磁盘 `.py` 文件**必须同步 `strategies.code` 才生效**，否则实盘/回测仍跑旧代码。改参数默认值还须同步 DB `strategy_parameters` 覆盖（JSON 列会盖掉 `DEFAULT_PARAMS`）。快速冒烟验证（磁盘加载、不走 DB）：`python scripts/backtest_high_vol_momentum.py [start] [end]`（默认 2025-01-01~2026-08-07，信号级验证有交易/无 NaN/收益率合理）。
+> ⚠️ **策略运行时从 DB `strategies.code` 加载代码（`exec()`），回测引擎同样如此**——改磁盘 `.py` 文件**必须同步 `strategies.code` 才生效**，否则实盘/回测仍跑旧代码。改参数默认值还须同步 DB `strategy_parameters` 覆盖（JSON 列会盖掉 `DEFAULT_PARAMS`）。
+
+**信号级冒烟验证（磁盘加载、不走 DB，各策略一个脚本，均支持 `[start] [end]`）**：
+
+```bash
+cd quant_server && .venv/Scripts/python.exe scripts/backtest_high_vol_momentum.py      # 2025-01-01~2026-08-07
+cd quant_server && .venv/Scripts/python.exe scripts/backtest_cross_market_momentum.py  # 2021-01-01~2026-08-07
+cd quant_server && .venv/Scripts/python.exe scripts/backtest_etf_bottom.py
+cd quant_server && .venv/Scripts/python.exe scripts/backtest_small_cap.py              # 微盘，2021-01-01~2026-08-07
+```
+
+验证口径：有交易 / 无 NaN / 收益率合理。
+
+> ⚠️ **路径依赖型策略禁止用单一起始日结论**（区间收益随起跑日剧烈漂移）。必须用滚动起始日看**中位数 / 下四分位**分布：
+> `cd quant_server && .venv/Scripts/python.exe scripts/rolling_start_analysis.py [start1,start2,...]`（默认 6 个起始日，固定结束于 2026-09-04）。
 
 **实际策略清单（代码实证，见白皮书 §4）**：
 
 | 定位 | 策略 | 文件 |
 |:---|:---|:---|
-| 主池进攻 | 高波动动量轮动 7.1（实盘确认 2026-08；磁盘代码 v9.0） | `rotation/high_vol_momentum_strategy.py` |
-| 主池防守 | ETF 底部抄底（LightGBM） | `etf/bottom_strategy.py` |
+| 主池进攻 | 高波动动量轮动 v7.1（实盘确认 2026-08） | `rotation/high_vol_momentum_strategy.py` |
+| 主池避险 | 跨市场动量避险轮动 v1.0（A股走弱切全球/商品 ETF） | `rotation/cross_market_momentum_strategy.py` |
+| 主池防守 | ETF 底部抄底（LightGBM，磁盘 v4） | `etf/bottom_strategy.py` |
 | 卫星·事件 | 恐慌抄底（阶段 4b，模拟盘 draft） | `panic/panic_bottom_strategy.py` |
 | 卫星·进攻 | 微盘股 + 双指数择时（阶段 4c，模拟盘 draft） | `microcap/microcap_strategy.py` |
 | 参考/历史 | 低吸轮动 | `reference/stock_low_high_strategy.py` |
+| 参考/历史 | 深跌反包（短线超跌反弹，2026-09 数据挖掘） | `reference/deep_drop_rebound_strategy.py` |
 | 基类 | BaseStrategy 生命周期 | `base/base_strategy.py` + `base/strategy_context.py` |
 
-> ⚠️ 旧文档所列 industry_rotation / dl / ml 等策略**代码中不存在**（`rotation/` 下仅 `high_vol_momentum_strategy.py` 一个活动策略，历史快照文件已删除）。
+> ⚠️ 旧文档所列 industry_rotation / dl / ml 等策略**代码中不存在**（历史快照文件如 `high_vol_momentum_v90.py` 已删除，对应测试已 `pytest.mark.skip`）。
+> ⚠️ 一个策略的代码可能同时存在于**多处 DB 副本**（`strategies.code` 多个实例 + `strategy_templates.code_template`）。磁盘→DB 同步已有带 dry-run 的脚本范式可参考：`scripts/_sync_cross_market_code.py`（不带 `--apply` 只查，带则 UPDATE 全部副本）。
 
 ## 自动化守卫（`.claude/settings.json`）
 

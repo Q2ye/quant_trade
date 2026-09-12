@@ -34,6 +34,29 @@ LOT = 100          # A股最小手数
 START = "2026-08-03"
 END = "2026-09-04"
 
+# ---- 交易成本（修复 2026-09-12）----
+# 此前该脚本零成本，导致高波动（高频轮动·股票）的收益被系统性高估。
+# 股票卖出需缴印花税、佣金有 5 元最低门槛——实盘账户仅 2 万元时占比可观。
+COMMISSION_RATE = 0.0001     # 佣金万1（单边）
+MIN_COMMISSION = 0.0         # 最低佣金 0 —— 账户为「万一免五」，无 5 元门槛
+STAMP_DUTY_RATE = 0.001      # 印花税 0.1%（仅卖出，股票适用）
+TRANSFER_FEE_RATE = 0.00002  # 过户费 0.002%（双向）
+SLIPPAGE = 0.0002            # 单边滑点 0.02%
+FEE_BUFFER = 0.002           # 下单预留费用缓冲，避免含费后超出可用现金
+
+
+def _fees(amount: float, direction: str) -> float:
+    """A股单边交易费用合计：佣金 + 过户费 (+ 卖出印花税)。
+
+    Args:
+        amount: 成交金额（已含滑点的口径）
+        direction: "buy" 或 "sell"
+    """
+    commission = max(amount * COMMISSION_RATE, MIN_COMMISSION)
+    transfer = amount * TRANSFER_FEE_RATE
+    stamp = amount * STAMP_DUTY_RATE if direction == "sell" else 0.0
+    return commission + transfer + stamp
+
 
 class SmokePortfolio:
     """简化持仓模拟（order_mode="open" 口径：买卖均次日开盘成交，对齐实盘 T+1）。
@@ -41,6 +64,9 @@ class SmokePortfolio:
     修复 2026-09-10：原实现入场按"信号当日收盘"成交、离场按次日开盘，
     与策略声明的 order_mode="open"（买卖均次日开盘）以及 rolling_start_analysis.py
     的口径都不一致 → 回测偏乐观。现统一为买卖均次日开盘，与 RollingPortfolio 同序（先卖后买）。
+
+    修复 2026-09-12：此前**零交易成本**（收益系统性虚高）。现计入佣金（万1，账户免五无门槛）、
+    印花税（0.1%，仅卖出）、过户费（0.002%，双向）与单边滑点 0.02%。
     """
 
     def __init__(self, initial_capital: float = INITIAL_CAPITAL):
@@ -61,7 +87,8 @@ class SmokePortfolio:
             price = prices_open.get(code, 0.0)
             h = self.holdings.get(code)
             if h and price > 0:
-                self.cash += h["qty"] * price
+                gross = h["qty"] * price * (1.0 - SLIPPAGE)
+                self.cash += gross - _fees(gross, "sell")
                 self.holdings.pop(code, None)
             elif h:
                 still_pending.append(code)
@@ -76,11 +103,17 @@ class SmokePortfolio:
                 continue
             equity = self.equity(prices_open)
             amount = min(equity * weight, self.cash)
-            qty = int(amount / price / LOT) * LOT
+            cost_per_share = price * (1.0 + SLIPPAGE)
+            # 预留费用缓冲，避免含费后超出可用现金
+            qty = int(amount / (cost_per_share * (1.0 + FEE_BUFFER)) / LOT) * LOT
             if qty <= 0:
                 continue
-            self.cash -= qty * price
-            self.holdings[code] = {"qty": qty, "cost": price}
+            gross = qty * cost_per_share
+            total_out = gross + _fees(gross, "buy")
+            if total_out > self.cash:
+                continue  # 含费后现金不足，放弃本次开仓
+            self.cash -= total_out
+            self.holdings[code] = {"qty": qty, "cost": gross / qty}
         self.pending_entries.clear()
 
     def apply_signal(self, sig, prices: Dict[str, float], trade_date: str) -> None:

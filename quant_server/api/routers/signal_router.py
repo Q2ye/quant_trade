@@ -28,6 +28,15 @@ def _has_trade_permission(user: Dict) -> bool:
     return user.get("can_trade", False)
 
 
+# 修复 2026-09-12：加前置状态守卫，防止重复点击造成二次建仓 / 状态回退。
+# 可确认为 confirmed 的前置状态：仅限「尚未产生成交事实」的状态。
+_CONFIRMABLE_FROM = frozenset({"pending_manual", "pending_confirm", "approved"})
+# 可取消的前置状态：executed 表示已录单、成交事实已落库，禁止取消（否则成交记录与信号状态脱节）。
+_CANCELLABLE_FROM = frozenset(
+    {"pending_manual", "pending_confirm", "approved", "confirmed"}
+)
+
+
 class ConfirmSignalRequest(BaseModel):
     fill_price: float = Field(..., gt=0, description="实际成交价")
     fill_quantity: int = Field(..., gt=0, description="实际成交数量（股）")
@@ -59,29 +68,46 @@ async def confirm_signal(
     if not _has_trade_permission(current_user):
         raise HTTPException(403, "用户没有交易权限")
     from shared.database.session.session_manager import get_session_manager
-    from shared.database.repositories.strategy.signal.signal_repo_v2 import update_signal_status
+    from shared.database.repositories.strategy.signal.signal_repo_v2 import (
+        update_signal_status_if,
+    )
     from sqlalchemy import text
 
     sm = get_session_manager()
     async with sm.get_session() as session:
-        # 先获取信号元数据
+        # 先获取信号元数据（含当前状态，用于前置守卫）
         r = await session.execute(
-            text('SELECT strategy_id, ts_code, direction FROM signals WHERE id = :sid'),
+            text("SELECT strategy_id, ts_code, direction, signal_status "
+                 "FROM signals WHERE id = :sid"),
             {'sid': signal_id},
         )
         row = r.fetchone()
         if not row:
             raise HTTPException(404, f"信号 {signal_id} 不存在")
-        strategy_id, ts_code, direction = row[0], row[1], row[2]
+        strategy_id, ts_code, direction, cur_status = row[0], row[1], row[2], row[3]
 
-        # 更新信号状态
-        await update_signal_status(
-            session, signal_id, "confirmed",
+        # 修复 2026-09-12：前置状态守卫。
+        # 已 executed/cancelled/rejected/expired/confirmed 的信号不可再确认——
+        # 重复确认会把状态改回 confirmed 并二次发布 SignalConfirmedEvent，
+        # 导致 StrategyManager 对同一持仓累加两次。
+        if cur_status not in _CONFIRMABLE_FROM:
+            raise HTTPException(
+                409,
+                f"信号 {signal_id} 当前状态为 {cur_status}，不可确认"
+                f"（仅 {'/'.join(sorted(_CONFIRMABLE_FROM))} 可确认）",
+            )
+
+        # 原子条件流转：仅当状态仍在前置集合内才更新（防并发/双击竞态）
+        ok = await update_signal_status_if(
+            session, signal_id, "confirmed", _CONFIRMABLE_FROM,
             price=body.fill_price,
             quantity=body.fill_quantity,
             reviewed_at=datetime.now(),
         )
-        await session.commit()
+        if not ok:
+            raise HTTPException(
+                409, f"信号 {signal_id} 状态已变化，请刷新后重试"
+            )
 
         # 发布 SignalConfirmedEvent → StrategyManager 同步持仓
         try:
@@ -116,18 +142,38 @@ async def cancel_signal(
     if not _has_trade_permission(current_user):
         raise HTTPException(403, "用户没有交易权限")
     from shared.database.session.session_manager import get_session_manager
-    from shared.database.repositories.strategy.signal.signal_repo_v2 import update_signal_status
+    from shared.database.repositories.strategy.signal.signal_repo_v2 import (
+        update_signal_status_if,
+    )
+    from sqlalchemy import text
 
     sm = get_session_manager()
     async with sm.get_session() as session:
-        ok = await update_signal_status(
-            session, signal_id, "cancelled",
+        # 修复 2026-09-12：前置状态守卫。
+        # executed 信号已有对应 orders/trades 成交事实，取消会让信号表丢失
+        # 「已成交」事实，造成与持仓/订单对不上。
+        cur = (await session.execute(
+            text("SELECT signal_status FROM signals WHERE id = :sid"),
+            {"sid": signal_id},
+        )).fetchone()
+        if not cur:
+            raise HTTPException(404, f"信号 {signal_id} 不存在")
+        if cur[0] not in _CANCELLABLE_FROM:
+            raise HTTPException(
+                409,
+                f"信号 {signal_id} 当前状态为 {cur[0]}，不可取消"
+                f"（仅 {'/'.join(sorted(_CANCELLABLE_FROM))} 可取消）",
+            )
+
+        ok = await update_signal_status_if(
+            session, signal_id, "cancelled", _CANCELLABLE_FROM,
             reason=body.reason,
             reviewed_at=datetime.now(),
         )
         if not ok:
-            raise HTTPException(404, f"信号 {signal_id} 不存在")
-        await session.commit()
+            raise HTTPException(
+                409, f"信号 {signal_id} 状态已变化，请刷新后重试"
+            )
 
     return {"success": True, "signal_id": signal_id, "status": "cancelled"}
 

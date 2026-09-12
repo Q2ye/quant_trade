@@ -9,7 +9,7 @@ SignalRepository v2.0 扩展方法（实盘人工确认）
 """
 import logging
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from sqlalchemy import update, desc
 
@@ -55,10 +55,48 @@ async def expire_stale_signals(session, before_date: date) -> int:
 async def update_signal_status(
     session, signal_id: str, status: str, **extra_fields
 ) -> bool:
-    """更新信号确认状态"""
+    """更新信号确认状态（无条件流转）。
+
+    Returns:
+        True  — 确实更新了一行
+        False — 目标信号不存在（调用方据此返回 404）
+
+    修复 2026-09-12：此前恒返回 True，导致调用方的 404 分支永不生效。
+    """
     from sqlalchemy import update as sql_update
     values = {"signal_status": status, **extra_fields}
     stmt = sql_update(Signal).where(Signal.id == signal_id).values(**values)
-    await session.execute(stmt)
+    result = await session.execute(stmt)
     await session.commit()
-    return True
+    return bool(result.rowcount)
+
+
+async def update_signal_status_if(
+    session,
+    signal_id: str,
+    status: str,
+    allowed_from: Iterable[str],
+    **extra_fields,
+) -> bool:
+    """条件状态流转：仅当当前状态 ∈ allowed_from 时才更新。
+
+    用带旧状态条件的单条 UPDATE 实现，避免「先查后写」的竞态——
+    重复点击或并发请求下，第二次会因状态已变而 rowcount=0 被拒。
+
+    Args:
+        allowed_from: 允许流转的旧状态集合
+
+    Returns:
+        True  — 已完成流转
+        False — 信号不存在，或当前状态不在 allowed_from 中
+    """
+    from sqlalchemy import update as sql_update
+    values = {"signal_status": status, **extra_fields}
+    stmt = (
+        sql_update(Signal)
+        .where(Signal.id == signal_id, Signal.signal_status.in_(list(allowed_from)))
+        .values(**values)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return bool(result.rowcount)

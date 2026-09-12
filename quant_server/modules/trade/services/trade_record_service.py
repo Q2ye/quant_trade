@@ -67,6 +67,14 @@ class TradeRecordResult:
         }
 
 
+class DuplicateTradeRecordError(ValueError):
+    """信号重复录单：同一 signal_id 已有成交订单/记录。
+
+    继承 ValueError 以兼容既有 `except ValueError` 分支；
+    调用方（handlers）单独捕获并映射为 HTTP 409。
+    """
+
+
 class TradeRecordService:
     """
     手动成交录入服务
@@ -134,6 +142,36 @@ class TradeRecordService:
             raise ValueError("成交数量必须大于 0")
         if price <= 0:
             raise ValueError("成交价格必须大于 0")
+
+        # ---- 幂等保护（修复 2026-09-12）----
+        # 同一信号可以承载多笔合法订单（如「买 1000 → 分两笔卖 500+500」），
+        # 因此不能用「一信号一单」判定重复。改用累计数量护栏：
+        # 该信号该方向已录数量 + 本次数量 超过信号计划数量 → 判定为重复/超额录入。
+        # 前端仅靠 submitting 标志防抖，刷新页面即可绕过；无护栏时重复提交会让
+        # _upsert_position 累加两次数量、_update_account_balance 扣两次现金。
+        if signal_id:
+            from sqlalchemy import text as _text
+            _sig = (await self._session.execute(
+                _text("SELECT quantity FROM signals WHERE id = :sid"),
+                {"sid": signal_id},
+            )).fetchone()
+            _planned = int(_sig[0]) if (_sig and _sig[0]) else 0
+            if _planned > 0:
+                _recorded = (await self._session.execute(
+                    _text("SELECT COALESCE(SUM(volume), 0) FROM orders "
+                          "WHERE signal_id = :sid AND direction = :dir"),
+                    {"sid": signal_id, "dir": direction},
+                )).scalar() or 0
+                if int(_recorded) + quantity > _planned:
+                    raise DuplicateTradeRecordError(
+                        f"信号 {signal_id} 的 {direction} 已录 {int(_recorded)} 股 / "
+                        f"计划 {_planned} 股，本次 {quantity} 股将超额，已拒绝"
+                        f"（疑似重复提交；若确为分笔成交请核对信号数量）"
+                    )
+            else:
+                logger.warning(
+                    "信号 %s 未记录计划数量，跳过录单幂等护栏", signal_id
+                )
 
         # ---- 1. 获取账户：优先策略绑定账户（strategy_id → strategies.account_id），否则用户默认 ----
         # 2026-08 修复：此前无条件取 accounts[0]（用户创建时间最新账户）。
