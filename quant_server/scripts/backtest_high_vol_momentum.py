@@ -5,9 +5,15 @@
 独立运行（不走完整 BacktestEngine），验证策略在真实行情上的信号生成闭环：
 on_bar 缓存 → on_bar_batch_end 调仓/风控 → 信号 → 简化持仓模拟 → NAV。
 
+成交口径：order_mode="open" —— 买卖信号均次日开盘成交（与策略声明、rolling_start_analysis.py 一致）。
 执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest_high_vol_momentum.py [start] [end]
-默认区间: 2025-01-01 ~ 2026-08-07（含近 1.5 年，含 2025 牛熊切换）
+默认区间: 2026-08-03 ~ 2026-09-04（4 周；全市场预热 + 逐日取数约 15 秒/交易日，长区间请显式传参）
 验收（strategy-gates）: 至少 1 笔交易、无 NaN、收益率 ∈ [-95%, +500%]
+
+修复记录 2026-09-10:
+  1) daily_bars 原只从预热缓存构建（而预热截止 = 回测起始日）→ 除首日外全部 continue，
+     信号恒为 0、自带断言必然失败。现改为预热只填 start 之前的 bar + 逐日从 DB 取当日行情。
+  2) 入场原按"信号当日收盘"成交，与 order_mode="open" 不符 → 统一为次日开盘成交。
 """
 import asyncio
 import logging
@@ -18,116 +24,143 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from core.engines.types.entities import BarData
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 INITIAL_CAPITAL = 1_000_000.0
 LOT = 100          # A股最小手数
-START = "2025-01-01"
-END = "2026-08-07"
+START = "2026-08-03"
+END = "2026-09-04"
 
 
 class SmokePortfolio:
-    """简化持仓模拟（入场当日收盘、离场次日开盘）"""
+    """简化持仓模拟（order_mode="open" 口径：买卖均次日开盘成交，对齐实盘 T+1）。
+
+    修复 2026-09-10：原实现入场按"信号当日收盘"成交、离场按次日开盘，
+    与策略声明的 order_mode="open"（买卖均次日开盘）以及 rolling_start_analysis.py
+    的口径都不一致 → 回测偏乐观。现统一为买卖均次日开盘，与 RollingPortfolio 同序（先卖后买）。
+    """
 
     def __init__(self, initial_capital: float = INITIAL_CAPITAL):
         self.cash = initial_capital
-        self.holdings: Dict[str, Dict] = {}   # {code: {"qty": int, "cost": float}}
-        self.pending_exits: List[Tuple[str, int]] = []  # [(code, qty)] 次日开盘成交
+        self.holdings: Dict[str, Dict] = {}           # {code: {"qty": int, "cost": float}}
+        self.pending_entries: Dict[str, float] = {}   # {code: weight} 次日开盘买
+        self.pending_exits: List[str] = []            # [code] 次日开盘卖
 
     def equity(self, prices: Dict[str, float]) -> float:
         mv = sum(h["qty"] * prices.get(c, h["cost"]) for c, h in self.holdings.items())
         return self.cash + mv
 
-    def fill_pending_exits(self, prices: Dict[str, float]) -> None:
-        """次日开盘成交待平仓"""
-        for code, qty in self.pending_exits:
-            price = prices.get(code, 0.0)
+    def fill_pending(self, prices_open: Dict[str, float]) -> None:
+        """次日开盘结算：先平仓（释放现金）→ 再开仓（与 RollingPortfolio 同序）。"""
+        # 1) 平仓：停牌/无价则保留待次日重试，避免凭空蒸发市值
+        still_pending = []
+        for code in self.pending_exits:
+            price = prices_open.get(code, 0.0)
+            h = self.holdings.get(code)
+            if h and price > 0:
+                self.cash += h["qty"] * price
+                self.holdings.pop(code, None)
+            elif h:
+                still_pending.append(code)
+        self.pending_exits = still_pending
+
+        # 2) 开仓：按总权益 × 权重（与真实 Sizer 一致），并以可用现金封顶
+        for code, weight in self.pending_entries.items():
+            if code in self.holdings:
+                continue  # 防重复买入
+            price = prices_open.get(code, 0.0)
             if price <= 0:
                 continue
-            self.cash += qty * price
-            h = self.holdings.get(code)
-            if h:
-                h["qty"] -= qty
-                if h["qty"] <= 0:
-                    self.holdings.pop(code, None)
-        self.pending_exits.clear()
+            equity = self.equity(prices_open)
+            amount = min(equity * weight, self.cash)
+            qty = int(amount / price / LOT) * LOT
+            if qty <= 0:
+                continue
+            self.cash -= qty * price
+            self.holdings[code] = {"qty": qty, "cost": price}
+        self.pending_entries.clear()
 
     def apply_signal(self, sig, prices: Dict[str, float], trade_date: str) -> None:
-        """入场当日收盘成交；离场挂次日开盘"""
+        """只登记成交意图，实际成交在次日开盘（fill_pending）。prices/trade_date 仅留兼容签名。"""
         code = sig.ts_code
-        price = prices.get(code, 0.0)
-        if price <= 0:
-            return
         from modules.strategy.constants import SignalDirection
         if sig.direction == SignalDirection.LONG:
-            # 按总权益 × 权重（与真实 Sizer 一致），并以可用现金封顶
-            equity = self.equity(prices)
-            amount = min(equity * getattr(sig, "weight", 0.1), self.cash)
-            qty = int(amount / price / LOT) * LOT
-            if qty > 0:
-                cost = qty * price
-                self.cash -= cost
-                h = self.holdings.get(code)
-                if h:
-                    total_qty = h["qty"] + qty
-                    h["cost"] = (h["cost"] * h["qty"] + cost) / total_qty
-                    h["qty"] = total_qty
-                else:
-                    self.holdings[code] = {"qty": qty, "cost": price}
+            if code not in self.holdings and code not in self.pending_entries:
+                self.pending_entries[code] = float(getattr(sig, "weight", 0.1) or 0.1)
         elif sig.direction == SignalDirection.CLOSE_LONG:
-            h = self.holdings.get(code)
-            if h and h["qty"] > 0:
-                self.pending_exits.append((code, h["qty"]))
+            if code in self.holdings and code not in self.pending_exits:
+                self.pending_exits.append(code)
 
 
-async def _warmup_all_market(strategy, sf, end_date: date) -> int:
-    """全市场 K 线预热 — 修复：脚本此前依赖引擎预热导致 _data_cache 恒空。
-
-    与 StrategyManager._warmup_all_market 同口径（主板代码 + qfq 复权批量加载），
-    差异：DataFrame 保留 trade_date 列（兼容本脚本 dates 提取与策略 _append_data concat）。
-    预热截止 end_date（回测开始日），**不含未来数据**（避免回测未来函数）。
-    """
+async def _load_main_board_codes(sf) -> List[str]:
+    """主板代码清单（与 StrategyManager._warmup_all_market 同口径）。"""
     from sqlalchemy import text
-    from shared.database.repositories.market.quote.stock_adj_factor_repo import (
-        StockAdjFactorRepository,
-    )
-
-    lookback = int(getattr(strategy, "lookback_days", 250) or 250)
-    start_d = end_date - timedelta(days=lookback * 2)
-
     async with sf() as session:
         r = await session.execute(text(
             "SELECT DISTINCT ts_code FROM stock_basic "
             "WHERE (ts_code LIKE '000%' OR ts_code LIKE '002%' OR ts_code LIKE '600%' "
             "   OR ts_code LIKE '601%' OR ts_code LIKE '603%' OR ts_code LIKE '605%')"
         ))
-        codes = [row[0] for row in r.fetchall()]
+        return [row[0] for row in r.fetchall()]
+
+
+async def _load_bars(sf, codes: List[str], start_d: date, end_d: date) -> Dict[str, pd.DataFrame]:
+    """批量加载 [start_d, end_d] 的 qfq 复权日线 → {code: DataFrame(按 trade_date 升序)}。"""
+    from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+        StockAdjFactorRepository,
+    )
+    async with sf() as session:
         rows = await StockAdjFactorRepository(session).get_adjusted_daily_batch(
-            symbols=codes, start_date=start_d, end_date=end_date, adj_type="qfq",
+            symbols=codes, start_date=start_d, end_date=end_d, adj_type="qfq",
         )
+    by_code: Dict[str, list] = {}
+    for row in rows:
+        by_code.setdefault(row["ts_code"], []).append(row)
 
-        by_code: Dict[str, list] = {}
-        for row in rows:
-            by_code.setdefault(row["ts_code"], []).append(row)
+    out: Dict[str, pd.DataFrame] = {}
+    for code, recs in by_code.items():
+        if len(recs) < 2:
+            continue
+        df = pd.DataFrame([{
+            "trade_date": str(r["trade_date"])[:10],
+            "open": float(r["open"] or 0),
+            "high": float(r["high"] or 0),
+            "low": float(r["low"] or 0),
+            "close": float(r["close"] or 0),
+            "volume": float(r["volume"] or 0),
+            "amount": float(r["amount"] or 0),
+        } for r in recs])
+        out[code] = df.sort_values("trade_date").reset_index(drop=True)
+    return out
 
-        populated = 0
-        for code, recs in by_code.items():
-            if len(recs) < 2:
-                continue
-            df = pd.DataFrame([{
-                "trade_date": str(r["trade_date"])[:10],
-                "open": float(r["open"] or 0),
-                "high": float(r["high"] or 0),
-                "low": float(r["low"] or 0),
-                "close": float(r["close"] or 0),
-                "volume": float(r["volume"] or 0),
-                "amount": float(r["amount"] or 0),
-            } for r in recs])
-            df = df.sort_values("trade_date").reset_index(drop=True)
-            strategy._data_cache[code] = df
-            populated += 1
-        return populated
+
+async def _load_day_bars(sf, codes: List[str], td: date) -> Dict[str, BarData]:
+    """加载某交易日全市场 qfq 日线 → {code: BarData}（逐日取数，内存占用可控）。"""
+    from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+        StockAdjFactorRepository,
+    )
+    async with sf() as session:
+        rows = await StockAdjFactorRepository(session).get_adjusted_daily_batch(
+            symbols=codes, start_date=td, end_date=td, adj_type="qfq",
+        )
+    out: Dict[str, BarData] = {}
+    for r in rows:
+        code = r["ts_code"]
+        out[code] = BarData(
+            ts_code=code,
+            period="daily",
+            open=float(r["open"] or 0),
+            high=float(r["high"] or 0),
+            low=float(r["low"] or 0),
+            close=float(r["close"] or 0),
+            volume=float(r["volume"] or 0),
+            amount=float(r["amount"] or 0),
+            trade_date=str(r["trade_date"])[:10],
+        )
+    return out
 
 
 async def run_smoke(start: str = START, end: str = END) -> None:
@@ -155,47 +188,37 @@ async def run_smoke(start: str = START, end: str = END) -> None:
     strategy.initialize()  # 运行 on_init → 构建 universe
     await strategy.on_start()
 
-    symbols = list(strategy.universe)
+    symbols = list(strategy.universe) or await _load_main_board_codes(sf)
     logger.info(f"标的池: {len(symbols)}只")
 
-    # ── 修复：预热 _data_cache（全市场 K 线，截止回测开始日，避免未来函数）──
     start_d = date.fromisoformat(start)
-    warmed = await _warmup_all_market(strategy, sf, start_d)
-    cache_rows = sum(len(df) for df in strategy._data_cache.values())
-    logger.info(f"预热完成: {warmed} 只股票, 缓存 {cache_rows} 行")
+    end_d = date.fromisoformat(end)
 
-    # 回测区间交易日（独立查询 index_daily，不依赖缓存——缓存只含 start 前数据）
+    # 回测区间交易日（独立查询 index_daily，不依赖缓存）
     from sqlalchemy import text
     async with sf() as _sess:
         _r = await _sess.execute(text(
             "SELECT DISTINCT trade_date FROM index_daily "
             "WHERE ts_code = '000300.SH' AND trade_date BETWEEN :s AND :e ORDER BY trade_date"
-        ), {"s": start_d, "e": date.fromisoformat(end)})
+        ), {"s": start_d, "e": end_d})
         dates = [str(row[0])[:10] for row in _r.fetchall()]
     if not dates:
         logger.error("回测区间无交易日数据: %s ~ %s", start, end)
         return
     logger.info(f"回测区间: {dates[0]} ~ {dates[-1]}, 共 {len(dates)} 个交易日")
 
-    # 建立 日→symbol→bar 索引
-    from collections import defaultdict
-    daily_bars: Dict[str, Dict[str, BarData]] = defaultdict(dict)
-    for code, df in strategy._data_cache.items():
-        if "trade_date" not in df.columns or df.empty:
-            continue
-        for _, row in df.iterrows():
-            td = str(row["trade_date"])[:10]
-            daily_bars[td][code] = BarData(
-                ts_code=code,
-                period="daily",
-                open=float(row.get("open", row["close"])),
-                high=float(row.get("high", row["close"])),
-                low=float(row.get("low", row["close"])),
-                close=float(row["close"]),
-                volume=float(row.get("volume", 0.0)),
-                amount=float(row.get("amount", 0.0)),
-                trade_date=td,
-            )
+    # ── 修复 2026-09-10 ──
+    # 原实现把 daily_bars 只从"预热缓存"构建，而预热截止 = 回测起始日，
+    # 于是 for td in dates 里除首日外的交易日全部 continue → 信号恒为 0，
+    # 脚本自带的 `assert total_signals >= 1` 必然失败（质量门实际失效）。
+    # 现改为：预热只填 start 之前的 bar（不含 start，无未来数据）+ 逐日从 DB 取当日行情。
+    lookback = int(getattr(strategy, "lookback_days", 250) or 250)
+    warm = await _load_bars(sf, symbols, start_d - timedelta(days=lookback * 2), start_d - timedelta(days=1))
+    for code, df in warm.items():
+        strategy._data_cache[code] = df
+    cache_rows = sum(len(df) for df in strategy._data_cache.values())
+    logger.info(f"预热完成: {len(warm)} 只股票, 缓存 {cache_rows} 行（截止 {start_d - timedelta(days=1)}）")
+    del warm
 
     portfolio = SmokePortfolio()
     nav_curve: List[Tuple[str, float]] = []
@@ -204,13 +227,13 @@ async def run_smoke(start: str = START, end: str = END) -> None:
     exits = 0
 
     for td in dates:
-        bars_today = daily_bars.get(td, {})
+        bars_today = await _load_day_bars(sf, symbols, date.fromisoformat(td))
         if not bars_today:
             continue
 
-        # 1. 次日开盘成交（前一日 exit 信号）
+        # 1. 次日开盘成交（前一日登记的买卖意图，先卖后买）
         prices_open = {c: b.open for c, b in bars_today.items()}
-        portfolio.fill_pending_exits(prices_open)
+        portfolio.fill_pending(prices_open)
 
         # 2. 推入当日 bar
         for code in symbols:

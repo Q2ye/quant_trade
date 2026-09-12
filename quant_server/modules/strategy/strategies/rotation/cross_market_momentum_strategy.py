@@ -127,6 +127,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         # —— 风控（本项目补充，原版无止损）——
         "stop_loss_pct": 0.08,            # 硬止损：现价 <= 入场价×(1-此值) → 卖出
+        "min_hold_days": 3,               # 最小持有交易日数：未满且未止损不换仓（降换手，~28% 成本损耗）
 
         # —— 资金 ——
         "allocated_capital": 1000000.0,
@@ -203,6 +204,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         # 风控
         self.stop_loss_pct = float(merged["stop_loss_pct"])
+        self.min_hold_days = int(merged.get("min_hold_days", 3))
         self.verbose_logging = bool(merged.get("verbose_logging", True))
 
         # ---- 状态 ----
@@ -217,6 +219,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._weak_days_count: int = 0
         self._last_trade_date: str = ""
         self._bar_dates: Dict[str, str] = {}
+        self._held_days: Dict[str, int] = {}  # {code: 持有交易日数}，最小持有期守卫用
 
     # =========================================================================
     # 生命周期
@@ -241,6 +244,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._weak_days_count = 0
         self._last_trade_date = ""
         self._bar_dates.clear()
+        self._held_days.clear()
 
         # 加载 regime 指数日线（走弱期 MA10 判定用）
         sf = getattr(self, "_db_session_factory", None)
@@ -265,6 +269,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._pending_buys.clear()
         self._exit_pending.clear()
         self._pending_rows.clear()
+        self._held_days.clear()
 
     # =========================================================================
     # 数据流
@@ -304,12 +309,21 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._move_pending_to_holdings(td)
         # 0.5 与 broker 对账（实盘/完整引擎；smoke test context=None 跳过）
         self._reconcile_holdings()
+        # 0.6 持有交易日数 +1（最小持有期守卫用）
+        for _code in list(self._holdings.keys()):
+            self._held_days[_code] = self._held_days.get(_code, 0) + 1
 
         # 1. 走弱期判定
         self._update_weak_period(td)
 
         # 2. 硬止损（持仓）
         signals.extend(self._check_stop_loss(td))
+
+        # 2.5 最小持有期守卫（降换手）：持仓未满 min_hold_days 且本次未触发止损 → 跳过换仓。
+        # 止损优先：止损卖出已进 signals，此时须继续换仓补位，不受最小持有期约束。
+        if self.min_hold_days > 0 and self._holdings and not signals:
+            if all(self._held_days.get(_c, 0) < self.min_hold_days for _c in self._holdings):
+                return signals
 
         # 3. 选股
         metrics = [self._score_candidate(c) for c in self._candidate_pool()]
@@ -322,12 +336,14 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         target_codes = [m["etf"] for m in targets]
 
-        # 5. 卖出：持仓不在目标池
+        # 5. 卖出：持仓不在目标池（order_mode=open，次日开盘成交，broker 会提前释放现金）
+        has_t1_locked_sell = False
         for code in list(self._holdings.keys()):
             if code in target_codes:
                 continue
             if self._holdings[code].get("fill_date") == td:
-                continue  # T+1 未解锁，当日买入不可卖
+                has_t1_locked_sell = True  # T+1 未解锁，当日买入不可卖，现金未释放
+                continue
             if code in self._exit_pending:
                 continue
             self._exit_pending.add(code)
@@ -335,7 +351,10 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             if sig:
                 signals.append(sig)
 
-        # 6. 买入：目标不在持仓
+        # 6. 买入：目标不在持仓。若存在 T+1 锁定持仓待卖（现金被占），买入推迟到次日，防「卖出被 T+1 跳过→买入超现金」。
+        if has_t1_locked_sell:
+            return signals
+
         weights = self._compute_position_weights(targets)
         for m in targets:
             code = m["etf"]
@@ -755,9 +774,16 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     # =========================================================================
     def _make_entry_signal(self, code: str, metrics: Dict, weight: float, price: float) -> Optional[TradingSignal]:
         capital = self.resolve_sizing_capital()
-        shares = int(capital * weight / price / 100) * 100
+        # 满仓买入：金额 = 基准资本×权重，不封顶到 available_capital。
+        # 轮动时序为「先卖出（broker 提前释放资金）→ 后买入」，封顶到陈旧现金会致长期半仓闲置。
+        # T+1 锁定持仓未卖（现金未释放）时由 _run_rebalance 的 has_t1_locked_sell 跳过买入，
+        # 兜底由 broker 资金校验拒单（策略留在旧满仓位置，符合动量逻辑）。
+        amount = capital * weight
+        if amount < price * 100:
+            return None  # 现金不足一手，不买
+        shares = int(amount / price / 100) * 100
         if shares < 100:
-            shares = 100
+            return None
         sig = TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
@@ -787,6 +813,14 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         if price <= 0:
             return None
         shares = int(self._holdings.get(code, {}).get("shares", 0) or 0)
+        # 满仓买入可能被 broker「资金不足缩减」，策略自维护 shares 会高估实际持仓，
+        # 导致卖出「可卖数量不足」被拒 → 资金不释放 → 后续买入死锁。以 broker 实际持仓数量为准。
+        bp = getattr(self.context, "positions", None) if self.context else None
+        if bp:
+            _pos = bp.get(code)
+            _qty = int(getattr(_pos, "quantity", 0) or 0) if _pos is not None else 0
+            if _qty > 0:
+                shares = _qty
         return TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
@@ -857,6 +891,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 "fill_date": td,
                 "peak_high": entry,
             }
+            self._held_days[code] = 0
         self._pending_buys.clear()
 
     def _reconcile_holdings(self) -> None:
@@ -870,11 +905,13 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             bp = broker_positions.get(code)
             if bp is None or int(getattr(bp, "quantity", 0) or 0) <= 0:
                 self._holdings.pop(code, None)
+                self._held_days.pop(code, None)
                 self._exit_pending.discard(code)
         for code in list(self._holdings.keys()):
             bp = broker_positions.get(code)
             if bp is None or int(getattr(bp, "quantity", 0) or 0) <= 0:
                 self._holdings.pop(code, None)
+                self._held_days.pop(code, None)
 
     # =========================================================================
     # 工具
