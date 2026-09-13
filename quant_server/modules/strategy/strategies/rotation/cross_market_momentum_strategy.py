@@ -59,6 +59,9 @@ _VOL_HIST_MAX = 200    # 权益/系数历史保留长度
 # 风险调整动量 —— 打分层的波动惩罚（固定口径）
 _RISKADJ_VOL_LOOKBACK = 20   # 候选标的自身的波动率窗口
 
+# 相对强度门槛用的基准（与回测声明基准一致）
+_BENCH_CODE = "000300.SH"
+
 # 趋势质量（上下行波动比）—— 打分层的质量乘子（固定口径）
 
 
@@ -359,6 +362,42 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         #   超过则窗口不足、静默退化为不调整（实测 lag=60 时该臂与 OFF 逐位相同）。
         "trend_quality_lag": 0,
 
+        # —— 相对强度门槛（过滤器，本项目补充）——
+        # 动机：本策略已证明**杠杆在「选谁」维度**（r2_threshold / trend_quality 两个成功案例
+        #   都在此，而 9 次「择时/仓位」类改动全部失败）。这是该维度的第三个候选。
+        # 机制：现有 `passed_momentum` 是**绝对**动量门（只问「你在不在涨」）——
+        #   A股普涨时随便一只 ETF 都「动量强」，但那是 **β 不是 α**，会把仓位押在只是
+        #   「随大盘漂」的标的上。本门要求候选近 `lookback_days` 日收益 **> 沪深300 同期**。
+        #   · 正常期：筛掉弱于大盘的 A股 ETF
+        #   · 走弱期：海外/商品标的天然跑赢下跌的 A 股 → 自动放行，**不干扰避险逻辑**
+        # 与已测失败项的区分：`min_score_threshold`（绝对门）筛的是「绝对方向」，
+        #   本门筛的是「相对大盘」—— 机制不同。
+        # 实现：基准收益取自策略已有的 `_index_cache`（无需新数据源）；
+        #   作为**过滤器**（不改变排序）；基准数据不足时 **fail-open**（放行，不阻断策略）。
+        # ✅ 2026-09-13 已完成全套验证并**采纳**（默认 True）。基线为 k=3 趋势质量版。
+        #   关卡            基线(k=3)      REL           REL安慰剂
+        #   全窗口夏普        1.2081       1.3711        1.2457
+        #   全窗口 MDD        25.18%       25.18%        22.03%
+        #   段A 夏普          1.4756       2.0356        1.5660
+        #   段A MDD           15.34%       12.91%        15.33%
+        #   段B 夏普          1.8495       1.8883        1.7959
+        #   段B MDD           21.16%       21.16%        16.74%
+        #   12 滚动起始日 中位  346.1%       374.8%        316.2%
+        #   12 滚动起始日 下四分 169.6%       187.0%        161.9%
+        #   12 滚动起始日 最小   83.6%        80.7%         75.9%
+        #   → **夏普三段全部改善、均胜过安慰剂；滚动起始日 4/5 分位改善，安慰剂全面恶化**
+        # ⚠️ 三点保留（登记，非缺陷）：
+        #   ① 12 起始日的最小值略降（83.6%→80.7%）
+        #   ② MDD 对安慰剂只 1/3 胜（段内单点 MDD 易被路径噪声主导）
+        #   ③ **同族连续加因子已是第三层**（r2_threshold → trend_quality → rel_strength）。
+        #      每层单独都过验证，但**累计过拟合风险无法用同一份数据检验**。
+        #      → **不要再在同族里加第四层**；要再优化请换维度或换样本。
+        # 默认 True。置 False 可退回 k=3 版行为。
+        "enable_rel_strength": True,
+        # 安慰剂对照（仅回测验证用）：0 = 用当日基准窗口；>0 = 用 N 个交易日前的基准窗口
+        # （分布相同、与候选收益的对齐被破坏）。
+        "rel_strength_lag": 0,
+
         # —— 运行 ——
         "verbose_logging": True,
     }
@@ -431,6 +470,10 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self.enable_trend_quality = bool(merged.get("enable_trend_quality", False))
         self.trend_quality_lag = max(0, int(merged.get("trend_quality_lag", 0)))
         self.trend_quality_power = max(0.0, float(merged.get("trend_quality_power", 1.0)))
+
+        # 相对强度门槛
+        self.enable_rel_strength = bool(merged.get("enable_rel_strength", False))
+        self.rel_strength_lag = max(0, int(merged.get("rel_strength_lag", 0)))
 
         # 主线
         self.enable_super_mainline = bool(merged["enable_super_mainline"])
@@ -1003,6 +1046,38 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         }
         return passed, info
 
+    def _bench_return(self, td: str, window: int) -> Optional[float]:
+        """基准（沪深300）近 window 日收益；数据不足/非法返回 None。
+
+        `rel_strength_lag > 0` 时取 N 日**前**的那段窗口（安慰剂：破坏与候选收益的对齐）。
+        """
+        closes = self._index_cache.get(_BENCH_CODE, {})
+        if not closes:
+            return None
+        dates = sorted(d for d in closes if d <= td)
+        end = len(dates) - self.rel_strength_lag
+        if end < window + 1:
+            return None
+        a = _finite_or(closes[dates[end - window - 1]], 0.0)
+        b = _finite_or(closes[dates[end - 1]], 0.0)
+        if a <= 0 or b <= 0:
+            return None
+        return b / a - 1.0
+
+    def _rel_strength_excess(self, closes: np.ndarray) -> Optional[float]:
+        """候选近 window 日收益 − 基准同期收益；无法计算返回 None（调用方 fail-open）。"""
+        n = self.lookback_days + 1
+        if closes.size < n:
+            return None
+        a = _finite_or(closes[-n], 0.0)
+        b = _finite_or(closes[-1], 0.0)
+        if a <= 0 or b <= 0:
+            return None
+        bench = self._bench_return(self._last_trade_date, self.lookback_days)
+        if bench is None:
+            return None
+        return (b / a - 1.0) - bench
+
     def _trend_quality(self, closes: np.ndarray) -> Optional[float]:
         """上下行波动比的质量乘子 q（趋势质量用）。
 
@@ -1104,6 +1179,14 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         passed_r2 = r2 > self.r2_threshold
 
+        # 相对强度门槛（fail-open：基准数据不足时放行，不阻断策略）
+        rel_excess: Optional[float] = None
+        passed_rel_strength = True
+        if self.enable_rel_strength:
+            rel_excess = self._rel_strength_excess(closes)
+            if rel_excess is not None:
+                passed_rel_strength = rel_excess > 0
+
         passed_ma = True
         ma_val = None
         if closes.size >= self.ma_lookback:
@@ -1122,6 +1205,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             "volume_ratio": vr,
             "passed_momentum": passed_momentum,
             "passed_r2": passed_r2,
+            "rel_excess": rel_excess,
+            "passed_rel_strength": passed_rel_strength,
             "passed_ma": passed_ma,
             "passed_volume": passed_volume,
             "passed_loss": passed_loss,
@@ -1136,6 +1221,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         steps: List[Tuple[str, Any, bool]] = [
             ("动量得分", lambda m: m["passed_momentum"], True),
             ("R²", lambda m: m["passed_r2"], self.enable_r2_filter),
+            # 相对强度门对两个时期都生效：走弱期海外/商品天然跑赢下跌的 A股 → 自动放行，
+            # 不干扰避险逻辑；正常期则筛掉弱于大盘（β 而非 α）的候选。
+            ("相对强度", lambda m: m["passed_rel_strength"], self.enable_rel_strength),
             # 入场涨幅门对两个时期都生效：机制是「信号次日开盘接盘」，与候选池无关。
             # entry_gain_veto=True 时**不在候选阶段过滤**——改由 _select_targets 在选出
             # 头号目标后整体否决，避免「剔除→次优顶上」把否决变成换标的。
