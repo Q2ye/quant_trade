@@ -145,7 +145,7 @@
                 <tr><th>年份</th><th>收益</th><th>最大回撤</th><th>市场情况</th><th>策略表现</th><th>归因分析</th></tr>
               </thead>
               <tbody>
-                <tr v-for="y in report.yearlyReturns" :key="y.year">
+                <tr v-for="y in yearlyRows" :key="y.year">
                   <td>{{ y.year }}</td>
                   <td :style="{ color: y.return >= 0 ? 'var(--n-error-color)' : 'var(--n-success-color)' }">
                     {{ (y.return * 100).toFixed(1) }}%
@@ -154,11 +154,11 @@
                   <td>{{ (-y.max_drawdown * 100).toFixed(1) }}%</td>
                   <!-- 市场情况（当年 regime 分布，来自 CSI500 vs MA250） -->
                   <td>{{ regimeLabelForYear(y.year) }}</td>
-                  <!-- 策略表现：相对 CSI500 的超额收益（跑赢/跑输） -->
+                  <!-- 策略表现：相对 CSI500 的超额收益（跑赢/跑输）；基准数据缺失时显示 -- -->
                   <td>
-                    <span :class="(y.return - (csi500YearlyReturn[String(y.year)] ?? 0)) >= 0 ? 'text-up' : 'text-down'">
-                      {{ (y.return - (csi500YearlyReturn[String(y.year)] ?? 0)) >= 0 ? '跑赢' : '跑输' }}
-                      {{ ((y.return - (csi500YearlyReturn[String(y.year)] ?? 0)) * 100).toFixed(1) }}%
+                    <span v-if="y.excess === null" class="text-muted">--（基准数据缺失）</span>
+                    <span v-else :class="y.excess >= 0 ? 'text-up' : 'text-down'">
+                      {{ y.excess >= 0 ? '跑赢' : '跑输' }} {{ (y.excess * 100).toFixed(1) }}%
                     </span>
                   </td>
                   <!-- 归因分析（顺逆风 + α 有无 → 结论） -->
@@ -472,11 +472,22 @@ const stockNames = ref<Record<string, string>>({});
 async function resolveStockNames() {
   const codes = [...new Set(roundTrips.value.map((t: any) => t.symbol).filter(Boolean))];
   if (!codes.length) return;
-  const results = await Promise.all(codes.map((c) => marketAPI.getStockDetail(c).catch(() => null)));
+  // 回测标的以场内基金为主（跨市场策略池内全部是 ETF），而 /data/stocks 只认股票 →
+  // 此前每个 ETF 都会打一串 500。故改为**先试 ETF、404 再试股票**。
+  // 不在前端复制后端 is_etf 的前缀规则（shared/utils/instrument.py 是单一真相源），
+  // 两个端点都不认时回退为原始代码，保证表格仍可渲染。
+  const results = await Promise.all(
+    codes.map((c) =>
+      marketAPI
+        .getETFDetail(c)
+        .catch(() => marketAPI.getStockDetail(c))
+        .catch(() => null),
+    ),
+  );
   const map: Record<string, string> = {};
   codes.forEach((c, i) => {
     const s: any = results[i];
-    map[c] = s?.name || s?.stock_name || s?.ts_name || c;
+    map[c] = s?.name || s?.shortName || s?.short_name || s?.stock_name || s?.ts_name || c;
   });
   stockNames.value = map;
 }
@@ -616,12 +627,30 @@ const drawdownConclusion = computed(() => {
   const depth = Number(period.depth || 0);
   const consec = Number(report.value.maxConsecutiveLosses || 0);
   const ctx = drawdownMarketContext.value;
-  const marketDrop = ctx && ((ctx.csiRet ?? 0) < -0.05 || (ctx.hsRet ?? 0) < -0.05);
+  // ⚠️ 2026-09-13 修正：原为 `(ctx.csiRet ?? 0) < -0.05` —— 行情数据缺失时回退成 0，
+  // 恒不满足 → **把「取不到数据」当成「市场没跌」**，无条件输出「以策略自身因素为主」
+  // 及其配套建议。现改为显式区分「无数据」与「市场未下跌」。
+  const csiRet = ctx?.csiRet ?? null;
+  const hsRet = ctx?.hsRet ?? null;
+  const hasMarket = csiRet !== null || hsRet !== null;
+  const marketDrop = (csiRet !== null && csiRet < -0.05) || (hsRet !== null && hsRet < -0.05);
   const severity = depth >= 0.2 ? "较大" : depth >= 0.1 ? "偏高" : "可控";
+
+  if (!hasMarket) {
+    return {
+      depth, consec, severity,
+      cause: "行情数据缺失，无法判定（基准区间涨跌取不到）",
+      advice: "补齐指数历史区间后重新判定；在此之前不要依据本栏结论调整策略",
+    };
+  }
+
   const cause = marketDrop ? "主要受市场系统性下跌拖累" : "以策略自身因素为主";
+  // 非市场拖累一侧的原建议（“收紧止损、降低集中度”）经实测已否决，替换为已验证的结论：
+  //   收紧止损 → 回撤反而增大（23.56%→27.45%）；多标的分散 → 夏普全线下滑且段B 回撤仅降 4%；
+  //   入场涨幅门/动量失效闸门 → 均否决。根因：收益集中在 2.6% 的交易上，任何择时离场都会误伤。
   const advice = marketDrop
     ? "对冲逻辑可能正常，维持现有风控，关注市场企稳信号后再加仓"
-    : "复盘止盈止损纪律与仓位控制，必要时收紧止损、降低单一持仓集中度";
+    : "单策略内部的降回撤路径已实测封顶（择时离场、分散、止损收紧均无效），建议按可承受回撤反推仓位，或通过组合分散解决";
   return { depth, consec, severity, cause, advice };
 });
 
@@ -694,6 +723,17 @@ const monthlyAnalysis = computed(() => {
 });
 
 // ---- 分年度市场基准（CSI500 年度收益，用于「策略表现」相对结论） ----
+// ⚠️ 2026-09-13：此前模板里写 `csi500YearlyReturn[year] ?? 0` —— 基准数据缺失的年份
+// 会被当成「基准涨跌 0%」，于是「策略表现」列显示的是**策略原始收益**而非超额，
+// 且「跑赢/跑输」方向也可能是错的。现改为缺数据即显示 `--`。
+const yearlyRows = computed(() =>
+  report.value.yearlyReturns.map((y) => {
+    const b = csi500YearlyReturn.value[String(y.year)];
+    const hasBench = typeof b === "number" && Number.isFinite(b);
+    return { ...y, bench: hasBench ? b : null, excess: hasBench ? y.return - b : null };
+  }),
+);
+
 const csi500YearlyReturn = computed(() => {
   const closes = marketCloses.value.csi500;
   const map: Record<string, { first: number; last: number }> = {};
@@ -720,11 +760,16 @@ const yearlyConclusion = computed(() => {
 
 // ---- 分年度归因分析（市场顺逆风 + α 有无 → 归因结论） ----
 function yearAttribution(y: any): string {
-  const excess = y.return - (csi500YearlyReturn.value[String(y.year)] ?? 0);
-  if (y.return >= 0 && excess >= 0) return "顺风+超额，α 有效";
-  if (y.return >= 0 && excess < 0) return "β 驱动，α 不足";
-  if (y.return < 0 && excess >= 0) return "逆风但跑赢，防御有效";
-  return "β+α 双弱，需复盘";
+  // ⚠️ 2026-09-13 修正：原实现用**策略收益**的符号判断顺逆风，且基准缺失时 `?? 0`。
+  // 后果：2022（沪深300 −21%、策略 +47%）被标成「顺风+超额」—— 实际是**逆风大幅跑赢**，
+  // 报告据此严重低估了防守能力。顺逆风必须由**基准**涨跌决定。
+  if (y.excess === null || y.excess === undefined) return "基准数据缺失，无法归因";
+  const headwind = Number(y.bench) < 0;   // 基准下跌 = 逆风
+  const alpha = y.excess >= 0;            // 跑赢基准 = α 有效
+  if (headwind && alpha) return "逆风跑赢，防御有效";
+  if (headwind && !alpha) return "逆风跑输，需复盘";
+  if (!headwind && alpha) return "顺风超额，α 有效";
+  return "顺风跑输，α 不足";
 }
 
 // ---- 每日盈亏诊断（A3：尾部风险/分布偏度/收益集中度/连续亏损/基准相关性） ----
@@ -810,9 +855,12 @@ const rangeLabel = ref("");
 
 async function loadMarketContext() {
   try {
+    // ⚠️ 2026-09-13：原为 750（≈3 年）→ 回测区间早于 2023-08 时，回撤归因/分年度市场列
+    // 全部取不到数据，且下游用 `?? 0` 回退 → **把「数据缺失」误判为「市场没跌」**，
+    // 从而恒输出「策略自身因素为主」。改为 4000（≈16 年，覆盖指数库全部可用历史）。
     const [csi500, hs300] = await Promise.all([
-      marketAPI.getIndexHistory("000905.SH", 750).catch(() => []),
-      marketAPI.getIndexHistory("000300.SH", 750).catch(() => []),
+      marketAPI.getIndexHistory("000905.SH", 4000).catch(() => []),
+      marketAPI.getIndexHistory("000300.SH", 4000).catch(() => []),
     ]);
     const map = (arr: any) => (Array.isArray(arr) ? arr : [])
       .map((d: any) => ({ date: String(d.trade_date || d.date || "").slice(0, 10), close: Number(d.close || 0) }))
@@ -1112,6 +1160,9 @@ onUnmounted(() => {
 /* 每日盈亏诊断（A3） */
 .text-up { color: var(--n-error-color); }
 .text-down { color: var(--n-success-color); }
+/* 数据缺失占位（分年度「策略表现」列）—— 用 Naive 弱化文字色，不硬编码 */
+.text-muted { color: var(--n-text-color-3); }
+
 .pnl-diagnostic {
   margin-top: 16px;
 }

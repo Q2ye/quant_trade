@@ -40,6 +40,27 @@ from shared.utils.time_utils import BEIJING_TZ, beijing_now
 
 logger = logging.getLogger(__name__)
 
+# 动量失效闸门（momentum efficacy gate）—— 固定口径，不暴露为参数（压缩过拟合面）。
+# 这些值与策略既有口径对齐（lookback_days=25），不做扫描。
+_EFF_LOOKBACK = 25     # 动量窗口（与 lookback_days 同口径）
+_EFF_TOPN = 3          # 高/低动量各取几只算价差
+_EFF_WINDOW = 20       # 价差滚动求和窗口（≈ 策略 3 个持仓周期）
+_EFF_MIN_CODES = 8     # 有效标的少于此数 → 本日信号不可用（沿用上一有效值）
+_EFF_HIST_MAX = 200    # eff 历史保留长度（安慰剂 lag 用）
+# 「闸门关闭」哨兵阈值。eff 是 20 日价差之和，实测落在 ±0.2 内，故 ≤ −1.0 永不触发。
+# 取到该值时 `_update_momentum_efficacy` 走快速路径**直接跳过计算** ——
+# 不为一个关闭的功能每天构建 DataFrame（实测计算路径 ≈100 µs/日 × 1846 日 ≈ 0.2 s/次回测）。
+_EFF_DISABLED_THRESHOLD = -1.0
+
+# 波动率目标化（vol targeting）—— 固定口径，不暴露为参数。
+_VOL_LOOKBACK = 20     # 自身权益收益率的滚动窗口（与实证一致）
+_VOL_HIST_MAX = 200    # 权益/系数历史保留长度
+
+# 风险调整动量 —— 打分层的波动惩罚（固定口径）
+_RISKADJ_VOL_LOOKBACK = 20   # 候选标的自身的波动率窗口
+
+# 趋势质量（上下行波动比）—— 打分层的质量乘子（固定口径）
+
 
 def _finite_or(value: Any, fallback: float = 0.0) -> float:
     """转 float 并拦截 NaN/Inf，非法值回退 fallback。
@@ -146,6 +167,26 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         #   默认 False = 不改变引入该参数前的行为（便于 A/B 对照）。
         "enable_entry_gain_filter": False,
         "entry_max_gain_pct": 0.05,
+        # 入场涨幅门的**作用方式**：False = 顺位补位（剔除不合格候选后由次优顶上，
+        # 默认，与引入该门之前逐字等价）；True = 整体否决（头号目标不合格则**本日不建仓**，
+        # 由 `_run_rebalance` 落进防御兜底）。
+        #   动机（2026-09-12 代码级确认，非统计推测）：入场涨幅门的机制意图是「不追高」，
+        #   但在 `_select_targets` 里被实现成「换一个标的买」——剔除后次优候选顶上，
+        #   于是仍然买在追高点，且因标的变更导致换手**上升**（实测 773→791 笔）。
+        #   即：机制意图（少买追高）与实际行为（换个追高）不符。
+        #
+        #   ⚠️ 实测否决（2026-09-12），**不要重复尝试**。三臂 A/B（同一策略 4eab20a9 的代码副本，
+        #      仅参数不同；佣金万1 + 滑点万1）：
+        #               ① 门关(基线)      ② 门开·补位      ③ 门开·否决
+        #        全窗口  427.84%/0.946/39.02%  275.53%/0.773/45.16%  280.57%/0.785/41.00%
+        #        观察段   29.37%/0.479         36.68%/0.594          37.49%/0.606
+        #        验证段  176.18%/1.526        102.96%/1.083          90.37%/0.995
+        #      三个分段的相对顺序**不一致**（观察段 ③>②，验证段 ③<②），且两臂都远不及基线。
+        #      根因：否决在 7.6 年里**只触发 12 次**（1846 日中 0.65%）——机制上近乎空转；
+        #      这 12 个决策日带来的 ±5~13pp 属于路径依赖噪声，不是可复现的 alpha。
+        #      （同类观察：上一轮「补位 vs 不启用」的 152pp 差异同样来自 0.9% 的决策日分叉。）
+        #   取值范围 True / False；仅在 enable_entry_gain_filter=True 时有意义。
+        "entry_gain_veto": False,
 
         # —— B型阶梯主线（score 5~20 早期识别，绕过 max_score=5 天花板）——
         # ⚠️ 实测（2021-2026 全区间）：该旁路**从未触发过**。它要求 current_score > 5.0，
@@ -198,6 +239,126 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         "entry_confidence": 0.7,
         "exit_confidence": 0.8,
 
+        # —— 动量失效闸门（L2.5，本项目补充）——
+        # 机制：本策略的全部 alpha 押在「横截面动量的持续性」这一条假设上
+        #     （25 日动量最强 × R² 最高的标的，未来一周还会强）。该假设可被**逐日直接测量**：
+        #         spread[s] = mean(Top3 by mom25@(s-1) 在 s 日的收益)
+        #                     − mean(Bottom3 同理)
+        #         eff[t]    = Σ_{s=t-19}^{t} spread[s]
+        #     eff < 阈值 → 按动量排序已无预测力（动量反转）→ 本次调仓改持防御标的。
+        #   ⚠️ 这是「对策略自身前提的直接测量」，不是波动率/回撤那类代理变量。
+        # 实证（7.6 年 / 1822 个交易日，2026-09-12）：
+        #     eff[t] < −0.03 的 523 日 → 策略 t+1 日均 −0.135%、胜率 45.9%
+        #     eff[t] ≥ −0.03 的 1299 日 → +0.199%、胜率 54.7%
+        #     差 +0.334%/日，t=4.35，逐年 8/8 方向一致；三个阈值（−0.03/−0.05/−0.08）方向一致。
+        # 动机事件：2026-06-25~09-10（−23.18%）。8 月连续 6 笔全亏，每笔入场时标的的
+        #     25 日涨幅 +9.8%~+17.2%，而**信号日涨幅全在 ±2%**（一笔都触发不了入场涨幅门）
+        #     → 是月频动量失效，不是日频追高（这也解释了入场涨幅门为何结构上无效）。
+        # ⚠️ **不能解决** 2021-01-22~2022-01-27 的 −39.02%：那段 eff 均值 +0.011（中性），
+        #     属「系统性同跌」（风险资产同跌），不是动量反转。该类型只能靠降杠杆或组合分散。
+        # 取值范围：阈值 [−0.05, −0.03]；调低 → 更少触发。
+        # 默认 `_EFF_DISABLED_THRESHOLD`（−1.0）= 永不触发 → 等价现行行为，且**跳过全部计算**。
+        "momentum_efficacy_threshold": _EFF_DISABLED_THRESHOLD,
+        # 安慰剂对照（仅回测验证用，不改变生产行为）：
+        #   0 = 用当日 eff；>0 = 用 N 个交易日前的 eff（分布相同、与收益的对齐被破坏）。
+        #   用于区分「信号的预测力」与「单纯降低了暴露时长」。
+        "momentum_efficacy_lag": 0,
+
+        # —— 波动率目标化（vol targeting，本项目补充）——
+        # 机制：用**策略自身权益**的近 20 日已实现年化波动率缩放目标仓位：
+        #     scale = clamp(vol_target_annual / realized_vol_20d, vol_scale_min, vol_scale_max)
+        #   最终仓位 = single_etf_max_position × scale
+        # 实证（7.6 年 / 1806 个交易日，2026-09-13）：按自身权益波动率四分位分组，
+        #     低波动 25% → 未来 20 日 +4.15%、胜率 70.3%
+        #     高波动 25% → 未来 20 日 +0.94%、胜率 50.0%
+        #   ⚠️ 更强的是一处**交互效应**（深回撤 × 高波动）：
+        #     深回撤(≤-15%)+低波动 → +4.28%/胜率 73.6%（239 日）
+        #     深回撤(≤-15%)+高波动 → **-2.18%/胜率 31.3%**（195 日）→ t≈11
+        #   即：「回撤深度」单独非单调（不可用作信号），但**与波动率叠加后区分度极大**。
+        # 逐年一致性：5/7 年「低波动期未来收益 > 高波动期」（2023/2024 相反）。
+        # ⚠️ 这是从 4 个候选中筛出的最显著者，**有多重检验问题**；判定必须依赖
+        #    安慰剂臂（vol_target_lag）与同平均仓位的恒定杠杆臂，不能只看它跑赢基线。
+        # 取值范围：目标年化波动 0.15~0.35；默认 0.0 = **关闭**（不计算、不影响仓位）。
+        "vol_target_annual": 0.0,
+        "vol_scale_min": 0.3,
+        "vol_scale_max": 1.0,
+        # 条件门槛（>0 才生效）：只有**同时**满足「权益回撤深于 vol_gate_drawdown」且
+        # 「近20日年化波动高于 vol_gate_vol」才允许缩仓，否则保持满仓。
+        #   依据：波动率效应是**交互项**而非主效应 —— 主效应版（无条件）已实测否决
+        #   （同平均暴露下夏普 0.884 < 恒定杠杆 0.928，MDD 反而 +3.7pp）。
+        #   实测区分度（7.6 年 / 1806 日）：
+        #     无条件高波动        → 未来20日 -0.19%（vs 未命中 +2.44%）
+        #     dd≤-15% 且 vol>25%  → 未来20日 **-3.42%**（vs 未命中 +2.59%），命中 128 日（7.1%）
+        #     dd≤-15% 且 vol>28%  → -4.91%，命中 70 日（3.9%）
+        "vol_gate_drawdown": 0.0,
+        "vol_gate_vol": 0.0,
+        # 安慰剂对照（仅回测验证用）：0 = 用当日系数；>0 = 用 N 日前的系数
+        # （分布相同、与未来收益的对齐被破坏）。
+        "vol_target_lag": 0,
+
+        # —— 风险调整动量（打分层波动惩罚，本项目补充）——
+        # 动机：本策略 7 次「择时/仓位」类改动全部实测否决（见 memory），而唯一验证有效的
+        #   `r2_threshold` 属**选股质量**维度 → 逻辑改动应往「选谁」找，不再碰时机/仓位。
+        # 机制：现打分 `score = 年化斜率 × R²` 只奖励「涨得猛 + 走得直」，**不惩罚波动**：
+        #   30% 波动涨 20% 的标的得分高于 10% 波动涨 15% 的 —— 但前者更容易被反杀。
+        #   改为 `score_排名 = score × (参考波动 / 该标的近20日年化波动)`，把波动惩罚引入排序。
+        # 实证依据（本次会话筛出，7.6 年 / 1806 日）：自身权益波动率分四档，
+        #   低波动 → 未来20日 +2.66%/+4.15%（胜率 70.3%），高波动 → +0.91%/+0.94%（胜率 49.7%），
+        #   t≈8。该信号此前用在「何时降仓」上被否决（真实不如安慰剂），
+        #   **但很可能本就该用在「选谁」上** —— 同一信息、不同落点。
+        # ⚠️ 关键设计：**只改排序，不改过滤**。`passed_momentum` 仍用**原始 score** 判定，
+        #   否则低波动候选会被 `max_score_threshold=5.0` 误杀（它们乘数 >1），
+        #   与「奖励低波动」的意图正好相反。
+        # 取值范围：参考波动 0.15~0.35（等于它时分数不变，故不改整体量纲）；
+        #   波动下限 0.02~0.10（防除零与极端放大）。默认关闭。
+        "enable_risk_adj_momentum": False,
+        "risk_adj_ref_vol": 0.25,
+        "risk_adj_vol_floor": 0.05,
+        # 安慰剂对照（仅回测验证用）：0 = 用当日波动；>0 = 用 N 个交易日前的波动
+        # （分布相同、与未来收益的对齐被破坏）。
+        "risk_adj_lag": 0,
+
+        # —— 趋势质量：上下行波动比（打分层质量乘子，本项目补充）——
+        # 动机：①（风险调整动量 = 除以总波动）已实测**否决** —— 它在三段 MDD 全部变差。
+        #   根因诊断：它惩罚了**全部**波动，把「猛」也一起罚掉了，而策略的收益来源恰恰是
+        #   暴力趋势（515880 通信 / 515030 新能源车都是高波动品种）。
+        # 本参数只罚**下行**波动、保留上行：
+        #     q = 2·r/(1+r)，其中 r = 上行波动 / 下行波动（均方根口径，窗口 = lookback_days+1）
+        #     r=1（上下对称）→ q=1；r=2（涨得比跌得猛）→ q=1.33；r=0.5 → q=0.67
+        #   即：**保留「猛」、只罚「颠」** —— 与 `r2`（罚「弯」）互补，
+        #   共同刻画「又猛又直」。`r2_threshold` 是唯一验证有效的改动（趋势质量族），
+        #   本参数是同一族里的第二个度量。
+        # ⚠️ 与 ① 同样的关键设计：**只改排序，不改过滤**（`passed_momentum` 仍用原始 score）。
+        # 取值范围：强度 k ∈ [0, 4]（0 = 等价关闭）；窗口固定为 lookback_days。
+        # ⚠️ 2026-09-13 已完成全套验证并**采纳 k=3**（用户决定）。验证结果：
+        #   关卡            OFF         k=2         k=3
+        #   全窗口夏普       0.9455      1.1938      1.2081
+        #   全窗口 MDD       39.02%      30.84%      25.18%
+        #   段A 夏普         1.0676      1.5525      1.4756
+        #   段B 夏普         1.7854      1.8713      1.8495
+        #   12 滚动起始日中位 307.6%      343.2%      346.1%
+        #   12 滚动起始日下四分 146.1%    168.7%      169.6%
+        #   12 滚动起始日最小  62.0%      82.7%       83.6%
+        #   滚动 MDD        −22.6%      −20.3%      −20.3%
+        #   安慰剂(全窗口夏普)  —        0.9782      0.9273   ← 真实信号均胜过安慰剂
+        #   k 扫描（全窗口夏普）：0.5→0.9430  1→1.0182  2→1.1938  2.5→1.2254
+        #                        3→1.2081  4→1.2966  8→1.1674  100(≈纯 q 排序)→1.1785
+        # ⚠️ **k ∈ [2, 4] 是平坦区，两者差异全在噪音范围内（夏普差 ≈0.01~0.09）** →
+        #   取 k=3 是**偏好决策（多数关卡略优），不是证据决策**。**请勿再在 2~4 之间精细调参** ——
+        #   那等于在同一份数据上继续挑点，是过拟合。上沿拐点在 k=8~100（回落）已确认，
+        #   故不存在「越大越好」的杠杆效应。
+        # 机制注记：q 度量「上行波动/下行波动」，与 25 日动量**高度相关**，可视为
+        #   **动量的一个更鲁棒的度量**（不依赖 log 回归斜率、对极端值更稳健），
+        #   与 `r2_threshold`（趋势质量族）同源。纯 q 排序（k=100，动量几乎不起作用）
+        #   夏普仍有 1.1785 / MDD 27.79% → q 本身即强因子。
+        "enable_trend_quality": True,
+        "trend_quality_power": 3.0,
+        # 安慰剂对照（仅回测验证用）：0 = 用当日窗口；>0 = 用 N 个交易日前的窗口。
+        # ⚠️ 上限受 `_data_cache` 行数约束（`_flush_pending_rows` 只保留
+        #   lookback_days + mainline_days + 30 = 60 行）→ **lag 最大只能取 ~34**，
+        #   超过则窗口不足、静默退化为不调整（实测 lag=60 时该臂与 OFF 逐位相同）。
+        "trend_quality_lag": 0,
+
         # —— 运行 ——
         "verbose_logging": True,
     }
@@ -245,6 +406,31 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self.loss = float(merged["loss"])
         self.enable_entry_gain_filter = bool(merged["enable_entry_gain_filter"])
         self.entry_max_gain_pct = float(merged["entry_max_gain_pct"])
+        self.entry_gain_veto = bool(merged.get("entry_gain_veto", False))
+
+        # 动量失效闸门
+        self.momentum_efficacy_threshold = float(
+            merged.get("momentum_efficacy_threshold", _EFF_DISABLED_THRESHOLD))
+        self.momentum_efficacy_lag = max(0, int(merged.get("momentum_efficacy_lag", 0)))
+
+        # 波动率目标化
+        self.vol_target_annual = max(0.0, float(merged.get("vol_target_annual", 0.0)))
+        self.vol_scale_min = max(0.0, float(merged.get("vol_scale_min", 0.3)))
+        self.vol_scale_max = max(0.0, float(merged.get("vol_scale_max", 1.0)))
+        self.vol_target_lag = max(0, int(merged.get("vol_target_lag", 0)))
+        self.vol_gate_drawdown = max(0.0, float(merged.get("vol_gate_drawdown", 0.0)))
+        self.vol_gate_vol = max(0.0, float(merged.get("vol_gate_vol", 0.0)))
+
+        # 风险调整动量
+        self.enable_risk_adj_momentum = bool(merged.get("enable_risk_adj_momentum", False))
+        self.risk_adj_ref_vol = max(1e-6, float(merged.get("risk_adj_ref_vol", 0.25)))
+        self.risk_adj_vol_floor = max(1e-6, float(merged.get("risk_adj_vol_floor", 0.05)))
+        self.risk_adj_lag = max(0, int(merged.get("risk_adj_lag", 0)))
+
+        # 趋势质量（上下行波动比）
+        self.enable_trend_quality = bool(merged.get("enable_trend_quality", False))
+        self.trend_quality_lag = max(0, int(merged.get("trend_quality_lag", 0)))
+        self.trend_quality_power = max(0.0, float(merged.get("trend_quality_power", 1.0)))
 
         # 主线
         self.enable_super_mainline = bool(merged["enable_super_mainline"])
@@ -289,6 +475,13 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._rebalance_seq: int = 0   # 调仓序号（每调用一次 _run_rebalance 自增）
         self._pending_rows: Dict[str, list] = {}  # on_bar 累积待 flush
         self._is_weak: bool = False
+        self._eff: Optional[float] = None       # 最近一次算出的动量失效指标
+        self._eff_hist: List[float] = []        # 逐日 eff（安慰剂 lag 对照用）
+        self._momentum_gate: bool = False       # 本日闸门是否触发
+        self._equity_hist: List[float] = []     # 逐日权益（vol targeting 用）
+        self._equity_peak: float = 0.0          # 全历史权益峰值（回撤门槛用）
+        self._vol_scale_hist: List[float] = []  # 逐日仓位系数（安慰剂 lag 对照用）
+        self._vol_scale: float = 1.0            # 本日仓位的波动率缩放系数
         self._weak_start_date: Optional[str] = None
         self._weak_days_count: int = 0
         self._enter_streak: int = 0   # 连续满足进入条件的天数（weak_confirm_days 去抖用）
@@ -398,6 +591,14 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # 1. 走弱期判定
         self._update_weak_period(td)
 
+        # 1.2 动量失效闸门（L2.5）：每日更新 eff 与闸门状态。
+        #     放在 _update_weak_period 之后、_has_fresh_data 之前 —— 保证每个交易日都记录 eff，
+        #     eff 历史完整（安慰剂 lag 对照依赖连续历史）。
+        self._update_momentum_efficacy(td)
+
+        # 1.3 波动率目标化：更新本日仓位缩放系数（每日一次，保证权益历史连续）
+        self._update_vol_scale(td)
+
         # 1.5 F9 守卫：当日行情整体缺失时不调仓（见 _has_fresh_data）。
         #     必须早于止损与选股——两者都以价格为判据，数据缺失时会用陈旧收盘价
         #     误触发止损、或误判「无候选」而卖出持仓切国债。
@@ -423,8 +624,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         metrics = [m for m in metrics if m is not None]
         targets = self._select_targets(metrics)
 
-        # 4. 无候选 → 防御
-        if not targets:
+        # 4. 无候选 或 动量失效闸门触发 → 防御
+        if not targets or self._momentum_gate:
             targets = self._defensive_target()
 
         target_codes = [m["etf"] for m in targets]
@@ -555,6 +756,141 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         pool = self.global_pool if self._is_weak else (self.global_pool + self.china_pool)
         return any(self._bar_dates.get(c) == td for c in pool)
 
+    # =========================================================================
+    # 动量失效闸门（L2.5）
+    # =========================================================================
+    # =========================================================================
+    # 波动率目标化（vol targeting）
+    # =========================================================================
+    def _update_vol_scale(self, td: str) -> None:
+        """每日更新仓位缩放系数（详见 DEFAULT_PARAMS 注释）。
+
+        ⚠️ 时序：回测引擎在 `handle_bar_batch` **之后**才同步当日 `total_assets`
+        （`backtest_engine.py` 4d 步），故 `_run_rebalance(td)` 读到的
+        `context.total_assets` 是**前一日收盘权益** → 20 日波动率不含未来函数。
+        """
+        eq = _finite_or(getattr(self.context, "total_assets", 0.0), 0.0)
+        if eq > 0:
+            self._equity_hist.append(eq)
+            # 全历史峰值单独维护 —— `_equity_hist` 被 _VOL_HIST_MAX 截断，
+            # 若从它取 max 会把「历史最高」退化成「近 200 日最高」，回撤被系统性低估。
+            self._equity_peak = max(self._equity_peak, eq)
+        if len(self._equity_hist) > _VOL_HIST_MAX:
+            self._equity_hist = self._equity_hist[-_VOL_HIST_MAX:]
+
+        scale = 1.0
+        if self.vol_target_annual > 0 and len(self._equity_hist) >= _VOL_LOOKBACK + 1:
+            recent = np.asarray(self._equity_hist[-(_VOL_LOOKBACK + 1):], dtype=np.float64)
+            if bool(np.all(recent > 0)):
+                rets = recent[1:] / recent[:-1] - 1.0
+                vol = float(np.std(rets, ddof=1)) * math.sqrt(252.0)
+                dd = (eq / self._equity_peak - 1.0) if self._equity_peak > 0 else 0.0
+                gate_ok = True
+                if self.vol_gate_drawdown > 0 and dd > -self.vol_gate_drawdown:
+                    gate_ok = False
+                if self.vol_gate_vol > 0 and vol <= self.vol_gate_vol:
+                    gate_ok = False
+                if gate_ok and np.isfinite(vol) and vol > 1e-6:
+                    scale = min(max(self.vol_target_annual / vol,
+                                    self.vol_scale_min), self.vol_scale_max)
+                if self.verbose_logging:
+                    logger.info(
+                        f"[{self.name}] [VT] eq={eq:,.0f} peak={self._equity_peak:,.0f} "
+                        f"dd={dd:+.2%} vol={vol:.2%} gate_ok={gate_ok} scale={scale:.3f}"
+                    )
+
+        self._vol_scale_hist.append(scale)
+        if len(self._vol_scale_hist) > _VOL_HIST_MAX:
+            self._vol_scale_hist = self._vol_scale_hist[-_VOL_HIST_MAX:]
+
+        lag = self.vol_target_lag
+        if lag > 0 and len(self._vol_scale_hist) > lag:
+            self._vol_scale = float(self._vol_scale_hist[-1 - lag])
+        else:
+            self._vol_scale = scale
+
+    def _momentum_efficacy(self, td: str) -> Optional[float]:
+        """动量失效指标 eff[t]（定义见 DEFAULT_PARAMS 注释）。
+
+        只用 t 时刻及以前的数据：`spread[s]` 的排序来自 `s-1` 收盘、收益来自 `s` 当日，
+        故 `eff[t]` 在 t 收盘即可知，无未来函数。
+
+        Returns:
+            eff 值；有效标的不足 / 历史长度不足时返回 None（调用方沿用上一有效值）。
+        """
+        pool = [c for c in (self.global_pool + self.china_pool) if c in self._data_cache]
+        need = _EFF_LOOKBACK + _EFF_WINDOW + 1
+        hist: Dict[str, pd.Series] = {}
+        for c in pool:
+            df = self._data_cache.get(c)
+            if df is None or len(df) == 0 or "trade_date" not in df.columns:
+                continue
+            idx = df["trade_date"].astype(str).to_numpy()
+            vals = df["close"].to_numpy(dtype=np.float64)
+            ok = (idx <= td) & np.isfinite(vals) & (vals > 0)
+            if int(ok.sum()) < need:
+                continue
+            s = pd.Series(vals[ok], index=idx[ok])
+            hist[c] = s[~s.index.duplicated(keep="last")].sort_index()
+        if len(hist) < _EFF_MIN_CODES:
+            return None
+
+        mat = pd.DataFrame(hist).sort_index()
+        ret = mat.pct_change()
+        mom = mat.pct_change(_EFF_LOOKBACK)
+        spreads: List[float] = []
+        for i in range(1, len(mat)):
+            m = mom.iloc[i - 1].dropna()
+            if len(m) < 2 * _EFF_TOPN + 2:
+                continue
+            r = ret.iloc[i]
+            top = m.nlargest(_EFF_TOPN).index
+            bot = m.nsmallest(_EFF_TOPN).index
+            a, b = r[top].mean(), r[bot].mean()
+            if np.isfinite(a) and np.isfinite(b):
+                spreads.append(float(a - b))
+        if len(spreads) < _EFF_WINDOW:
+            return None
+        return float(np.sum(spreads[-_EFF_WINDOW:]))
+
+    def _update_momentum_efficacy(self, td: str) -> None:
+        """每日更新 eff 历史与闸门状态（每交易日恰好调用一次，保证历史连续）。"""
+        # 快速路径：闸门与安慰剂均未启用（threshold 为「永不触发」哨兵值且 lag=0）
+        # → 跳过全部计算。**行为中性**：关闭态下闸门本就恒为 False（唯一外部读取点是
+        # `_run_rebalance` 的 `self._momentum_gate`），故与不跳过时完全等价。
+        # ⚠️ lag > 0 时**不得跳过** —— 安慰剂对照需要连续的 eff 历史。
+        if (self.momentum_efficacy_threshold <= _EFF_DISABLED_THRESHOLD
+                and self.momentum_efficacy_lag == 0):
+            self._momentum_gate = False
+            return
+
+        eff = self._momentum_efficacy(td)
+        if eff is not None:
+            self._eff = eff
+        self._eff_hist.append(self._eff if self._eff is not None else float("nan"))
+        if len(self._eff_hist) > _EFF_HIST_MAX:
+            self._eff_hist = self._eff_hist[-_EFF_HIST_MAX:]
+
+        lag = self.momentum_efficacy_lag
+        if lag == 0:
+            decision_eff = self._eff
+        elif len(self._eff_hist) > lag:
+            decision_eff = self._eff_hist[-1 - lag]
+        else:
+            decision_eff = None
+
+        self._momentum_gate = bool(
+            decision_eff is not None
+            and np.isfinite(decision_eff)
+            and decision_eff < self.momentum_efficacy_threshold
+        )
+        if self._momentum_gate:
+            logger.info(
+                f"[{self.name}] [EFF-GATE] 动量失效 eff={decision_eff:+.4f} < "
+                f"{self.momentum_efficacy_threshold:+.4f}"
+                f"{f'（lag={lag}）' if lag else ''} → 本次改持防御标的 {self.defensive_etf}"
+            )
+
     def _candidate_pool(self) -> List[str]:
         """走弱期只用全球/商品池，正常期用全球+中国池（排除防御标的）。"""
         if self._is_weak:
@@ -667,6 +1003,54 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         }
         return passed, info
 
+    def _trend_quality(self, closes: np.ndarray) -> Optional[float]:
+        """上下行波动比的质量乘子 q（趋势质量用）。
+
+        `q = 2r/(1+r)`，`r = 上行均方根波动 / 下行均方根波动`（窗口 = lookback_days + 1）。
+        上下对称时 q=1；涨得比跌得猛时 q>1；反之 q<1。
+        数据不足 / 单边样本过少时返回 None（调用方退化为不调整，不抛错）。
+        """
+        lag = self.trend_quality_lag
+        end = len(closes) - lag
+        n = self.lookback_days + 1
+        if end < n:
+            return None
+        seg = np.asarray(closes[end - n:end], dtype=np.float64)
+        if not bool(np.all(np.isfinite(seg))) or bool(np.any(seg <= 0)):
+            return None
+        rets = seg[1:] / seg[:-1] - 1.0
+        up = rets[rets > 0]
+        dn = rets[rets < 0]
+        if up.size < 2 or dn.size < 2:
+            return None      # 单边样本过少 → 比值不可靠，fail-open
+        up_v = float(np.sqrt(np.mean(up ** 2)))
+        dn_v = float(np.sqrt(np.mean(dn ** 2)))
+        if not np.isfinite(up_v) or not np.isfinite(dn_v) or dn_v <= 0:
+            return None
+        r = up_v / dn_v
+        q = 2.0 * r / (1.0 + r)
+        return float(q) if np.isfinite(q) and q > 0 else None
+
+    def _recent_vol(self, closes: np.ndarray) -> Optional[float]:
+        """候选标的近 N 日年化波动率（风险调整动量用）。
+
+        `risk_adj_lag > 0` 时取 N 日**前**的那段窗口（安慰剂：分布相同、与未来收益对齐被破坏）。
+        数据不足或含非法值时返回 None（调用方退化为不调整，不抛错）。
+        """
+        lag = self.risk_adj_lag
+        end = len(closes) - lag
+        n = _RISKADJ_VOL_LOOKBACK + 1
+        if end < n:
+            return None
+        seg = np.asarray(closes[end - n:end], dtype=np.float64)
+        if not bool(np.all(np.isfinite(seg))) or bool(np.any(seg <= 0)):
+            return None
+        rets = seg[1:] / seg[:-1] - 1.0
+        if rets.size < 2:
+            return None
+        v = float(np.std(rets, ddof=1)) * math.sqrt(252.0)
+        return v if np.isfinite(v) and v > 0 else None
+
     def _score_candidate(self, code: str) -> Optional[Dict]:
         df = self._data_cache.get(code)
         if df is None or df.empty:
@@ -685,7 +1069,18 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         score, annualized, r2 = self._calc_momentum_score(closes, self.lookback_days)
         if score is None:
             return None
-        passed_momentum = self.min_score_threshold <= score <= self.max_score_threshold
+        # ⚠️ 过滤用**原始 score**；风险调整只改排序用的 `score`（见 DEFAULT_PARAMS 注释）
+        raw_score = float(score)
+        if self.enable_risk_adj_momentum:
+            _v = self._recent_vol(closes)
+            if _v is not None:
+                score = raw_score * (self.risk_adj_ref_vol
+                                     / max(_v, self.risk_adj_vol_floor))
+        if self.enable_trend_quality:
+            _q = self._trend_quality(closes)
+            if _q is not None and self.trend_quality_power > 0:
+                score = score * (_q ** self.trend_quality_power)
+        passed_momentum = self.min_score_threshold <= raw_score <= self.max_score_threshold
         vr = self._calc_volume_ratio(vols, self.volume_lookback)
         passed_volume = vr is not None and vr < self.volume_threshold
 
@@ -741,8 +1136,11 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         steps: List[Tuple[str, Any, bool]] = [
             ("动量得分", lambda m: m["passed_momentum"], True),
             ("R²", lambda m: m["passed_r2"], self.enable_r2_filter),
-            # 入场涨幅门对两个时期都生效：机制是「信号次日开盘接盘」，与候选池无关
-            ("入场涨幅", lambda m: m["passed_entry_gain"], self.enable_entry_gain_filter),
+            # 入场涨幅门对两个时期都生效：机制是「信号次日开盘接盘」，与候选池无关。
+            # entry_gain_veto=True 时**不在候选阶段过滤**——改由 _select_targets 在选出
+            # 头号目标后整体否决，避免「剔除→次优顶上」把否决变成换标的。
+            ("入场涨幅", lambda m: m["passed_entry_gain"],
+             self.enable_entry_gain_filter and not self.entry_gain_veto),
         ]
         if not self._is_weak:
             steps += [
@@ -798,6 +1196,18 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             else:
                 additional = remaining[:need]
             final = held + additional
+
+        # 入场涨幅门 · 整体否决模式：头号目标不合格 → 本日不建仓（返回空，
+        # 由 `_run_rebalance` 落进 `_defensive_target()`），而不是让次优候选顶上。
+        if (final and self.enable_entry_gain_filter and self.entry_gain_veto
+                and not final[0].get("passed_entry_gain", True)):
+            _g = final[0].get("gain_1d")
+            logger.info(
+                f"[{self.name}] [VETO] 头号目标 {final[0]['etf']} 信号日涨幅 "
+                f"{(_g if _g is not None else float('nan')):.2%} > {self.entry_max_gain_pct:.2%}"
+                f" → 本日否决建仓（不回退补位）"
+            )
+            return []
 
         if self.verbose_logging:
             logger.info(
@@ -867,7 +1277,13 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         else:
             weights = {k: v / total for k, v in raw.items()}
         cap = self.single_etf_max_position if n == 1 else self.max_single_position
-        return self._apply_cap(weights, cap)
+        weights = self._apply_cap(weights, cap)
+        # 波动率目标化：按近 20 日自身权益波动缩放（见 DEFAULT_PARAMS 注释）。
+        # 只在建仓/换仓时生效 —— 单 ETF 状态下无法对已持有仓位做部分增减，
+        # 而本策略平均 4.8 个交易日换一次仓，故 20 日尺度的缓变系数仍能随换仓跟上。
+        if self.vol_target_annual > 0 and self._vol_scale < 1.0:
+            weights = {k: v * self._vol_scale for k, v in weights.items()}
+        return weights
 
     @staticmethod
     def _apply_cap(weights: Dict[str, float], cap: float) -> Dict[str, float]:

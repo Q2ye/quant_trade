@@ -35,6 +35,10 @@ _SKIP_PREFIXES: tuple[str, ...] = (
     "/quantTrade/backtest/tasks/",   # 回测任务详情轮询（含 UUID 路径段）
     "/quantTrade/data/sync/status/", # 指定 task_id 的同步状态轮询
     "/quantTrade/data/indexes/",     # 指数行情轮询（000001.SH 等）
+    # 2026-09-13：回测报告的「逐标的名称解析」——一次打开会产生 N 个请求（N = 标的数），
+    # 属只读展示数据，与上面的指数轮询同类。
+    "/quantTrade/data/etfs/",        # ETF 详情（报告先试这个）
+    "/quantTrade/data/stocks/",      # 股票详情（股票类回测的回退分支）
 )
 
 

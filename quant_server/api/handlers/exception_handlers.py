@@ -17,6 +17,9 @@ from core.exceptions import (
 	ValidationException,
 	DataNotFoundException
 )
+# ResourceNotFoundException 未在 core.exceptions.__init__ 中再导出，
+# 按 modules/data/handlers.py 的既有约定从子模块导入。
+from core.exceptions.business_exceptions import ResourceNotFoundException
 from core.exceptions.error_codes import ErrorCode
 
 
@@ -129,7 +132,9 @@ def _get_http_status_for_exception (exc: QuantBaseException) -> int:
 		return 403
 	elif isinstance(exc, ValidationException):
 		return 400
-	elif isinstance(exc, DataNotFoundException):
+	elif isinstance(exc, (DataNotFoundException, ResourceNotFoundException)):
+		# ResourceNotFoundException 与 DataNotFoundException 语义同为「资源不存在」，
+		# 此前漏登记 → 落到 else 一律 500（实测：/data/stocks/513050.SH 对 ETF 代码返回 500）
 		return 404
 	else:
 		return 500

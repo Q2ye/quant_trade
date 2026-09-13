@@ -83,7 +83,9 @@ function renderChart() {
     chart = createChartInstance({
       timeScale: {
         timeVisible: false,
-        minBarSpacing: 10, // 2026-08: 放大上限统一为 10px
+        // 2026-09 修正：原为 minBarSpacing（限制的是「缩小」）→ 长曲线被截断。
+        // 限制「放大」的是 maxBarSpacing，见 useChartLifecycle 的说明。
+        maxBarSpacing: 10,
         rightOffset: 4,
         tickMarkFormatter: (time: Time) => {
           const d = new Date((time as number) * 1000);

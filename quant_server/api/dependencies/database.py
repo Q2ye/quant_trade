@@ -103,6 +103,11 @@ class APIDatabaseDependencies:
                 logger.debug("数据库会话获取成功")
                 yield session
 
+        except HTTPException:
+            # 端点内部抛出的 HTTPException（如 404）会经由 yield 点传回本生成器的
+            # try/except —— 必须原样透传，否则会被下面的分支重写成 500，
+            # 使全站任何端点都无法返回 404/409 等业务状态码。
+            raise
         except Exception as e:
             logger.error(f"数据库会话获取异常: {'服务器内部错误'}", exc_info=True)
 

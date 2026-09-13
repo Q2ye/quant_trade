@@ -18,6 +18,8 @@ import logging
 import uuid
 
 # 导入架构依赖
+from core.exceptions import BusinessException
+
 from api.dependencies.database import get_db_session
 from api.dependencies.auth import get_current_user
 from api.dependencies.event_engine import get_event_engine
@@ -201,6 +203,11 @@ async def get_stock_detail_api (
 		return result
 
 	except HTTPException:
+		raise
+	except BusinessException:
+		# 业务异常（如 ResourceNotFoundException）交给全局处理器映射状态码。
+		# 此前落到下面的 `except Exception` → 一律 500（`except ValueError` 接不住：
+		# BusinessException 继承 QuantBaseException(Exception)，不是 ValueError）。
 		raise
 	except ValueError as e:
 		logger.warning(f"股票不存在: {ts_code}, 错误: {'服务器内部错误'}")

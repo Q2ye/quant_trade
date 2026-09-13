@@ -86,8 +86,13 @@ export function useChartLifecycle(options: ChartLifecycleOptions = {}) {
       timeScale: {
         borderColor: dark ? DARK_BORDER : LIGHT_BORDER,
         timeVisible: true,
-        // 缩放最小限制（2026-08）：放大上限 = bar 间距 ≥10px（图表可经 options.timeScale.minBarSpacing 覆盖）
-        minBarSpacing: 10,
+        // ⚠️ 2026-09 修正（原为 minBarSpacing: 10）：
+        // 本意是「放大上限 = bar 间距 ≤10px」，但 minBarSpacing 是**最小**间距、限制的是**缩小**
+        // → 1200px 宽的图最多只能显示 120 根 bar，1846 天的回测净值曲线只剩约半年。
+        // lightweight-charts 5.x 中限制放大的是 maxBarSpacing（caller 可经 options.timeScale 覆盖）。
+        // 「不能无限缩小」由业务层的视口守卫保证（见 EquityCurveChart.setupViewportListener），
+        // 不依赖本参数。
+        maxBarSpacing: 10,
         ...options.timeScale,
       },
       handleScroll: { vertTouchDrag: false },
