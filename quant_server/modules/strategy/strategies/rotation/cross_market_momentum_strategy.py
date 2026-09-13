@@ -1199,7 +1199,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         return {
             "etf": code,
-            "score": float(score),
+            "score": float(score),          # 排序用（可能含趋势质量乘子）
+            "raw_score": raw_score,         # 过滤用（未乘质量因子）—— 两者必须分离
             "annualized": float(annualized) if annualized is not None else 0.0,
             "r2": float(r2) if r2 is not None else 0.0,
             "volume_ratio": vr,

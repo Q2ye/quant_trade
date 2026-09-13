@@ -182,7 +182,7 @@ select * from factor_data where ts_code = '002384.SZ';
 select * from factor_research;
 select * from factor_research where research_id ='research_419d48bf';
 -- 策略实例表cd2f4a88-2139-4708-aee5-23dbfd953b20
-select * from strategies;
+select * from strategies where status = 'running';
 select * from strategy_runs ;
 -- 策略版本管理表
 select * from strategy_versions;
