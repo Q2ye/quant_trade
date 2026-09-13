@@ -59,7 +59,7 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 
 关键环境变量（`.env`）：
 - `ENVIRONMENT` — `development` / `production` / `testing`，决定加载 `DEV_*` 还是 `PROD_*` 前缀配置
-- `SIMULATED_TRADING=true` — **安全总开关**，false 产生真实交易
+- `SIMULATED_TRADING` — ⚠️ **只影响日志与 API 返回值的展示，不是执行开关**。真正的执行开关是 `config.yaml` 的 `modules.trade.simulated_trading`（详见「安全红线」）
 - `DEV_DATABASE__HOST/PORT/USER/PASSWORD/NAME` — 开发库（默认 `quant_signals_dev`，与生产库隔离）
 - `DEV_TUSHARE_TOKEN` — Tushare Pro 数据源凭证
 - `AUTH_ENABLED=false` — JWT 校验开关（`config.yaml` 中控制，非 `.env`）
@@ -77,7 +77,11 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 
 ## 安全红线
 
-- **`SIMULATED_TRADING=true`** 是安全总开关。**开发/测试环境严禁设为 false**，否则产生真实资金交易。
+- ⚠️ **`.env` 的 `SIMULATED_TRADING` 不是执行开关**，它只被 `main.py` 用于日志与 API 返回值展示。**真正的执行开关是 `config.yaml` → `modules.trade.simulated_trading`**（`modules/trade/__init__.py:77-79`）。两者可背离，改一个不会影响另一个。
+- ⚠️ **本系统不具备自动下单能力，这一点不要误解**：`config.yaml` 的开关确实会改变执行路径（`execution_engine.py:170` 模拟内存直接成交 ←→ `:203` 「真实交易路径」调 `broker_adapter.send_order`），**但两条路径的 broker 都是 `SimBrokerAdapter`**（`modules/trade/__init__.py:96-106`，`BrokerAdapter` 基类的 7 个方法全为 `pass`，全仓无真实券商适配器实现）。因此**把 `SIMULATED_TRADING` 或 `simulated_trading` 设为 false，都不会产生真实交易**。
+  > 误解来源：`execution_engine.py:163,165,202` 的注释与日志（「安全红线 — 模拟模式下绝不向券商发送真实订单」「[LIVE] 真实交易模式：发送订单至券商」）是按「能真实下单」写的，但该能力从未实现。
+  > 另注：`TradeManager.simulated_trading` 可被 `update_trading_config` **运行时修改**（`trade_manager.py:45-46`），无审计。
+- ✅ **真实资金风险的唯一路径是人工环节**：系统出信号 → 人工在券商端下单 → 人工回系统「确认成交」+「录入成交」（`execution_mode=semi_auto`）。保护你的是人工确认这一步，不是上面那两个开关——**别把开关当成兜底**。
 - **严禁**向 `.env`、`.git/`、凭证文件写入任何内容。
 - **严禁**在 `master` 分支上直接提交。
 - 高收益目标不豁免任何安全/风控红线（见 `AGENTS.md`）。
