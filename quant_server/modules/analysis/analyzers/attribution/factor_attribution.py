@@ -408,7 +408,12 @@ class FactorAttribution:
 			residuals = y - y_pred
 
 			# R-squared
-			ss_total = float(np.sum(weights * (y - np.mean(y)) ** 2))
+			# 加权 R² 的总离差须按**加权均值**中心化（拟合与残差均用 weights）：
+			# 用无权 np.mean(y) 会使 SS_total = SS_reg + SS_residual 不成立 → R² 可为负。
+			_w_sum = float(np.sum(weights))
+			y_bar_w = (float(np.sum(weights * y) / _w_sum) if _w_sum > 0.0
+			           else float(np.mean(y)))
+			ss_total = float(np.sum(weights * (y - y_bar_w) ** 2))
 			ss_residual = float(np.sum(weights * residuals ** 2))
 			r_squared = 1.0 - ss_residual / ss_total if ss_total > 0.0 else 0.0
 

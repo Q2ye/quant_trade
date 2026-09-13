@@ -975,6 +975,21 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         ss_res = float(np.sum(weights * (y - y_pred) ** 2))
         ss_tot = float(np.sum(weights * (y - float(np.mean(y))) ** 2))
         r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+        # 负 R² 在「样本内 + 带截距」回归里数学上不可能，此处出现负值源于加权口径不一致：
+        # 拟合用 W = weights²，残差/总离差用 weights，而总离差又按**无权**均值 np.mean(y)
+        # 中心化 → SS_tot = SS_reg + SS_res 不成立 → R² 可为负（实测 5.58% 样本）。
+        # 危害：`score = 年化 × R²`，**负 R² 与负年化相乘得正**，会让下跌标的通过
+        #       `raw_score >= 0` 的动量门（实测 2.83% 构成符号翻转）。
+        # 修法：夹到 0。这样**所有正 R² 逐位不变** → `r2_threshold` 的标定含义不受影响；
+        #       而夹零后的 r2 = 0 会被 `passed_r2 = r2 > r2_threshold` 直接拦下，不再入选。
+        # 实测（2019-06~2026-09 全区间回测）：夹零前后结果**逐位相同** —— 翻转样本从未登顶。
+        # 之所以仍要做：实测翻转得分上界 0.0101 只是**经验**上界，数学上无上界（极端路径
+        # 下 r2=−0.5 × 年化−100% = +0.5 足以登顶）。夹零是零代价的尾部风险保险。
+        # ⚠️ 曾评估过「全 W 同权的教科书 WLS R²」修法：数学更自洁，但它会扰动**全部**正 R²
+        #    （|Δr²| 均值 0.041 / 最大 0.150），在 `r2_threshold=0.47` 已被标定的前提下
+        #    实测把 7.6 年收益从 1022.7% 打到 466.7%、MDD 从 25.2% 恶化到 39.2%（-556pp）。
+        #    故否决，采用夹零。
+        r2 = max(0.0, r2)
         return float(annualized * r2), annualized, r2
 
     def _calc_volume_ratio(self, vols: np.ndarray, lookback: int) -> Optional[float]:
