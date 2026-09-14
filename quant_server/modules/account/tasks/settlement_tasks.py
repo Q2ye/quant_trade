@@ -422,6 +422,26 @@ class SettlementTasks:
                     close_map[_r.ts_code] = Decimal(str(_r.close))
         except Exception as _e:
             logger.warning(f"ETF 收盘价重估查询失败: {_e}")
+        # 2026-09-14 修复：当日收盘价缺失时的兜底，从「持仓 last_price」改为
+        # 「最近一个已入库的收盘价」。last_price 可能是成本价或陈旧值 —— 直接用它
+        # 兜底会让市值回退成本价（浮亏被掩盖），而且这个误差不是消失的噪声：
+        # 次日结算的「昨日总资产」读的就是这条错记录，误差会在次日以「当日盈亏」
+        # 形式一次性结转（实测 84d81a14 的 -117.00 = 09-11 兜底高估 -109.50 +
+        # 09-14 真实跌幅 -7.50；09-04 的 -44.50 是 09-03 兜底的同型结转）。
+        missing = [
+            p.ts_code
+            for p in positions
+            if (p.volume or 0) > 0 and p.ts_code not in close_map
+        ]
+        if missing:
+            close_map.update(await self._get_last_available_close(missing, trading_day))
+            still_missing = [c for c in missing if c not in close_map]
+            logger.warning(
+                "结算重估: %s 有 %d 只标的缺当日收盘价，已回退最近收盘价；"
+                "仍缺 %d 只（将回退 last_price）=%s",
+                trading_day, len(missing), len(still_missing), still_missing,
+            )
+
         market_value = Decimal("0")
         for p in positions:
             if not p.volume or p.volume <= 0:
@@ -431,6 +451,48 @@ class SettlementTasks:
                 close = Decimal(str(p.last_price)) if p.last_price else Decimal("0")
             market_value += Decimal(str(p.volume)) * close
         return market_value
+
+    async def _get_last_available_close(
+        self, symbols: List[str], before: date,
+    ) -> Dict[str, Decimal]:
+        """取每只标的在 before 之前「最近一个已入库」的收盘价。
+
+        用于当日行情未就绪时的兜底：比持仓 last_price（可能是成本价）更接近真实
+        市值，把跨日估值误差从「建仓以来全部浮亏」压回「1 个交易日涨跌」量级。
+        未取到的标的不会出现在返回字典中（最终兜底由调用方决定）。
+
+        Args:
+            symbols: 待查询标的代码
+            before: 上界（不含），即只取该日之前的记录
+
+        Returns:
+            {ts_code: Decimal close}，仅包含查到的标的
+        """
+        out: Dict[str, Decimal] = {}
+        if not symbols:
+            return out
+        from sqlalchemy import text as _text
+
+        # DISTINCT ON 走 (ts_code, trade_date) 索引，每只标的只回一行，避免拉全量历史。
+        # 顺序与主路径一致：先 stock_daily 后 etf_daily（同码时 ETF 覆盖，与
+        # close_map 的构造顺序相同）。
+        for tbl in ("stock_daily", "etf_daily"):
+            sql = (
+                f"SELECT DISTINCT ON (ts_code) ts_code, close FROM {tbl} "
+                "WHERE ts_code = ANY(:symbols) AND trade_date < :before "
+                "ORDER BY ts_code, trade_date DESC"
+            )
+            try:
+                rows = (await self.account_repo.session.execute(
+                    _text(sql), {"symbols": symbols, "before": before},
+                )).all()
+            except Exception as _e:  # noqa: BLE001 — 兜底查询失败不应打断结算
+                logger.warning(f"最近收盘价兜底查询失败({tbl}): {_e}")
+                continue
+            for _r in rows:
+                if _r[1] is not None:
+                    out[_r[0]] = Decimal(str(_r[1]))
+        return out
 
     async def _get_yesterday_total_asset(self, account_id: str, trading_day: date) -> Decimal:
         """取前一结算日总资产；无历史快照时用初始资金兜底"""

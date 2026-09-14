@@ -1063,6 +1063,7 @@ class StrategyManager(EngineBase):
             return 0
 
         synced = 0
+        to_persist: List[tuple] = []
         for sid, sname, aid in rows:
             context = self._contexts.get(str(sid))
             if context is None:
@@ -1081,7 +1082,33 @@ class StrategyManager(EngineBase):
                 "sizing 基准同步: 策略=%s 账户=%s 权益 %.0f → %.0f（可用 %.0f）",
                 sname, str(aid)[:8], old, total, avail,
             )
+            to_persist.append((str(sid), total))
             synced += 1
+
+        # 2026-09-14 修复：同步结果落库 `strategies.allocated_capital`。
+        # 此前只写 context（内存），DB 值停在启动时的 20,000 → 前端展示的分配额
+        # 与实际 sizing 基准分叉，且「分配之和 ≈ 账户权益」的自洽核对失去意义。
+        # 与组合路径（composite_rebalance → update_allocated_capital）写同一列、
+        # 同一语义（本策略被授权部署的资本）；二者按 composite_group_id IS NULL 互斥。
+        # 落库范围与上面 context 写入范围逐条一致（同样跳过 total<=0），避免再次分叉。
+        if to_persist:
+            try:
+                from sqlalchemy import text as _text
+
+                async with self.session_factory() as session:
+                    # executemany 批量提交（非循环内逐条 execute）
+                    await session.execute(
+                        _text(
+                            "UPDATE strategies "
+                            "SET allocated_capital = :cap, updated_at = NOW() "
+                            "WHERE id = :sid"
+                        ),
+                        [{"sid": sid, "cap": cap} for sid, cap in to_persist],
+                    )
+                    await session.commit()
+                logger.info("allocated_capital 落库: %d 个独立策略", len(to_persist))
+            except Exception as e:
+                logger.warning("allocated_capital 落库失败（非致命）: %s", e)
         return synced
 
     def sync_backtest_account(

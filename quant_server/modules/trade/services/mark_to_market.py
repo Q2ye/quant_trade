@@ -12,12 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.data.events.sync_events import DataSyncCompletedEvent
 from shared.database.models.business_models import Position
-from shared.database.models.data_models import StockAdjustedPrices, StockDaily
+from shared.database.models.data_models import EtfDaily, StockAdjustedPrices, StockDaily
 
 logger = logging.getLogger(__name__)
 
-# 日线行情相关的 sync_type（监听这些类型的同步完成事件）
-WATCHED_SYNC_TYPES = {"daily", "batch"}
+# 日线行情相关的 sync_type（监听这些类型的同步完成事件）。
+# 2026-09-14 修复：日终流水线用的是 DataType 枚举值作 sync_type
+# （DAILY_QUOTES="daily_quotes" / ETF_DAILY="etf_daily"），而原白名单只有
+# {"daily","batch"} —— 其中 "daily" 对应 DataType.DAILY，全仓从未被使用
+# → 守卫 `sync_type not in WATCHED_SYNC_TYPES` 恒不通过 → 盯市从未触发过
+# （positions.last_price/market_value/pnl 自成交录单后即不再更新）。
+# 这里只列「携带持仓收盘价」的类型，避免因子/财务等无关同步触发重复盯市。
+WATCHED_SYNC_TYPES = {"daily", "batch", "daily_quotes", "etf_daily"}
 
 
 async def _get_today_close_prices(
@@ -42,6 +48,25 @@ async def _get_today_close_prices(
     for row in result.fetchall():
         if row[1] is not None:
             prices[row[0]] = float(row[1])
+
+    # 2026-09-14 修复：ETF 收盘价在 etf_daily —— 512400/159985 等 ETF 在
+    # stock_daily 中不存在，只查 stock_daily 会让 ETF 持仓永远取不到价、
+    # 被 `last_price is None` 跳过 → 浮动盈亏恒 0。
+    # 与 settlement_tasks._mark_to_market 2026-08-25 的同一修复对齐。
+    try:
+        q_etf = select(
+            EtfDaily.ts_code,
+            EtfDaily.close,
+        ).where(
+            EtfDaily.trade_date == trade_date,
+            EtfDaily.ts_code.in_(ts_codes),
+        )
+        etf_result = await session.execute(q_etf)
+        for row in etf_result.fetchall():
+            if row[1] is not None:
+                prices[row[0]] = float(row[1])
+    except Exception:
+        logger.warning("盯市: etf_daily 收盘价查询失败（ETF 持仓本次跳过）", exc_info=True)
 
     return prices
 
@@ -135,8 +160,16 @@ async def on_data_sync_completed(
         event: 数据同步完成事件
         session_factory: 异步 session 工厂
     """
-    sync_type = getattr(event, "sync_type", "") or ""
-    # 只对日线/批量同步做盯市，跳过因子/财务/ETF 等
+    # 2026-09-14 修复（根因）：`DataSyncCompletedEvent` 把业务字段放在 `event.data`
+    # （见 modules/data/events/sync_events.py：self.data = {"sync_type": ...}），
+    # **没有** `event.sync_type` 属性 —— 原实现 `getattr(event, "sync_type", "")`
+    # 恒得 ""，守卫 `"" not in WATCHED_SYNC_TYPES` 恒为真 → 盯市从未触发过。
+    # 保留属性式读取作为兜底，兼容另一些按属性传 sync_type 的事件对象。
+    _data = getattr(event, "data", None) or {}
+    sync_type = _data.get("sync_type") or getattr(event, "sync_type", "") or ""
+
+    # 只对「携带持仓收盘价」的同步做盯市（日行情 / ETF 行情 / 批量），
+    # 跳过因子、财务、资金流等无关类型。
     if sync_type not in WATCHED_SYNC_TYPES:
         return
 
