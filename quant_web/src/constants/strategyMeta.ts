@@ -73,9 +73,11 @@ export const BUILTIN_STRATEGIES: Record<string, {
     description: '全市场强势股低吸轮动，MACD 金叉+量比+低吸位置',
     params: {
       max_positions: { label: '最大持仓数', type: 'int', default: 3, min: 1, max: 10 },
-      stop_loss: { label: '止损比例', type: 'float', default: -0.04, min: -0.2, max: 0 },
+      // 2026-09-15：与后端策略统一 —— 止损参数改名 *_stop_loss_pct 且改用**正数跌幅阈值**。
+      // 只改表单元数据，未改后端时前端展示会与实际参数脱节（原为 -0.04 / [-0.2, 0]）。
+      stop_loss_pct: { label: '止损比例', type: 'float', default: 0.04, min: 0, max: 0.2 },
       bear_max_pos: { label: '下跌市最大持仓', type: 'int', default: 1, min: 1, max: 5 },
-      bear_stop_loss: { label: '下跌市止损', type: 'float', default: -0.04, min: -0.2, max: 0 },
+      bear_stop_loss_pct: { label: '下跌市止损', type: 'float', default: 0.04, min: 0, max: 0.2 },
     },
   },
 }
@@ -86,14 +88,18 @@ export const PARAM_LABELS: Record<string, string> = {
   slow_period: '慢线周期',
   signal_period: '信号周期',
   position_ratio: '仓位比例',
-  stop_loss: '止损比例',
+  // 2026-09-15：与后端统一 —— 止损类参数改名并改用正数跌幅阈值
+  stop_loss_pct: '止损比例',
+  sideways_stop_loss_pct: '震荡市止损',
+  bear_stop_loss_pct: '下跌市止损',
+  stop_loss: '止损比例（旧·负值，后端已弃用）',
   take_profit: '止盈比例',
   trend_weight: '趋势权重',
   volume_weight: '量价权重',
   valuation_weight: '估值权重',
   max_positions: '最大持仓数',
   bear_max_pos: '下跌市最大持仓',
-  bear_stop_loss: '下跌市止损',
+  bear_stop_loss: '下跌市止损（旧·负值，后端已弃用）',
   intraday_stop_loss: '日内止损',
   cooling_period: '冷却期(天)',
 }

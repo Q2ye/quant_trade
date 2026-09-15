@@ -368,7 +368,9 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
       min_volume_ratio: '最低量比', roc_threshold: 'ROC阈值',
       buy_below_high_rate: '低吸比率(低于20日新高)', new_stock_days: '新股过滤天数',
       lookback_days: '选股回溯天数', rebalance_frequency: '调仓频率(天)',
-      max_positions: '最大持仓数', stop_loss: '止损比例',
+      max_positions: '最大持仓数',
+      // 2026-09-15：与后端统一 —— 止损参数改名 *_stop_loss_pct 并改用正数跌幅阈值
+      stop_loss_pct: '止损比例', bear_stop_loss_pct: '下跌市止损', sideways_stop_loss_pct: '震荡市止损',
       csi500_ma_short: '中证500短期均线', csi500_ma_long: '中证500长期均线',
       csi500_sideways_pct: '震荡市判定阈值',
       bear_max_pos: '下跌市最大持仓', bear_stop_loss: '下跌市止损比例',

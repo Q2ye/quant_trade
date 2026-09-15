@@ -233,3 +233,78 @@ class TestConfirmedActiveExclusion:
         sig = strat._make_exit("510050.SH", bar, "止盈", "take_profit")
         assert sig is not None
         assert "510050.SH" not in strat._confirmed_active
+
+
+class TestStopLossSignUnification:
+    """2026-09-15 止损符号统一（正数跌幅阈值）回归。
+
+    锁定 `_check_exit` 的动态止损阈值 —— 这是本次改动风险最高的一处
+    （原式为负数域 `dyn_stop = max(min(-s, -2.5×ar), -1.5×s)`，s 为负；
+     取负后等价变换为 `dyn_stop_pct = min(max(s, 2.5×ar), 1.5×s)`，s 为正）。
+    本测试即锁定「符号统一不得改变触发边界」。
+    """
+
+    CODE = "510050.SH"
+    #: 与策略 DEFAULT_PARAMS["regime_stop_loss_pct"] 一致（0=熊 1=震 2=牛）
+    BASE = {0: 0.08, 1: 0.06, 2: 0.07}
+
+    @classmethod
+    def _make(cls, regime=1, ar=0.02, entry=10.0):
+        s = _make_strategy()
+        # entry_date 用 bar 当日 → 持仓天数 0，避免「时间兜底」分支先于止损返回
+        s._position_entry[cls.CODE] = (_dt.date(2026, 8, 14), entry)
+        s._track_high[cls.CODE] = entry
+        s._get_regime = lambda code, td: regime
+        s._get_factor_value = lambda code, td, name: ar
+        return s
+
+    def test_param_renamed_and_positive(self):
+        """参数键已改名且全为正数（原 regime_stop_loss 为负值）"""
+        s = _make_strategy()
+        assert "regime_stop_loss_pct" in s.parameters, "应存在正数键 regime_stop_loss_pct"
+        assert "regime_stop_loss" not in s.parameters, "旧负值键不应残留"
+        assert all(v > 0 for v in s.parameters["regime_stop_loss_pct"].values()), \
+            f"全部应为正数跌幅阈值，实际 {s.parameters['regime_stop_loss_pct']}"
+
+    @pytest.mark.parametrize("regime", [0, 1, 2])
+    @pytest.mark.parametrize("ar", [0.005, 0.02, 0.05])
+    def test_boundary_matches_documented_formula(self, regime, ar):
+        """触发边界 = `min(max(base, 2.5×ar), 1.5×base)`；恰等不触发、略低即触发"""
+        base = self.BASE[regime]
+        dyn = min(max(base, 2.5 * ar), base * 1.5)
+        entry = 10.0
+
+        # 判据为**严格**小于（`pnl < -dyn_stop_pct`）：边界内侧(ε)不触发、外侧(ε)触发。
+        # ⚠️ 不可用 `entry*(1-dyn)` 构造"恰在边界"：`10*(1-0.06)=9.399999999999999`，
+        # 浮点使 pnl 比 -dyn 更负约 5e-17 → 会被判为已触发（本次实测踩到）。
+        EPS = 1e-6
+
+        # 边界内侧 → 不触发
+        s = self._make(regime=regime, ar=ar, entry=entry)
+        assert s._check_exit(self.CODE, _make_bar(close=entry * (1 - dyn + EPS))) is None, \
+            f"边界内侧不应触发（regime={regime} ar={ar} dyn={dyn:.4f}）"
+
+        # 边界外侧 → 触发止损
+        s2 = self._make(regime=regime, ar=ar, entry=entry)
+        sig = s2._check_exit(self.CODE, _make_bar(close=entry * (1 - dyn - EPS)))
+        assert sig is not None, f"低于边界应触发（regime={regime} ar={ar} dyn={dyn:.4f}）"
+        from modules.strategy.constants import SignalType
+        assert sig.signal_type == SignalType.STOP_LOSS
+
+    def test_high_vol_widened_but_capped_at_1_5x(self):
+        """高波动放宽但封顶 1.5×base（P2-3 cap 语义不得被符号统一破坏）"""
+        base = self.BASE[0]           # 0.08
+        dyn = min(max(base, 2.5 * 0.10), base * 1.5)
+        assert abs(dyn - base * 1.5) < 1e-12, "高波动应被 1.5×base 封顶"
+        # 边界验真：按封顶值触发
+        entry = 10.0
+        s = self._make(regime=0, ar=0.10, entry=entry)
+        assert s._check_exit(self.CODE, _make_bar(close=entry * (1 - dyn + 1e-6))) is None
+        s2 = self._make(regime=0, ar=0.10, entry=entry)
+        assert s2._check_exit(self.CODE, _make_bar(close=entry * (1 - dyn - 1e-6))) is not None
+
+    def test_low_vol_not_tightened(self):
+        """低波动不得收紧止损（max(base, 2.5×ar) 保证不严于 base）"""
+        base = self.BASE[1]           # 0.06
+        dyn = min(max(base, 2.5 * 0.001), base * 1.5)
+        assert abs(dyn - base) < 1e-12, "低波动时阈值应恰为 base（不收紧）"

@@ -24,7 +24,7 @@ globs: quant_web/src/components/**
 
 ## 图表组件规范（ChartCard 等）
 - **图表库**：统一使用 Apache ECharts 5.x。
-- **主题注入**：图表颜色随 Naive UI 深色/浅色主题自动适配，通过 `src/plugins/echarts.ts` 注入全局 `$echarts` 实例。图表配色引用 `naive-theme.ts` 中 `THEME_CONSTANTS` 的语义色（`--n-primary-color`、`--n-success-color` 等），无需单独 `registerTheme`。
+- **主题注入**：图表颜色随 Naive UI 深色/浅色主题自动适配，通过 `quant_web/src/main.ts` 注入全局 `$echarts` 实例（`app.config.globalProperties.$echarts = echarts`）。图表配色引用 `naive-theme.ts` 中 `THEME_CONSTANTS` 的语义色（`--n-primary-color`、`--n-success-color` 等），无需单独 `registerTheme`。
 - **数据格式**：传入数据遵循 `{ categories: string[], series: { name: string, data: number[] }[] }` 或特定图表类型格式（在组件内转换）。
 - **响应式**：必须在 `mounted` 和窗口 `resize` 事件中调用 `chart.resize()`。
 - **交互**：tooltip 必须显示，鼠标悬停高亮，支持点击事件向外 emit。

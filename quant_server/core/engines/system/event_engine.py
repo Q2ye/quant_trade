@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable, Deque
 
 from core.events.base import BaseEvent
+from core.events.types import EventPriority
 # 导入引擎基类
 from ..base.engine_base import EngineBase, EngineConfigEntity
 # 导入统一类型定义
@@ -33,6 +34,46 @@ from ..types.enums import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_ENGINE_PRIORITY_BY_EVENT_PRIORITY = {
+    EventPriority.CRITICAL: 1,
+    EventPriority.HIGH: 2,
+    EventPriority.NORMAL: 3,
+    EventPriority.LOW: 4,
+}
+
+
+def _normalize_priority (p: Any) -> int:
+    """把各种优先级入参统一到**引擎内部尺度**（1=最紧急 … 5=最不紧急）。
+
+    ⚠️ 2026-09-15 修复（此前**全系统事件优先级被解读反**）：
+    系统里存在**两个方向相反**的优先级枚举 ——
+      · `core.events.types.EventPriority`（IntEnum：LOW=10 / NORMAL=50 / HIGH=80 /
+        CRITICAL=100，**数值越大越紧急**）—— **`BaseEvent` 实际用的就是它**
+        （`metadata.priority`，默认 `EventPriority.NORMAL`）；
+      · `core.engines.types.enums.PriorityLevel`（str 枚举，映射 1=CRITICAL … 5=BACKGROUND，
+        **数值越小越紧急**）—— 引擎内部尺度。
+
+    旧实现只转换 `PriorityLevel` / `str` 两种入参，而 `EventPriority` 是 IntEnum
+    （`isinstance(p, int)` 为真）→ 命中 `if isinstance(p, int): return p` → **原值透传**。
+    后果：堆按 10..100 排序，**LOW(10) 最先出队、CRITICAL(100) 最后出队**；
+    且 `put` 的队列溢出保护判据 `priority <= 2` 对任何 `EventPriority` 都不成立
+    → A21「CRITICAL 事件不被丢弃」的修复**实际从未生效**。
+    """
+    if isinstance(p, PriorityLevel):
+        return PriorityLevel.get_priority_value(p)
+    if isinstance(p, EventPriority):
+        return _ENGINE_PRIORITY_BY_EVENT_PRIORITY.get(p, 3)
+    if isinstance(p, str):
+        try:
+            return PriorityLevel.get_priority_value(PriorityLevel(p))
+        except (ValueError, KeyError):
+            return 3
+    if isinstance(p, int):
+        # 已是引擎尺度（1..5）→ 原样；否则视为未知尺度，回落 NORMAL
+        return p if 1 <= p <= 5 else 3
+    return 3
 
 
 @dataclass(order=True)
@@ -53,18 +94,9 @@ class QueuedEvent:
 		# 按字母序排序 → 'background' < 'critical' < 'high' < 'normal'，BACKGROUND 反而最先出队。
 		# 改为数值（1=CRITICAL 最紧急 … 5=BACKGROUND），数值越小越先出队。
 		def _to_value(p):
-			try:
-				# 修复 2026-08（A20b）：PriorityLevel 是 str 子类，必须先判枚举成员，
-				# 否则 PriorityLevel(成员) 对 str 枚举抛 ValueError 落入默认 NORMAL
-				if isinstance(p, PriorityLevel):
-					return PriorityLevel.get_priority_value(p)
-				if isinstance(p, str):
-					return PriorityLevel.get_priority_value(PriorityLevel(p))
-				if isinstance(p, int):
-					return p
-			except (ValueError, KeyError):
-				pass
-			return PriorityLevel.get_priority_value(PriorityLevel.NORMAL)
+			# 2026-09-15：统一委托给模块级 `_normalize_priority`（原来只处理
+			# PriorityLevel/str/int，导致 EventPriority 原值透传 → 优先级反向）。
+			return _normalize_priority(p)
 
 		if isinstance(event, BaseEvent):
 			prio = getattr(getattr(event, 'metadata', None), 'priority', PriorityLevel.NORMAL)
@@ -389,6 +421,12 @@ class EventEngine(EngineBase):
 				event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
 				if event_type in self._event_handlers:
 					handlers.extend(self._event_handlers[event_type])
+				else:
+					# 2026-09-15：类式订阅的回退键（见 subscribe 注释）。
+					# 仅在字符串键无命中时尝试，不影响既有字符串/类属性订阅。
+					_cls_key = type(event).__name__ if not isinstance(event, dict) else ""
+					if _cls_key and _cls_key in self._event_handlers:
+						handlers.extend(self._event_handlers[_cls_key])
 
 				# 获取通用处理器
 				handlers.extend(self._general_handlers)
@@ -473,11 +511,9 @@ class EventEngine(EngineBase):
 				event_priority = getattr(_meta, 'priority', None) if _meta else None
 				if event_priority is None:
 					event_priority = getattr(event, 'priority', PriorityLevel.NORMAL)
-				if isinstance(event_priority, str):
-					event_priority = PriorityLevel.get_priority_value(
-						PriorityLevel(event_priority))
-				elif isinstance(event_priority, PriorityLevel):
-					event_priority = PriorityLevel.get_priority_value(event_priority)
+				# 2026-09-15：改用统一归一化 —— 原实现漏掉 EventPriority（BaseEvent 实际用的
+				# 那个 IntEnum），使其 `<= 2` 判据永不成立，CRITICAL 强插保护从未生效。
+				event_priority = _normalize_priority(event_priority)
 
 				# CRITICAL/HIGH (1-2): 强制插入，淘汰最低优先级事件
 				if event_priority <= 2:
@@ -564,12 +600,24 @@ class EventEngine(EngineBase):
 	               handler_id: Optional[str] = None) -> str:
 		"""订阅事件（register 的别名，兼容 Event 类 + string 入参）"""
 		if not isinstance(event_type, str):
-			if hasattr(event_type, 'event_type'):
-				event_type = getattr(event_type, 'event_type', '')
-			elif hasattr(event_type, '__name__'):
-				event_type = event_type.__name__
-		if not isinstance(event_type, str) or not event_type:
-			event_type = str(event_type)
+			# ⚠️ 2026-09-15 修复：`BaseEvent.event_type` 是 **property** ——
+			# 对「类」做 getattr 拿到的是 property 对象而非字符串，旧实现会把它
+			# str() 成 '<property object at 0x...>' 当作订阅键 → **类式订阅静默失效**
+			# （事件能入队、统计里显示"已处理"，但永远匹配不到处理器，且无任何报错）。
+			# 现在只接受真正的字符串；否则依次回退 EVENT_TYPE → 类名。
+			_key = None
+			_raw = getattr(event_type, "event_type", None)
+			if isinstance(_raw, str) and _raw:
+				_key = _raw
+			if _key is None:
+				_raw = getattr(event_type, "EVENT_TYPE", None)
+				if isinstance(_raw, str) and _raw:
+					_key = _raw
+			if _key is None:
+				_raw = getattr(event_type, "__name__", None)
+				if isinstance(_raw, str) and _raw:
+					_key = _raw
+			event_type = _key if _key is not None else str(event_type)
 		return self.register(event_type, handler, priority, handler_id)
 
 	def register_handler (self,

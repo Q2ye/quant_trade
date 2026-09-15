@@ -27,10 +27,32 @@ class TestStrategyManager:
 
     @pytest.mark.asyncio
     async def test_initialization(self, manager, event_engine):
-        """测试初始化：策略注册表已填充默认策略"""
+        """测试初始化：策略注册表在 `_on_initialize` 后已填充默认策略。
+
+        ⚠️ 2026-09-15：注册逻辑已从 `__init__` 迁到 `_on_initialize` ——
+        `StrategyManager.__init__` 不再调用 `_register_default_strategies()`（见类 docstring
+        「移除 _register_default_strategies() — 改为 StrategyRegistry 注入」），改为在
+        `_on_initialize()` 中对空注册表执行 `registry.auto_discover()`
+        （`strategy_manager.py:1166`）。故本测试须先驱动初始化，否则注册表恒为空。
+        """
         assert manager.event_engine is event_engine
-        assert StrategyType.CTA in manager._strategy_registry
-        assert StrategyType.TECHNICAL in manager._strategy_registry
+
+        # 注册表初始为空 → 由初始化触发自动发现
+        assert manager.registry.is_empty()
+        await manager._on_initialize()
+
+        # 2026-09-15：注册表已抽为 StrategyRegistry 单例（List 存储，消除覆盖 Bug），
+        # 管理器上的属性由 `_strategy_registry`（Dict）改为 `registry`。
+        #
+        # ⚠️ 原断言为 CTA / TECHNICAL —— 对应 MACrossStrategy 等技术指标策略，
+        # **代码中已不存在**（CLAUDE.md《实际策略清单》）。按实测的注册结果校正：
+        #   rotation → CrossMarketMomentum / HighVolMomentum
+        #   ml       → LightGBMBottom
+        #   custom   → DeepDropRebound / StockLowHigh / PanicBottom / Microcap
+        registered = {t.value for t in manager.registry.get_registered_types()}
+        assert registered == {"rotation", "ml", "custom"}, f"实际注册类型: {registered}"
+        assert StrategyType.ROTATION in manager.registry
+        assert len(manager.registry) == 7, "应注册 7 个策略类"
 
     @pytest.mark.asyncio
     async def test_register_strategy(self, manager):
@@ -38,7 +60,8 @@ class TestStrategyManager:
         from modules.strategy.strategies.reference.stock_low_high_strategy import StockLowHighStrategy
 
         manager.register_strategy(StrategyType.CTA, StockLowHighStrategy)
-        assert manager._strategy_registry[StrategyType.CTA] == StockLowHighStrategy
+        # 2026-09-15：注册表改为 List 存储（同类型可有多个类），故改用包含判断
+        assert StockLowHighStrategy in manager.registry.get(StrategyType.CTA)
 
     @pytest.mark.asyncio
     async def test_load_strategy(self, manager):
@@ -75,7 +98,11 @@ class TestStrategyManager:
             config=config,
         )
 
-        context = StrategyContext(available_capital=100000, total_assets=100000)
+        context = StrategyContext(
+            # 2026-09-15：`strategy_id`/`strategy_name`/`user_id` 已成必填字段
+            strategy_id="test-002", strategy_name="运行测试", user_id="test-user",
+            available_capital=100000, total_assets=100000,
+        )
         await manager.start_strategy("test-002", context)
 
         assert manager.is_strategy_running("test-002")
@@ -112,7 +139,10 @@ class TestStrategyManager:
             config=config,
         )
 
-        context = StrategyContext(available_capital=100000, total_assets=100000)
+        context = StrategyContext(
+            strategy_id="test-003", strategy_name="暂停测试", user_id="test-user",
+            available_capital=100000, total_assets=100000,
+        )
         await manager.start_strategy("test-003", context)
         await manager.pause_strategy("test-003")
 

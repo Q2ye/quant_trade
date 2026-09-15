@@ -25,6 +25,28 @@ from modules.strategy.strategies.base.base_strategy import BaseStrategy
 logger = logging.getLogger(__name__)
 
 
+def _pg_conn_cfg() -> Dict[str, Any]:
+    """从项目统一配置读取 PostgreSQL 连接参数（psycopg2 同步连接用）。
+
+    2026-09-15 整改：原实现在 `DEFAULT_PARAMS` 中硬编码
+    `db_host/db_port/db_user/db_password/db_name`（含明文口令），
+    违反安全红线「严禁硬编码凭证」。现统一改走 `shared.config` 的
+    `settings.DATABASE`（与 `connection_pool` 同源，由 `.env` 提供）。
+
+    Returns:
+        psycopg2.connect 所需的关键字参数字典。
+    """
+    from shared.config.config_manager import config as _config
+    db = _config.settings.DATABASE
+    return {
+        "host": db.HOST,
+        "port": int(db.PORT),
+        "user": db.USER,
+        "password": db.PASSWORD,
+        "database": db.NAME,
+    }
+
+
 class LightGBMBottomStrategy(BaseStrategy):
     strategy_type = StrategyType.ML
 
@@ -33,7 +55,9 @@ class LightGBMBottomStrategy(BaseStrategy):
         "threshold": 0.30,
         "max_single_position": 0.40,
         "max_positions": 5,
-        "stop_loss": -0.07,
+        # 2026-09-15：改名并统一为正数跌幅阈值。注：本键当前**未被读取**（实盘止损由下方
+        # `regime_stop_loss_pct` 决定），保留仅为统一约定。
+        "stop_loss_pct": 0.07,
         "trail_activate": 0.05,
         "trail_distance": 0.08,
         "max_hold_days": 20,
@@ -58,7 +82,7 @@ class LightGBMBottomStrategy(BaseStrategy):
         "regime_threshold_adj": {0: 0.06, 1: 0.0, 2: 0.06},
         # 2026-08-20：候选/持仓上限降为 2 只（此前熊5/震3/牛4 太多，分散稀释）
         "regime_max_positions":  {0: 2, 1: 2, 2: 2},
-        "regime_stop_loss":     {0: -0.08, 1: -0.06, 2: -0.07},
+        "regime_stop_loss_pct": {0: 0.08, 1: 0.06, 2: 0.07},   # 2026-09-15：正数跌幅阈值（原 regime_stop_loss 负数）
         "regime_trail_act":     {0: 0.06, 1: 0.04, 2: 0.05},
         "regime_trail_dist":    {0: 0.10, 1: 0.06, 2: 0.08},
         "regime_max_hold":      {0: 25, 1: 14, 2: 20},
@@ -72,10 +96,9 @@ class LightGBMBottomStrategy(BaseStrategy):
         # 组合中牛市防守让位由 allocator 处理（牛市 defense 0），无需收窄带宽。
         "regime_gate_band": 0.03,
         "market_target_position": {0: 0.55, 1: 0.75, 2: 0.0},
-        # DB
-        "db_host": "localhost", "db_port": 5432,
-        "db_user": "postgres", "db_password": "123456",
-        "db_name": "quant_signals_dev",
+        # DB 连接参数已移除（2026-09-15）——曾在此硬编码 db_host/db_port/db_user/
+        # db_password/db_name（含明文口令），违反「严禁硬编码凭证」。
+        # 现统一由模块级 `_pg_conn_cfg()` 从 `shared.config.settings.DATABASE` 读取。
         # 调试：默认关闭逐 bar 的 P4 缓冲/确认日志（P4/SIG 真实信号不受影响）
         "trace": False,
     }
@@ -88,7 +111,7 @@ class LightGBMBottomStrategy(BaseStrategy):
         # v9.1 修复：API JSON 参数 dict key 为字符串，统一转 int
         # （否则 .get(regime) 用整数 key 匹配字符串 key dict 全落默认值 → 0 信号）
         for _reg_key in ("market_target_position", "regime_max_positions",
-            "regime_stop_loss", "regime_threshold_adj",
+            "regime_stop_loss_pct", "regime_threshold_adj",
             "regime_trail_act", "regime_trail_dist", "regime_max_hold"):
             _reg_dict = self.parameters.get(_reg_key)
             if isinstance(_reg_dict, dict):
@@ -199,13 +222,7 @@ class LightGBMBottomStrategy(BaseStrategy):
         logger.info('[TRACE] _restore_confirm_buffer 开始: pool=%d model=yes', len(etf_pool))
 
         import psycopg2
-        cfg = {
-            "host": self.parameters.get("db_host", "localhost"),
-            "port": self.parameters.get("db_port", 5432),
-            "user": self.parameters.get("db_user", "postgres"),
-            "password": self.parameters.get("db_password", "123456"),
-            "database": self.parameters.get("db_name", "quant_signals_dev"),
-        }
+        cfg = _pg_conn_cfg()
         try:
             conn = psycopg2.connect(**cfg)
             cur = conn.cursor()
@@ -290,13 +307,7 @@ class LightGBMBottomStrategy(BaseStrategy):
     def _load_csi500_cache(self) -> None:
         """加载 CSI500 日线（大盘 regime 判定用，psycopg2 同步）"""
         import psycopg2
-        cfg = {
-            "host": self.parameters.get("db_host", "localhost"),
-            "port": self.parameters.get("db_port", 5432),
-            "user": self.parameters.get("db_user", "postgres"),
-            "password": self.parameters.get("db_password", "123456"),
-            "database": self.parameters.get("db_name", "quant_signals_dev"),
-        }
+        cfg = _pg_conn_cfg()
         try:
             conn = psycopg2.connect(**cfg)
             cur = conn.cursor()
@@ -312,13 +323,7 @@ class LightGBMBottomStrategy(BaseStrategy):
             logger.warning("[%s] CSI500加载失败（大盘门降级）: %s", self.name, str(e)[:150])
     def _load_factor_cache(self, etf_pool: list) -> None:
         import psycopg2
-        cfg = {
-            "host": self.parameters.get("db_host", "localhost"),
-            "port": self.parameters.get("db_port", 5432),
-            "user": self.parameters.get("db_user", "postgres"),
-            "password": self.parameters.get("db_password", "123456"),
-            "database": self.parameters.get("db_name", "quant_signals_dev"),
-        }
+        cfg = _pg_conn_cfg()
         try:
             conn = psycopg2.connect(**cfg)
             cur = conn.cursor()
@@ -920,12 +925,14 @@ class LightGBMBottomStrategy(BaseStrategy):
             self._track_high[ts_code] = max(self._track_high[ts_code], bar.close)
         high = self._track_high[ts_code]
         dd = (high - bar.close) / high if high > 0 else 0
-        base_stop = self.parameters.get("regime_stop_loss", {}).get(regime, -0.07)
+        base_stop_pct = self.parameters.get("regime_stop_loss_pct", {}).get(regime, 0.07)
         ar = self._get_factor_value(ts_code, bar.trade_date, "atr_ratio_20")
-        # P2-3(cap): min 修正方向（高波动放宽/低波动不收紧）+ 1.5×base 上限，
+        # P2-3(cap): 高波动放宽 / 低波动不收紧 + 1.5×base 上限，
         # 避免无上限放宽放大单笔亏损（实测 2022 熊市 -8%→-12.5% 止损推高 MDD）
-        dyn_stop = max(min(base_stop, -2.5 * ar), base_stop * 1.5) if ar and ar > 0 else base_stop
-        if pnl < dyn_stop:
+        # 2026-09-15 统一为正数跌幅阈值：原 `max(min(-s, -2.5ar), -1.5s)` 取负后等价于
+        # `min(max(s, 2.5ar), 1.5s)`；判据 `pnl < dyn_stop` 等价于 `pnl < -dyn_stop_pct`。
+        dyn_stop_pct = min(max(base_stop_pct, 2.5 * ar), base_stop_pct * 1.5) if ar and ar > 0 else base_stop_pct
+        if pnl < -dyn_stop_pct:
             rn = {0: "熊", 1: "震", 2: "牛"}
             return self._make_exit(ts_code, bar,
                 f"止损{pnl:.1%} [ATR={ar:.1%} {rn.get(regime,'?')}]",

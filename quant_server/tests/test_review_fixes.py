@@ -13,7 +13,16 @@ import pytest
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """在同步测试里驱动协程。
+
+    ⚠️ 2026-09-15 修复：原为 `asyncio.get_event_loop().run_until_complete(coro)` ——
+    Python 3.10+ 起 `get_event_loop()` 在主线程无当前事件循环时会告警/报错，而**任何**
+    先执行的 `asyncio.run(...)`（本项目 7 个测试文件以及 `tests/conftest.py` 的
+    async 钩子都用它）都会**关闭**该循环。后果：协程从未被 await，
+    表现为「单独跑通过、全量跑失败」的顺序依赖（`RuntimeWarning: coroutine ... was never awaited`）。
+    `asyncio.run` 每次都新建并正确关闭循环，是当前推荐写法。
+    """
+    return asyncio.run(coro)
 
 
 class TestA1DeleteByTimeRange:

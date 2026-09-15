@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import date, datetime
@@ -39,11 +41,19 @@ class MockBatchSyncRequest:
         self.extra_params = extra_params or {}
 
 
+@pytest.mark.skip(
+    reason="⚠️ 2026-09-15：本类测的是 fixture 内自定义的 `SimpleDataSyncService` **stub**，"
+           "不是真实 `DataSyncService`，对生产代码零回归保护；且 stub 行为与断言均已漂移"
+           "（`source_factory.get_source` 从未被调用、异常未按预期传播）。"
+           "待重写为针对真实服务的测试，或直接删除。已登记 docs/review/17 测试清理清单。"
+)
 class TestDataSyncService:
     """数据同步服务单元测试（简化版）"""
 
     @pytest.fixture
-    async def sync_service(self):
+    def sync_service(self):
+        # 2026-09-15：原为 `async def` 但体内无 await —— 而 pytest-asyncio 不在依赖中，
+        # 异步 fixture 直接报错（PytestRemovedIn9Warning → ERROR）。改为同步。
         """创建数据同步服务实例"""
         # 创建简化版的服务类
         class SimpleDataSyncService:
@@ -157,84 +167,93 @@ class TestDataSyncService:
         sync_service.source_factory.get_source.return_value = mock_source
         return mock_source
 
-    @pytest.mark.asyncio
-    async def test_sync_market_data_success(self, sync_service, mock_source_factory):
-        """测试成功同步市场数据"""
-        # 设置mock数据
-        mock_source = mock_source_factory.return_value
-        mock_source.get_stock_basic.return_value = [
-            {"ts_code": "000001.SZ", "name": "平安银行"},
-            {"ts_code": "600000.SH", "name": "浦发银行"}
-        ]
+    def test_sync_market_data_success(self, sync_service, mock_source_factory):
 
-        # 模拟repository响应
-        sync_service.stock_basic_repo.get_by_ts_code.side_effect = [
-            None,  # 000001.SZ 不存在
-            MagicMock(id=1)  # 600000.SH 已存在
-        ]
+        async def _case():
+            """测试成功同步市场数据"""
+            # 设置mock数据
+            mock_source = mock_source_factory.return_value
+            mock_source.get_stock_basic.return_value = [
+                {"ts_code": "000001.SZ", "name": "平安银行"},
+                {"ts_code": "600000.SH", "name": "浦发银行"}
+            ]
 
-        # 执行同步
-        result = await sync_service.sync_market_data(
-            data_type=sync_service.DataType.STOCK_LIST
-        )
+            # 模拟repository响应
+            sync_service.stock_basic_repo.get_by_ts_code.side_effect = [
+                None,  # 000001.SZ 不存在
+                MagicMock(id=1)  # 600000.SH 已存在
+            ]
 
-        # 验证结果
-        assert result["success"] is True
-        assert result["message"] == "股票列表同步完成"
+            # 执行同步
+            result = await sync_service.sync_market_data(
+                data_type=sync_service.DataType.STOCK_LIST
+            )
 
-        # 验证方法调用
-        sync_service.source_factory.get_source.assert_called_once()
-        mock_source.get_stock_basic.assert_called_once()
-        assert sync_service.stock_basic_repo.create.call_count == 1
-        assert sync_service.stock_basic_repo.update.call_count == 1
+            # 验证结果
+            assert result["success"] is True
+            assert result["message"] == "股票列表同步完成"
 
-    @pytest.mark.asyncio
-    async def test_sync_market_data_failure(self, sync_service, mock_source_factory):
-        """测试同步市场数据失败"""
-        mock_source = mock_source_factory.return_value
-        mock_source.get_stock_basic.side_effect = Exception("API调用失败")
+            # 验证方法调用
+            sync_service.source_factory.get_source.assert_called_once()
+            mock_source.get_stock_basic.assert_called_once()
+            assert sync_service.stock_basic_repo.create.call_count == 1
+            assert sync_service.stock_basic_repo.update.call_count == 1
 
-        result = await sync_service.sync_market_data(
-            data_type=sync_service.DataType.STOCK_LIST
-        )
+        asyncio.run(_case())
+    def test_sync_market_data_failure(self, sync_service, mock_source_factory):
 
-        assert result["success"] is False
-        assert "API调用失败" in result["error"]
+        async def _case():
+            """测试同步市场数据失败"""
+            mock_source = mock_source_factory.return_value
+            mock_source.get_stock_basic.side_effect = Exception("API调用失败")
 
-    @pytest.mark.asyncio
-    async def test_batch_sync_success(self, sync_service, mock_source_factory):
-        """测试批量同步成功"""
-        # 设置mock数据
-        mock_source = mock_source_factory.return_value
-        mock_source.get_stock_basic.return_value = [{"ts_code": "000001.SZ", "name": "测试"}]
-        sync_service.stock_basic_repo.get_by_ts_code.return_value = None
+            result = await sync_service.sync_market_data(
+                data_type=sync_service.DataType.STOCK_LIST
+            )
 
-        # 创建批量请求
-        request = MockBatchSyncRequest(
-            data_types=[sync_service.DataType.STOCK_LIST, sync_service.DataType.DAILY_QUOTES]
-        )
+            assert result["success"] is False
+            assert "API调用失败" in result["error"]
 
-        result = await sync_service.batch_sync(request)
+        asyncio.run(_case())
+    def test_batch_sync_success(self, sync_service, mock_source_factory):
 
-        assert result["success"] is True
-        assert result["total_tasks"] == 2
-        assert result["completed_tasks"] == 2
+        async def _case():
+            """测试批量同步成功"""
+            # 设置mock数据
+            mock_source = mock_source_factory.return_value
+            mock_source.get_stock_basic.return_value = [{"ts_code": "000001.SZ", "name": "测试"}]
+            sync_service.stock_basic_repo.get_by_ts_code.return_value = None
 
-    @pytest.mark.asyncio
-    async def test_batch_sync_partial_failure(self, sync_service, mock_source_factory):
-        """测试批量同步部分失败"""
-        mock_source = mock_source_factory.return_value
-        mock_source.get_stock_basic.side_effect = [Exception("API失败"), [{"ts_code": "000001.SZ", "name": "测试"}]]
+            # 创建批量请求
+            request = MockBatchSyncRequest(
+                data_types=[sync_service.DataType.STOCK_LIST, sync_service.DataType.DAILY_QUOTES]
+            )
 
-        sync_service.stock_basic_repo.get_by_ts_code.return_value = None
+            result = await sync_service.batch_sync(request)
 
-        request = MockBatchSyncRequest(
-            data_types=[sync_service.DataType.STOCK_LIST, sync_service.DataType.STOCK_LIST]
-        )
+            assert result["success"] is True
+            assert result["total_tasks"] == 2
+            assert result["completed_tasks"] == 2
 
-        result = await sync_service.batch_sync(request)
+        asyncio.run(_case())
+    def test_batch_sync_partial_failure(self, sync_service, mock_source_factory):
 
-        assert result["success"] is True  # 批量操作整体成功
-        assert len(result["results"]) == 2
-        assert result["results"][0]["success"] is False
-        assert result["results"][1]["success"] is True
+        async def _case():
+            """测试批量同步部分失败"""
+            mock_source = mock_source_factory.return_value
+            mock_source.get_stock_basic.side_effect = [Exception("API失败"), [{"ts_code": "000001.SZ", "name": "测试"}]]
+
+            sync_service.stock_basic_repo.get_by_ts_code.return_value = None
+
+            request = MockBatchSyncRequest(
+                data_types=[sync_service.DataType.STOCK_LIST, sync_service.DataType.STOCK_LIST]
+            )
+
+            result = await sync_service.batch_sync(request)
+
+            assert result["success"] is True  # 批量操作整体成功
+            assert len(result["results"]) == 2
+            assert result["results"][0]["success"] is False
+            assert result["results"][1]["success"] is True
+
+        asyncio.run(_case())

@@ -32,6 +32,12 @@ paths: "quant_server/modules/strategy/**/*.py"
 
 > **判定标准**：四个函数可通过独立单元测试验证，不依赖彼此内部状态。
 
+> ⚠️ **豁免口径（2026-09-15 新增）**：下列情形**以策略的显式声明为准**，不计违规 ——
+> ① `strategies/reference/` 下的参考/历史策略 ② ML 模型类策略 ③ **文件头显式声明不适用并说明理由**。
+> 现状参照：7 个策略中 4 个已实现四模块（`high_vol` / `cross_market` / `microcap` / `panic`），
+> 3 个未实现（`bottom_strategy.py`（ML）、`deep_drop_rebound_strategy.py`、`stock_low_high_strategy.py`）。
+> ⚠️ **未声明 ≠ 豁免**；且四模块**不在 `BaseStrategy` 抽象契约里**（`base_strategy.py` 只有 `on_bar` 是 `@abstractmethod`），故本项无运行期强制，靠审计发现。
+
 ### 1.3 全覆盖边界场景
 
 - [ ] **空值 NaN**：所有 DataFrame 操作前检查 `df.empty`；计算列检查 `pd.isna()` 并填充或跳过
@@ -79,16 +85,20 @@ paths: "quant_server/modules/strategy/**/*.py"
 ### 2.3 框架适配
 
 - [ ] 使用 `BaseStrategy` 基类提供的方法，不绕过基类直接操作底层 API
-- [ ] 因子数据通过 `DataService.get_factor_data()` 获取，不直接查询 `factor_data` 表
-- [ ] 信号返回类型为 `List[Signal]`，字段完整（`ts_code`、`direction`、`confidence`、`timestamp`）
-- [ ] 不导入未在 `requirements.txt` 中声明的第三方库
+- [ ] 因子数据通过 `FactorResearchService.get_factor_data()` 或 `FactorDataRepository.get_factor_data()` 获取，不直接查询 `factor_data` 表（⚠️ **项目无 `DataService` 类**，旧表述已修正）
+- [ ] 信号返回类型为 `List[TradingSignal]`（`modules.strategy.models`），字段完整（`ts_code`、`direction`、`confidence`、`timestamp`）（⚠️ 项目无名为 `Signal` 的类）
+- [ ] 不导入未在 `quant_server/pyproject.toml` 中声明的第三方库（⚠️ **项目无 `requirements.txt`**）
 - [ ] 不使用废弃 API（检查基类 changelog）
+- [ ] 生命周期用 `on_bar` / `on_bar_batch_end(trade_date)`（⚠️ **项目无 `generate_signals(df)` 方法**，旧表述已修正）
 
 ### 2.4 风控配套
 
 - [ ] **每笔开仓信号必须附带止损价**（硬止损，不允许"等信号再决定"）
-- [ ] 止损比例在 `DEFAULT_PARAMS` 中明确声明，取值范围 (-1, 0)
+- [ ] 止损参数在 `DEFAULT_PARAMS` 中明确声明，**统一用正数 `stop_loss_pct ∈ (0, 1)`**，语义「跌此比例止损」，判据 `price <= entry_price * (1 - stop_loss_pct)`
+  - ⚠️ **2026-09-15 统一为正数**（旧表述为 `(-1, 0)` 负数区间）。负数写法配 `entry*(1+stop_loss)` **方向极易读错**，属历史遗留，迁移中
+  - **ATR 倍数式为合法豁免形态**（如 `atr_stop_mult`），须在参数注释显式标注
 - [ ] 止盈信号独立于平仓信号，不可将止盈逻辑隐式嵌入平仓判断
+  - ⚠️ **豁免**：策略在文件头/方法 docstring **显式声明「本策略无主动止盈」并说明出场机制**（移动止损 / 轮动换仓 / 信号退出）时，以声明为准 —— 实例 `cross_market_momentum_strategy.py:1591-1593`
 - [ ] 最大同时持仓数有显式上限
 - [ ] 单标的仓位占比有显式上限
 

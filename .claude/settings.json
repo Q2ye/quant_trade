@@ -1,5 +1,5 @@
 {
-  "skills": ["quantsys-architect", "strategy-dev", "strategy-auditor", "frontend-craft"],
+  "skills": ["quantsys-architect", "strategy-dev", "strategy-auditor", "frontend-craft", "strategy-review"],
   "hooks": {
     "PreToolUse": [
       {

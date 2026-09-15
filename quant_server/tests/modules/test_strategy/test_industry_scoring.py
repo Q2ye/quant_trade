@@ -271,7 +271,9 @@ class TestIndustryScoringService:
         )
         vec = score.to_factor_vector()
         assert vec is not None
-        assert len(vec) == 12  # 3 大类 + 9 子因子
+        # 2026-09-15 修正：V4 起 C3 已移除（见 to_factor_vector 注释「V4：C3 已移除」），
+        # 故为 3 大类 + 8 子因子（A1-A3 / B1-B3 / C1-C2）= 11；原断言 12 是 V4 前的过时口径。
+        assert len(vec) == 11  # 3 大类 + 8 子因子
 
     def test_cosine_similarity_calculation(self):
         """余弦相似度的边界情况"""

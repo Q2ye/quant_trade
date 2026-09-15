@@ -143,7 +143,7 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 下跌市风控（暂停新买入，存量持仓按统一止损管理） ——
         "bear_max_pos": 2,              # 下跌市持仓上限（当前下跌市暂停新买入，仅在恢复买入逻辑时生效）
-        "bear_stop_loss": -0.04,        # 下跌市止损（与上涨市统一）
+        "bear_stop_loss_pct": 0.04,     # 下跌市止损（与上涨市统一）｜2026-09-15 正数跌幅阈值
 
         # —— 震荡市风控 ——
         "sideways_max_pos": 2,          # 震荡市最多 2 只
@@ -155,8 +155,8 @@ class StockLowHighStrategy(BaseStrategy):
         # v6.13 分行情止损实验已回退：5y 实测 +0.97%（最差），比全 -4%（+33.58%）和
         # 全 -6%（+21.57%）都差——regime 翻转导致止损跳变、行为不一致。
         # 恢复基线：全行情统一 -4% 止损。
-        "stop_loss": -0.04,             # 个股止损 -4%
-        "sideways_stop_loss": -0.04,    # 震荡市止损（与上涨市统一）
+        "stop_loss_pct": 0.04,          # 个股止损 -4%（2026-09-15 正数跌幅阈值，原 stop_loss=-0.04）
+        "sideways_stop_loss_pct": 0.04,  # 震荡市止损（与上涨市统一）｜2026-09-15 正数跌幅阈值
         # v6.11: 收盘确认买入的低点过滤 — 确认日盘中最低价相对信号价的允许跌幅。
         # 若确认日 low < 信号价×(1-buy_confirm_max_drop)（盘中深跌/触及跌停），
         # 放弃买入（不接飞刀）。0=关闭。默认 3%。
@@ -651,18 +651,18 @@ class StockLowHighStrategy(BaseStrategy):
 
         if regime == "上涨市":
             regime_max_pos = max_pos
-            regime_stop_loss = float(self.parameters.get("stop_loss", -0.04))
+            regime_stop_loss_pct = float(self.parameters.get("stop_loss_pct", 0.04))
             regime_no_new_buy = False
         elif regime == "震荡市":
             regime_max_pos = int(self.parameters.get("sideways_max_pos", 2))
             # v6.13 分行情止损已回退：震荡市与上涨市统一 -4%
-            regime_stop_loss = float(self.parameters.get("sideways_stop_loss", -0.04))
+            regime_stop_loss_pct = float(self.parameters.get("sideways_stop_loss_pct", 0.04))
             regime_no_new_buy = False
         else:
             # 下跌市：暂停新买入（存量持仓按统一止损管理）
             regime = "下跌市"
             regime_max_pos = int(self.parameters.get("bear_max_pos", 2))
-            regime_stop_loss = float(self.parameters.get("bear_stop_loss", -0.04))
+            regime_stop_loss_pct = float(self.parameters.get("bear_stop_loss_pct", 0.04))
             regime_no_new_buy = True
 
         effective_max_pos = regime_max_pos
@@ -697,7 +697,7 @@ class StockLowHighStrategy(BaseStrategy):
         if self.verbose_logging:
             logger.info(
                 f"行情判定: {regime} (多头占比={bullish_pct:.1%}, "
-                f"上限={regime_max_pos}, 止损={regime_stop_loss:.1%})"
+                f"上限={regime_max_pos}, 止损={regime_stop_loss_pct:.1%})"
             )
 
         # ---- v6.11: 确认昨日待买候选（Model B — 收盘确认买入） ----
@@ -734,7 +734,7 @@ class StockLowHighStrategy(BaseStrategy):
         }
 
         # ---- 4. P0 池内池外区分止盈（传入动态止损参数）----
-        exit_signals = self._check_all_stop_profit(today_pool=today_pool, stop_loss=regime_stop_loss)
+        exit_signals = self._check_all_stop_profit(today_pool=today_pool, stop_loss_pct=regime_stop_loss_pct)
         signals.extend(exit_signals)
 
         # ---- 5. 差异三 两步合一步复检 ----
@@ -1577,7 +1577,7 @@ class StockLowHighStrategy(BaseStrategy):
                 del self._track_high[code]
         self._exit_pending.clear()
 
-    def _check_all_stop_profit(self, today_pool: Set[str] = None, stop_loss: float = -0.04) -> List[TradingSignal]:
+    def _check_all_stop_profit(self, today_pool: Set[str] = None, stop_loss_pct: float = 0.04) -> List[TradingSignal]:
         """
         P0: 池内池外区分止盈（源策略核心逻辑）。
 
@@ -1586,7 +1586,7 @@ class StockLowHighStrategy(BaseStrategy):
 
         Args:
             today_pool: 今日选股池（新候选股 + 仍通过今日筛选条件的持仓，v6.6）
-            stop_loss: 动态止损比例（由三档行情决定，上涨市 -4%，下跌市 -2.5%）
+            stop_loss_pct: 动态跌幅阈值（正数，2026-09-15 统一；由三档行情决定，当前三档均 4%）
         """
         signals: List[TradingSignal] = []
 
@@ -1652,25 +1652,26 @@ class StockLowHighStrategy(BaseStrategy):
                 == str(self._last_trade_date)[:10]
             )
 
-            if (low_pnl < stop_loss or pnl < stop_loss) and not _same_day_buy:
+            # 2026-09-15：判据由 `x < stop_loss`（stop_loss=-0.04）等价改为 `x < -stop_loss_pct`
+            if (low_pnl < -stop_loss_pct or pnl < -stop_loss_pct) and not _same_day_buy:
                 self._exit_pending.add(code)
-                stop_price = entry * (1 + stop_loss)
+                stop_price = entry * (1 - stop_loss_pct)
                 if self.verbose_logging:
                     logger.info(
                         f"止损触发: {code} entry={entry:.2f} low={day_low:.2f} "
-                        f"low_pnl={low_pnl:.1%} close_pnl={pnl:.1%} stop={stop_loss:.1%} "
+                        f"low_pnl={low_pnl:.1%} close_pnl={pnl:.1%} stop={stop_loss_pct:.1%} "
                         f"trigger={stop_price:.2f}"
                     )
                 signals.append(self._make_exit_signal(
                     code,
-                    reason=f"止损: 日内最低{low_pnl:.1%} 收盘{pnl:.1%} < {stop_loss:.1%}",
+                    reason=f"止损: 日内最低{low_pnl:.1%} 收盘{pnl:.1%} < {stop_loss_pct:.1%}",
                     signal_type=SignalType.STOP_LOSS,
                     order_mode="trigger",
                     trigger_price=stop_price,
                 ))
                 continue
-            elif self.verbose_logging and (low_pnl < stop_loss or pnl < stop_loss) and _same_day_buy:
-                logger.info(f"止损跳过(同日买入): {code} low_pnl={low_pnl:.1%} < {stop_loss:.1%}")
+            elif self.verbose_logging and (low_pnl < -stop_loss_pct or pnl < -stop_loss_pct) and _same_day_buy:
+                logger.info(f"止损跳过(同日买入): {code} low_pnl={low_pnl:.1%} < {stop_loss_pct:.1%}")
 
             # ---- 池内股：只止损，不止盈，跳过所有止盈逻辑 ----
             # 集中度风险由「动态再平衡」（浮盈≥100%卖半仓）处理，更精准

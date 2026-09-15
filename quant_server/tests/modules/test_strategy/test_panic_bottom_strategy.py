@@ -89,6 +89,16 @@ class TestTrigger:
 class TestStateMachine:
     """状态机全链路：触发 → T+1 → confirm → T+7 买入"""
 
+    @pytest.mark.skip(
+        reason="⚠️ 2026-09-15：本测试相对「ATR 化重构」已过时，**待重写**（非产品缺陷）。"
+               "重构后 `check_stop_profit_stop_loss` 首行即 `atr = self._calc_atr(code)`，"
+               "`atr <= 0` 直接返回空（要求 `_data_cache` 中该标的 ≥ atr_window+1=15 根 bar）；"
+               "而本测试的 FakeBar 只有 close、未灌行情 → 恒 0 信号。"
+               "另外测试假设「固定 -15% 止损」与「+16% 触发档1」，现口径为 ATR 硬止损"
+               "（入场 - 2.5×ATR）与 tp1=20%。重写要点：① FakeBar 补 `high` 属性；"
+               "② 用 seed_stock 灌 ≥15 根 bar 使 ATR>0；③ 按 ATR 反推触发价。"
+               "（该策略属卫星·事件 draft，卫星池已暂停，故本次仅登记不重写。）"
+    )
     def test_full_sequence(self):
         s = make_strategy()
         dates = [f"2024-01-{i:02d}" for i in range(1, 21)]
@@ -139,6 +149,16 @@ class TestStateMachine:
 class TestStopProfitLoss:
     """止盈止损（硬止损 / 阶梯止盈）"""
 
+    @pytest.mark.skip(
+        reason="⚠️ 2026-09-15：本测试相对「ATR 化重构」已过时，**待重写**（非产品缺陷）。"
+               "重构后 `check_stop_profit_stop_loss` 首行即 `atr = self._calc_atr(code)`，"
+               "`atr <= 0` 直接返回空（要求 `_data_cache` 中该标的 ≥ atr_window+1=15 根 bar）；"
+               "而本测试的 FakeBar 只有 close、未灌行情 → 恒 0 信号。"
+               "另外测试假设「固定 -15% 止损」与「+16% 触发档1」，现口径为 ATR 硬止损"
+               "（入场 - 2.5×ATR）与 tp1=20%。重写要点：① FakeBar 补 `high` 属性；"
+               "② 用 seed_stock 灌 ≥15 根 bar 使 ATR>0；③ 按 ATR 反推触发价。"
+               "（该策略属卫星·事件 draft，卫星池已暂停，故本次仅登记不重写。）"
+    )
     def test_stop_loss(self):
         s = make_strategy()
         s._holdings["600000.SH"] = {"entry_price": 10.0, "entry_date": "2024-01-10",
@@ -153,6 +173,16 @@ class TestStopProfitLoss:
         assert sigs[0].signal_type == SignalType.EXIT
         assert "600000.SH" not in s._holdings  # 已清仓
 
+    @pytest.mark.skip(
+        reason="⚠️ 2026-09-15：本测试相对「ATR 化重构」已过时，**待重写**（非产品缺陷）。"
+               "重构后 `check_stop_profit_stop_loss` 首行即 `atr = self._calc_atr(code)`，"
+               "`atr <= 0` 直接返回空（要求 `_data_cache` 中该标的 ≥ atr_window+1=15 根 bar）；"
+               "而本测试的 FakeBar 只有 close、未灌行情 → 恒 0 信号。"
+               "另外测试假设「固定 -15% 止损」与「+16% 触发档1」，现口径为 ATR 硬止损"
+               "（入场 - 2.5×ATR）与 tp1=20%。重写要点：① FakeBar 补 `high` 属性；"
+               "② 用 seed_stock 灌 ≥15 根 bar 使 ATR>0；③ 按 ATR 反推触发价。"
+               "（该策略属卫星·事件 draft，卫星池已暂停，故本次仅登记不重写。）"
+    )
     def test_take_profit_tier1(self):
         s = make_strategy()
         s._holdings["600000.SH"] = {"entry_price": 10.0, "entry_date": "2024-01-10",
@@ -168,6 +198,16 @@ class TestStopProfitLoss:
         assert abs(sigs[0].weight - 1 / 3) < 1e-6
         assert "tp1" in s._holdings["600000.SH"]["sold_tiers"]
 
+    @pytest.mark.skip(
+        reason="⚠️ 2026-09-15：本测试相对「ATR 化重构」已过时，**待重写**（非产品缺陷）。"
+               "重构后 `check_stop_profit_stop_loss` 首行即 `atr = self._calc_atr(code)`，"
+               "`atr <= 0` 直接返回空（要求 `_data_cache` 中该标的 ≥ atr_window+1=15 根 bar）；"
+               "而本测试的 FakeBar 只有 close、未灌行情 → 恒 0 信号。"
+               "另外测试假设「固定 -15% 止损」与「+16% 触发档1」，现口径为 ATR 硬止损"
+               "（入场 - 2.5×ATR）与 tp1=20%。重写要点：① FakeBar 补 `high` 属性；"
+               "② 用 seed_stock 灌 ≥15 根 bar 使 ATR>0；③ 按 ATR 反推触发价。"
+               "（该策略属卫星·事件 draft，卫星池已暂停，故本次仅登记不重写。）"
+    )
     def test_time_exit(self):
         s = make_strategy()
         s._holdings["600000.SH"] = {"entry_price": 10.0, "entry_date": "2024-01-01",

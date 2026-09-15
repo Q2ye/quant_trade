@@ -33,6 +33,10 @@ mypy .                                       # 类型检查（无 mypy.ini，部
 > ⚠️ **格式化器有两套**：`pyproject.toml` 声明的是 black + isort，但 PostToolUse hook 对新建 `.py` 自动跑的是 `ruff format`（ruff 既不在依赖里也无配置，恰好同为 88 列）。改动格式化相关行为时注意两者差异，不要只改一处。
 > ⚠️ `pytest` 的 `addopts = "-v"` 已全局生效（见 `pyproject.toml`），无需再手动加 `-v`。
 > ⚠️ `quant_server/scripts/` 下带正式前缀的脚本（`backtest_*` / `backfill_*` / `seed_*` / `rolling_start_analysis` / `sync_margin_hsgt` / `_rolling_start_cross_market`）是**长期资产**，已纳入 git。一次性诊断脚本（`_probe_*` / `_check_*` / `_phase*` 等 33 个）已于 2026-09-12 清理，内容存于 git 提交 `450ccf2`，需要时用 `git show 450ccf2:quant_server/scripts/<文件名>` 取回。新建诊断脚本请沿用 `_` 前缀，不要提交。
+>
+> **2026-09-15 新增两个长期资产（待提交）**：
+> - `scripts/audit_strategy.py` — 策略质量门机检（未来函数/凭证/除零/参数越界），非零退出码，对应准入标准 G1
+> - `scripts/sync_strategy_code.py` — 磁盘↔DB `strategies.code` 一致性巡检与同步（`--class <类名> [--apply]`，自动备份到 `scripts/_bak/`），对应 `docs/review/17` §1-8
 
 ### 前端（CWD: `quant_web/`）
 
@@ -41,12 +45,18 @@ pnpm serve          # 开发服务器 (8081, proxy /api → localhost:8080)
 pnpm build          # 生产构建
 pnpm preview        # 预览生产构建
 pnpm test:unit      # 单元测试 (vitest + jsdom)
-pnpm test:e2e       # E2E（cypress open）
 pnpm format         # Prettier 格式化
 npx vue-tsc --noEmit  # TypeScript 类型检查
 ```
 
-> husky + lint-staged 已配置：提交时对 `*.{js,jsx,vue,ts,tsx}` 自动跑 `prettier --write`。
+> ⚠️ **2026-09-15 实测订正两处（原表述与实际不符）**：
+>
+> | 原表述 | 实测 |
+> |:---|:---|
+> | `pnpm test:e2e  # E2E（cypress open）` | ❌ **cypress 未安装**、无 `cypress/` 目录、`package.json` 无该依赖（仅在 `scripts` 里）→ 跑必然失败。**E2E 实际不存在**（现有前端测试只有 `tests/unit/` 下 3 个 vitest 文件） |
+> | 「husky + lint-staged **已配置**：提交时自动跑 prettier」 | ⚠️ **只有一半**：`lint-staged` 的配置与依赖在 `package.json` 里，但**无 `.husky/` 目录、无 `prepare` 脚本** → **git hook 未安装**，提交时不会真的触发 |
+>
+> 二者待办：要么补齐（安装 cypress / `npx husky init`），要么删掉对应表述。
 
 ## 配置系统
 
@@ -66,7 +76,9 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 
 ## 数据库
 
-- DDL 入口：`docs/sql/create_table.sql`（**131 张表**，21 张超表，无迁移框架，直接执行）
+- DDL 入口：`docs/sql/create_table.sql`（**表结构以该文件为准**，21 张超表，无迁移框架，直接执行）
+  > ⚠️ 2026-09-15 订正：原写「131 张表」，实测 `CREATE TABLE` 为 **133**（同处 AGENTS.md 已同步改为不写数字）。
+  > **计数类表述一律以文件为准**，避免随 DDL 演进反复漂移。
 - 开发库与生产库分离：开发 `quant_signals_dev`，生产 `quant_signals`
 
 ## 分支策略
@@ -126,7 +138,7 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 
 > ⚠️ **策略运行时从 DB `strategies.code` 加载代码（`exec()`），回测引擎同样如此**——改磁盘 `.py` 文件**必须同步 `strategies.code` 才生效**，否则实盘/回测仍跑旧代码。改参数默认值还须同步 DB `strategy_parameters` 覆盖（JSON 列会盖掉 `DEFAULT_PARAMS`）。
 
-**信号级冒烟验证（磁盘加载、不走 DB，各策略一个脚本，均支持 `[start] [end]`）**：
+**信号级冒烟验证（磁盘加载、不走 DB）**：
 
 ```bash
 cd quant_server && .venv/Scripts/python.exe scripts/backtest_high_vol_momentum.py      # 2025-01-01~2026-08-07
@@ -135,7 +147,23 @@ cd quant_server && .venv/Scripts/python.exe scripts/backtest_etf_bottom.py
 cd quant_server && .venv/Scripts/python.exe scripts/backtest_small_cap.py              # 微盘，2021-01-01~2026-08-07
 ```
 
-验证口径：有交易 / 无 NaN / 收益率合理。
+> ⚠️ **2026-09-15 实测订正 —— 这 4 个脚本并非都是"策略冒烟"**：
+>
+> | 脚本 | 加载策略类 | 支持 `[start] [end]` |
+> |:---|:---|:---|
+> | `backtest_high_vol_momentum.py` | ✅ | ✅ |
+> | `backtest_cross_market_momentum.py` | ✅ | ✅ |
+> | `backtest_etf_bottom.py` | ❌ **独立重实现** | ❌ 日期硬编码 |
+> | `backtest_small_cap.py` | ❌ **独立重实现** | ✅ |
+>
+> **后两个不 `import` 任何策略类**（自带撮合/止损逻辑，如 `backtest_small_cap.py` 的 `STOP_LOSS = -0.09`
+> 是脚本内常量，与策略 `stop_loss_pct` 参数无关）→ **改 `etf/bottom_strategy.py` 或
+> `microcap/microcap_strategy.py` 后跑它们，全绿也验证不了策略代码**。
+> 自检命令：`grep -cE "import.*Strategy|from modules.strategy.strategies" scripts/<脚本>.py`（0 = 重实现）。
+> 这两个策略的回归验证请用 pytest：`test_bottom_strategy_p1_fixes.py` / `test_microcap_strategy.py`。
+
+**验证口径（全项目统一）**：有交易 / 无 NaN / 收益率 ∈ **[−95%, +500%]**。
+（旧的「收益率合理」表述已废弃，见 `.claude/skills/strategy-dev/SKILL.md` 步骤 5。）
 
 > ⚠️ **路径依赖型策略禁止用单一起始日结论**（区间收益随起跑日剧烈漂移）。必须用滚动起始日看**中位数 / 下四分位**分布：
 > `cd quant_server && .venv/Scripts/python.exe scripts/rolling_start_analysis.py [start1,start2,...]`（默认 6 个起始日，固定结束于 2026-09-04）。
@@ -187,4 +215,9 @@ cd quant_server && .venv/Scripts/python.exe scripts/backtest_small_cap.py       
 | 策略快速质量门 | `.claude/rules/strategy-gates.md` | 策略文件变更 |
 | 回测分析标准流程 | `docs/02-功能设计/策略体系/回测分析标准流程.md` | 回测结果分析（所有策略通用） |
 | 策略运行分析标准流程 | `docs/02-功能设计/策略体系/策略运行分析标准流程.md` | 实盘/日终运行分析（所有策略通用） |
+| 策略实盘准入标准 | `docs/02-功能设计/策略体系/策略实盘准入标准.md` | 策略上线/准入判定（六道门 G0–G5 + 三级实盘） |
+| 策略过拟合检验标准 | `docs/02-功能设计/策略体系/策略过拟合检验标准.md` | 参数/机制采纳前的过拟合检验（台账/PBO/DSR） |
+| 因子研究标准流程 | `docs/02-功能设计/策略体系/因子研究标准流程.md` | 因子研究/注册/落库/消费（含 PIT 红线） |
+| 数据质量标准 | `docs/02-功能设计/数据模块/数据质量标准.md` | 数据五道门（完整性/正确性/PIT/停牌/运行期） |
+| 交易·风控·账户专项规则 | `.claude/rules/trade-risk-account.md` | `quant_server/modules/{trade,risk,account}/**/*.py` |
 | 卫星策略分析 | `docs/00-核心策略体系/卫星策略分析.md` | 微盘/恐慌抄底卫星优化方向 |

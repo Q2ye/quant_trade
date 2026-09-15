@@ -17,7 +17,7 @@ tools: Read, Grep, Glob, Bash
 - `backtest_equity_curves`：权益曲线（日期 + nav）
 - `backtest_trades`：交易记录（symbol、方向、价格、数量、时间）
 - `backtest_positions`：持仓快照
-- `backtest_daily_metrics`：每日指标
+- 每日指标：由 `backtest_equity_curves` 派生（库中无独立日度指标表）
 
 ### Step 2：找到基线
 
@@ -110,4 +110,4 @@ Bear       | 298   | -12.4%   | -15.3%   | -18.2%   | 44.1%
 
 - 只读操作，不修改任何数据
 - 如果某张表不存在或某列缺失，报告缺失项而非猜测
-- 分析报告同时输出 JSON（写入 `backtest_analysis` 表）和 Markdown（供人工阅读）
+- 分析报告输出 Markdown（供人工阅读）；库中无对应持久化表，不写库

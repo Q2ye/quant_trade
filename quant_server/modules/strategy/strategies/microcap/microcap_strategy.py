@@ -49,7 +49,7 @@ class MicrocapStrategy(BaseStrategy):
 		"use_momentum": False,            # 2026-08 实证：动量Top15为巨大负贡献（等权+31% vs 动量+1.24%），
 		                                  # 默认等权（M3口径）；True 仅用于对照实验
 		# ── 风控 ──
-		"stop_loss": -0.10,               # 单票止损 10%
+		"stop_loss_pct": 0.10,             # 单票止损 10%（2026-09-15 统一为正数跌幅阈值；原 stop_loss=-0.10）
 		"profit_reduce": 0.30,            # 浮盈 30% 减半
 		"lookback_days": 120,             # 缓存回看（动量/均线）
 	}
@@ -78,7 +78,7 @@ class MicrocapStrategy(BaseStrategy):
 		self.max_total_weight = float(merged["max_total_weight"])
 		self.momentum_window = int(merged["momentum_window"])
 		self.use_momentum = bool(merged.get("use_momentum", True))
-		self.stop_loss = float(merged["stop_loss"])
+		self.stop_loss_pct = float(merged["stop_loss_pct"])
 		self.profit_reduce = float(merged["profit_reduce"])
 		self.lookback_days = int(merged["lookback_days"])
 
@@ -311,8 +311,9 @@ class MicrocapStrategy(BaseStrategy):
 		if close <= 0 or entry <= 0:
 			return signals
 		# 止损
-		if close <= entry * (1 + self.stop_loss):
-			sig = self._make_exit_signal(code, close, f"止损: 亏损 ≥{-self.stop_loss:.0%}")
+		# 2026-09-15：由 `entry * (1 + stop_loss)`（stop_loss=-0.10）等价改为 `(1 - stop_loss_pct)`
+		if close <= entry * (1 - self.stop_loss_pct):
+			sig = self._make_exit_signal(code, close, f"止损: 亏损 ≥{self.stop_loss_pct:.0%}")
 			if sig:
 				signals.append(sig)
 				self._holdings.pop(code, None)
@@ -472,7 +473,7 @@ class MicrocapStrategy(BaseStrategy):
 			order_mode="close",
 		)
 		sig.weight = weight
-		sig.stop_loss_price = price * (1 + self.stop_loss)  # 每笔开仓必须带止损
+		sig.stop_loss_price = price * (1 - self.stop_loss_pct)  # 每笔开仓必须带止损
 		return sig
 
 	def _make_exit_signal(self, code: str, price: float, reason: str) -> Optional[TradingSignal]:

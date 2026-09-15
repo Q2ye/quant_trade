@@ -6,6 +6,15 @@ import pytest
 
 from core.engines.types.entities import BarData
 
+# ⚠️ 2026-09-15：策略本体 `rotation/industry_rotation_strategy.py` 已删除
+#（CLAUDE.md《实际策略清单》明确：旧文档所列 industry_rotation / dl / ml 代码中均不存在）。
+# 本文件此前**未加 skip 标记**，导致 21 个用例全部 ERROR（FileNotFoundError），
+# 使「测试通过」无法作为回归门（见 .claude/rules/strategy-gates.md §回归门）。
+# 按 CLAUDE.md 已声明的意图统一为模块级 skip；如策略回归，删掉下面这行即可。
+pytestmark = pytest.mark.skip(
+    reason="industry_rotation_strategy.py 已删除（策略不在实际清单中）—— 见 CLAUDE.md《实际策略清单》"
+)
+
 
 class TestParameterValidation:
     """策略参数校验"""

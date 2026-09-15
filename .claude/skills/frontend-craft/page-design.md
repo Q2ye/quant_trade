@@ -36,7 +36,7 @@ alwaysApply: false
 若用户描述中未包含明确关键词，则根据页面在菜单中的位置推断。例如“回测报告”属于详情页。
 
 ### 2. 自动检索数据源
-- 从项目文档 `量化交易系统-混合架构设计.md` 中查找 `api/routers/` 下的对应路由文件（如 `data_router.py`、`backtest_router.py`），列出可能用到的 API 路径和方法。
+- 从项目文档 `docs/01-业务设计/量化交易系统详细设计.md` 中查找 `api/routers/` 下的对应路由文件（如 `data_router.py`、`backtest_router.py`），列出可能用到的 API 路径和方法。
 - 若找不到对应 API，则在数据来源表中标注「待确认」，并在输出后提示用户补充。
 - WebSocket 事件从业务模块内的 `events/` 目录（如 `modules/trade/events/`）查找，前端 WebSocket 封装见 `src/api/websocket.ts`，若需实时推送则注明事件类型。
 

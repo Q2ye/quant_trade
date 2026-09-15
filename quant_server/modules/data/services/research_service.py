@@ -861,12 +861,10 @@ class FactorResearchService:
 		Returns:
 			List[Dict]: 因子元数据列表，包含以下字段：
 				- factor_name: 因子名称
-				- display_name: 显示名称
 				- description: 因子描述
 				- category: 因子类别
 				- formula: 因子公式
-				- data_source: 数据来源
-				- update_frequency: 更新频率
+				- update_frequency: 更新频率（取自 factor_definitions.calculation_frequency）
 				- parameters: 计算参数
 				- created_at: 创建时间
 				- updated_at: 更新时间
@@ -890,12 +888,13 @@ class FactorResearchService:
 			for factor in factors:
 				metadata_list.append({
 					"factor_code": factor.factor_code,  # 因子代码（唯一标识）
-					"factor_name": factor.factor_name or factor.display_name or factor.factor_code,  # 显示名
+					"factor_name": factor.factor_name or factor.factor_code,  # 显示名（2026-09-15 去掉不存在的 display_name）
 					"description": factor.description,
 					"category": factor.category,
 					"formula": factor.formula,
-					"data_source": factor.data_source,
-					"update_frequency": factor.update_frequency,
+					# "data_source" 键已删除（2026-09-15）：FactorDefinition 模型与 DDL
+					#   factor_definitions 均无此列，原写法必然 AttributeError。
+					"update_frequency": factor.calculation_frequency,  # 2026-09-15：映射到真实字段
 					"parameters": factor.parameters,
 					"created_at": factor.created_at.isoformat() if factor.created_at else None,
 					"updated_at": factor.updated_at.isoformat() if factor.updated_at else None
@@ -903,8 +902,17 @@ class FactorResearchService:
 
 			return metadata_list
 
+		except (AttributeError, TypeError) as e:
+			# ⚠️ 属性/类型错误 = 代码缺陷，不得用兜底掩盖（2026-09-15）。
+			# 此前 factor.display_name / data_source / update_frequency 三个不存在的
+			# 字段正是被下面那个宽泛 except 静默吞掉 →「因子注册了也读不到」长期不可见。
+			logger.error(
+				f"获取因子元数据失败（代码缺陷，非数据缺失）: {type(e).__name__}: {e}",
+				exc_info=True,
+			)
+			raise
 		except Exception as e:
-			logger.error(f"获取因子元数据失败: {str(e)}")
+			logger.warning(f"获取因子元数据失败，降级为标准因子清单: {type(e).__name__}: {e}")
 
 			# 如果数据库中没有，返回标准因子
 			return self._get_standard_factor_metadata(factor_name, category)
