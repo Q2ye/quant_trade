@@ -1,23 +1,34 @@
 {
   "skills": ["quantsys-architect", "strategy-dev", "strategy-auditor", "frontend-craft", "strategy-review"],
+  "_comment": "写入守卫的逻辑集中在 .claude/hooks/*.py（便于测试与评审），此处只做接线。2026-09-15 修 4 个可绕过的口子，详见 hooks/guard.py docstring。",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Update",
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import sys,json; p=json.load(sys.stdin)['tool_input']['file_path']; sys.exit(2 if any(p.endswith(x) for x in ['.env','.git/HEAD','.git/config']) or '.git/' in p.replace('\\\\','/') else 0)\"",
-            "timeout": 10
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" pre_write",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/scan_incoming.py\"",
+            "timeout": 15
           }
         ]
       },
       {
-        "matcher": "Bash(git push*)",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import sys,json; cmd=json.load(sys.stdin)['tool_input']['command']; sys.exit(2 if 'master' in cmd or 'main' in cmd else 0)\"",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" pre_bash",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python -c \"import sys,json; cmd=json.load(sys.stdin)['tool_input']['command']; sys.exit(2 if cmd.strip().startswith('git push') and ('master' in cmd or 'main' in cmd) else 0)\"",
             "timeout": 10
           }
         ]
@@ -25,17 +36,27 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Update",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/scan_credentials.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/audit_on_edit.py\"",
+            "timeout": 90
+          }
+        ]
+      },
+      {
         "matcher": "Write",
         "hooks": [
           {
             "type": "command",
             "command": "if echo \"$CLAUDE_TOOL_INPUT_FILE_PATH\" | grep -qE '\\.py$'; then cd \"$CLAUDE_PROJECT_DIR/quant_server\" && python -m ruff format \"$CLAUDE_TOOL_INPUT_FILE_PATH\" --quiet 2>/dev/null; fi",
             "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": "if echo \"$CLAUDE_TOOL_INPUT_FILE_PATH\" | grep -qE '\\.py$'; then python -c \"import sys,re; content=open(sys.argv[1]).read(); issues=[m.group() for m in re.finditer(r'(token|password|api_key|secret|TUSHARE_TOKEN)\\s*=\\s*[\\\"\\\\'](?!\\$)[^\\\"\\\\']{8,}', content, re.I)]; sys.exit(2 if issues else 0)\" \"$CLAUDE_TOOL_INPUT_FILE_PATH\" 2>/dev/null; fi",
-            "timeout": 10
           }
         ]
       }
