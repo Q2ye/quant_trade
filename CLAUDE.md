@@ -32,11 +32,44 @@ mypy .                                       # 类型检查（无 mypy.ini，部
 
 > ⚠️ **格式化器有两套**：`pyproject.toml` 声明的是 black + isort，但 PostToolUse hook 对新建 `.py` 自动跑的是 `ruff format`（ruff 既不在依赖里也无配置，恰好同为 88 列）。改动格式化相关行为时注意两者差异，不要只改一处。
 > ⚠️ `pytest` 的 `addopts = "-v"` 已全局生效（见 `pyproject.toml`），无需再手动加 `-v`。
-> ⚠️ `quant_server/scripts/` 下带正式前缀的脚本（`backtest_*` / `backfill_*` / `seed_*` / `rolling_start_analysis` / `sync_margin_hsgt` / `_rolling_start_cross_market`）是**长期资产**，已纳入 git。一次性诊断脚本（`_probe_*` / `_check_*` / `_phase*` 等 33 个）已于 2026-09-12 清理，内容存于 git 提交 `450ccf2`，需要时用 `git show 450ccf2:quant_server/scripts/<文件名>` 取回。新建诊断脚本请沿用 `_` 前缀，不要提交。
+> ⚠️ `quant_server/scripts/` 下的脚本是**长期资产**，已纳入 git。
+> **2026-09-15 按类分目录**（32 个 `.py`、未跟踪 0）：
 >
-> **2026-09-15 新增两个长期资产（待提交）**：
-> - `scripts/audit_strategy.py` — 策略质量门机检（未来函数/凭证/除零/参数越界），非零退出码，对应准入标准 G1
-> - `scripts/sync_strategy_code.py` — 磁盘↔DB `strategies.code` 一致性巡检与同步（`--class <类名> [--apply]`，自动备份到 `scripts/_bak/`），对应 `docs/review/17` §1-8
+> | 目录 | 数量 | 内容 |
+> |:---|---:|:---|
+> | `scripts/backtest/` | 6 | 回测与冒烟：`backtest_high_vol_momentum` · `backtest_cross_market_momentum` · `backtest_etf_bottom`⚠️ · `backtest_small_cap`⚠️ · `rolling_start_analysis` · `_rolling_start_cross_market` |
+> | `scripts/data/` | 15 | 数据回填与播种：`backfill_*`（11）· `seed_*`（3）· `sync_margin_hsgt` |
+> | `scripts/quality/` | 3 | **质量门与巡检**：`audit_strategy`（准入 G1 机检，已接 hook）· `check_all`（收工检查三道门，零 CI 替代）· `sync_strategy_code`（磁盘↔DB 一致性巡检/同步，见 `review/17` §1-8） |
+> | `scripts/ops/` | 8 | 运维杂项：`setup_composite` · `add_strategy_to_composite` · `merge_accounts` · `password_utils` · `fix_token` · **`archive_logs`（日志归档，已挂日终）** · `sweep_params`⚠️废弃 · `v2_param_sweep`⚠️废弃 |
+>
+> ⚠️ 标记含义：**`backtest_etf_bottom`/`backtest_small_cap` 不加载策略类**（独立重实现 —— 改策略后跑它们**验证不了策略代码**，详细对照见「策略开发」节）；**`sweep_params`/`v2_param_sweep` 已标废弃**。
+>
+> **一次性诊断脚本的两次清理**（先归档后删，可随时取回）：
+> | 提交 | 内容 | 取回方式 |
+> |:---|:---|:---|
+> | `450ccf2` | 33 个（2026-09-12 清理） | `git show 450ccf2:quant_server/scripts/<文件名>` |
+> | **`17cc54f`** | **44 个**（2026-09-15 清理，含 `_cm_*` 13 / `_probe_*` 11 / `_phase*` 6 / `_diag_*` 4 / `_verify_*` 等 6 / `_sync_*` 2 / 单件 2） | `git show 17cc54f:quant_server/scripts/<文件名>` |
+>
+> 新建诊断脚本请沿用 `_` 前缀，**不要提交**（可放 `scripts/_diag/`）。`scripts/_bak/`（同步前自动备份）已在 `.gitignore`。
+
+### 日志（`quant_server/logs/`，**两路分离**，2026-09-15 起）
+
+| 文件 | 内容 | 保留 |
+|:---|:---|:---|
+| `quant_server.log` | **全量**（DEBUG 起），排查时的"全量视图" | 天轮转，**90 天** |
+| `strategy_decision.log` | **实盘决策记录，仅此一路**：策略每日运行 / `[策略诊断]` / `[卖出]止损` / `[VETO]` / F9 守卫 / 走弱期 | 天轮转 → **按月合并 gzip**，**永久** |
+
+> ⚠️ **为什么决策日志必须独立且长期保留**：**实盘决策过程不落库** ——
+> `strategy_manager._run_live_strategies` 的「策略每日运行」「[策略诊断]」只走 `logger.info`，
+> 各策略内部的止损/否决/守卫同样只打日志。**DB 只记「决策结果」（`signals`/`positions`/`orders`），
+> 不记「决策过程」**。→ 要回答「某天为什么没买 / 为什么选它 / 哪道门拒的」，**只能查这个日志**。
+>
+> ⚠️ 分流靠 `LiveDecisionFilter`（`utils/core_utils/logging_utils/decision_log.py`）：
+> **实盘驱动期间 + 策略层命名空间 + INFO 以上**。不加过滤器会被**回测日志淹没**
+> —— 实测 2026-09-13 单日策略层 136,786 行中 **135,501 行来自回测/对照实验**，实盘仅 1,285 行。
+>
+> 归档/清理：`cd quant_server && .venv/Scripts/python.exe scripts/ops/archive_logs.py [--apply]`
+> （默认 dry-run；已挂日终任务 `archive_logs`，`post_gate order=90`）
 
 ### 前端（CWD: `quant_web/`）
 
@@ -141,10 +174,10 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 **信号级冒烟验证（磁盘加载、不走 DB）**：
 
 ```bash
-cd quant_server && .venv/Scripts/python.exe scripts/backtest_high_vol_momentum.py      # 2025-01-01~2026-08-07
-cd quant_server && .venv/Scripts/python.exe scripts/backtest_cross_market_momentum.py  # 2021-01-01~2026-08-07
-cd quant_server && .venv/Scripts/python.exe scripts/backtest_etf_bottom.py
-cd quant_server && .venv/Scripts/python.exe scripts/backtest_small_cap.py              # 微盘，2021-01-01~2026-08-07
+cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_high_vol_momentum.py      # 2025-01-01~2026-08-07
+cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_cross_market_momentum.py  # 2021-01-01~2026-08-07
+cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_etf_bottom.py
+cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_small_cap.py              # 微盘，2021-01-01~2026-08-07
 ```
 
 > ⚠️ **2026-09-15 实测订正 —— 这 4 个脚本并非都是"策略冒烟"**：
@@ -166,7 +199,7 @@ cd quant_server && .venv/Scripts/python.exe scripts/backtest_small_cap.py       
 （旧的「收益率合理」表述已废弃，见 `.claude/skills/strategy-dev/SKILL.md` 步骤 5。）
 
 > ⚠️ **路径依赖型策略禁止用单一起始日结论**（区间收益随起跑日剧烈漂移）。必须用滚动起始日看**中位数 / 下四分位**分布：
-> `cd quant_server && .venv/Scripts/python.exe scripts/rolling_start_analysis.py [start1,start2,...]`（默认 6 个起始日，固定结束于 2026-09-04）。
+> `cd quant_server && .venv/Scripts/python.exe scripts/backtest/rolling_start_analysis.py [start1,start2,...]`（默认 6 个起始日，固定结束于 2026-09-04）。
 
 **实际策略清单（代码实证，见白皮书 §4）**：
 

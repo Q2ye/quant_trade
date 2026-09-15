@@ -10,8 +10,8 @@
   - 2026-08 阶段 4b/4c：用于把恐慌抄底/微盘两个卫星策略同步进模板库（不打完整服务）
 
 用法（quant_server/ 下运行）：
-    .venv/Scripts/python.exe scripts/seed_builtin_templates.py
-    .venv/Scripts/python.exe scripts/seed_builtin_templates.py --dry-run
+    .venv/Scripts/python.exe scripts/data/seed_builtin_templates.py
+    .venv/Scripts/python.exe scripts/data/seed_builtin_templates.py --dry-run
 """
 import argparse
 import asyncio
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 # 保证从任意 cwd 都能 import shared/ modules/（脚本位于 quant_server/scripts/ 下）
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 

@@ -4,7 +4,7 @@ LightGBM ETF 底部策略 — 快速信号级回测
 =======================================
 加载训练好的模型 → 在测试集上生成信号 → 模拟持仓退出 → 计算绩效
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest_etf_bottom.py
+执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_etf_bottom.py
 """
 import asyncio, logging, math, sys
 from datetime import date, datetime, timedelta
@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 DB = {"host": "localhost", "port": 5432, "user": "postgres", "password": "123456", "database": "quant_signals_dev"}
-MODEL_PATH = Path(__file__).resolve().parent.parent / "storage" / "models"
+MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "storage" / "models"
 
 # ── 回测参数 ──
 THRESHOLD = None        # None=使用模型 artifact 的最优阈值（推荐）

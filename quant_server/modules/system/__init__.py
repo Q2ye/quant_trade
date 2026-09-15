@@ -93,6 +93,44 @@ async def initialize(
                 init_result = await _initialize_system_module(session, config or {})
                 success = init_result.get('status') != 'failed'
 
+        # 2026-09-15：注册「日志归档」日终任务（详见 scripts/ops/archive_logs.py）
+        # ⚠️ 放在 **pre_gate order=1** 而不是 post_gate：
+        #    post_gate 阶段在「数据完整性门」失败时会被**整体跳过**
+        #    （`main_engine.py:241-243`：gate_ok=False → 直接 return）。
+        #    日志归档是**幂等的运维任务**，与数据是否完整无关，必须每天必跑。
+        #    order=1 让它排在数据同步（sync_daily=10）之前 —— 归档的是「今天之前」的日志。
+        # ⚠️ 非致命：任何异常都只 warning，绝不影响日终流水线。
+        if success and main_engine and hasattr(main_engine, "register_daily_task"):
+            async def _task_archive_logs(today):
+                """日终日志归档：决策日志按月合并（永久）+ 系统日志超期清理。"""
+                import subprocess as _sp
+                import sys as _sys
+                from pathlib import Path as _P
+                _script = _P(__file__).resolve().parents[2] / "scripts" / "ops" / "archive_logs.py"
+                if not _script.exists():
+                    logger.warning("日志归档脚本不存在，跳过: %s", _script)
+                    return
+                _py = _P(_sys.executable)
+                try:
+                    _p = _sp.run([str(_py), str(_script), "--apply"],
+                                 capture_output=True, text=True, timeout=300,
+                                 encoding="utf-8", errors="replace")
+                    if _p.returncode == 0:
+                        _tail = [l for l in (_p.stdout or "").splitlines() if l.strip()][-1:]
+                        logger.info("日终日志归档完成: %s", _tail[0] if _tail else "ok")
+                    else:
+                        logger.warning("日终日志归档返回码 %s: %s",
+                                       _p.returncode, (_p.stderr or "")[:300])
+                except Exception as _e:
+                    logger.warning("日终日志归档失败（非致命）: %s", _e)
+
+            try:
+                await main_engine.register_daily_task(
+                    "archive_logs", _task_archive_logs, phase="pre_gate", order=1)
+                logger.info("已注册日终任务: archive_logs (pre_gate, order=1)")
+            except Exception as e:
+                logger.warning("注册日志归档任务失败（非致命）: %s", e)
+
         # v2.0: 初始化配置管理器（含热加载）
         if success and event_engine:
             try:

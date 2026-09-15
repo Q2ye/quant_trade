@@ -6,8 +6,8 @@
 
 用法：
     cd quant_server
-    .venv/Scripts/python.exe scripts/audit_strategy.py                  # 扫默认目录
-    .venv/Scripts/python.exe scripts/audit_strategy.py <文件或目录>...   # 扫指定路径
+    .venv/Scripts/python.exe scripts/quality/audit_strategy.py                  # 扫默认目录
+    .venv/Scripts/python.exe scripts/quality/audit_strategy.py <文件或目录>...   # 扫指定路径
 
 退出码：
     0 = 无阻断项（可能有警告）
@@ -32,6 +32,13 @@ from __future__ import annotations
 import ast
 import re
 import sys
+
+try:  # 2026-09-15：Windows 控制台默认 GBK，打印 🔴/🟡 会 UnicodeEncodeError 崩溃
+    # （实测由 hook 调用时直接抛异常 → 报告变成 traceback、退出码失真）
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
@@ -267,7 +274,7 @@ def _collect_targets(args: List[str], root: Path) -> List[Path]:
 
 def main(argv: List[str]) -> int:
     """入口：扫描 → 打印报告 → 返回退出码。"""
-    root = Path(__file__).resolve().parents[1]          # quant_server/
+    root = Path(__file__).resolve().parents[2]          # quant_server/（2026-09-15 移入 quality/ 后 +1 级）
     verbose = "--verbose" in argv or "-v" in argv
     paths = [a for a in argv[1:] if not a.startswith("-")]
     files = _collect_targets(paths or [DEFAULT_TARGET], root)

@@ -1252,7 +1252,17 @@ class StrategyManager(EngineBase):
             logger.warning(f"交易日 {trade_date} 无可用 BarData，跳过策略驱动")
             return []
 
-        return await self._run_live_strategies(trade_date, bars)
+        # 2026-09-15：标记「实盘决策上下文」——决定日志分流（见 logging_utils/decision_log.py）。
+        # 该标志置位期间，策略层 INFO+ 日志会额外写入 logs/strategy_decision.log（长期保留）。
+        # 在此处包一层而不是改 `_run_live_strategies` 函数体：避免整段重排缩进。
+        from utils.core_utils.logging_utils.decision_log import (
+            mark_live_decision, unmark_live_decision,
+        )
+        _d_tok = mark_live_decision()
+        try:
+            return await self._run_live_strategies(trade_date, bars)
+        finally:
+            unmark_live_decision(_d_tok)
 
     async def _load_daily_bars(
         self, trade_date: date, symbols: Optional[List[str]] = None,

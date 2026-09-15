@@ -184,7 +184,7 @@
 | modules/monitor/engines/alert_engine.py:305 | 交易信号强制 channels=["wechat"]，忽略 config.yaml 渠道开关与 `alert_interval:300`（config.yaml:93 全库未用） | 低 | 渠道/节流走配置 |
 | modules/monitor/handlers.py:293-312 | check_monitor_module_health 恒返回 healthy | 低 | 纳入引擎/队列指标 |
 | 事件命名 | 多处 module="events"（settlement_events.py:44 等）与裸字符串事件名，不符合 `{module}.{domain}.{action}.{status}` 规范 | 低 | 统一枚举+规范命名 |
-| scripts/fix_token.py:50-56 | 可签发 100 年"永久"超管 token | 低 | 仅限运维且密钥轮换后作废 |
+| scripts/ops/fix_token.py:50-56 | 可签发 100 年"永久"超管 token | 低 | 仅限运维且密钥轮换后作废 |
 
 ---
 

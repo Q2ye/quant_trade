@@ -17,7 +17,7 @@
 幂等：按 (ts_code, trade_date) upsert。
 
 用法：
-    python scripts/backfill_adjusted_prices.py [--mainboard] [--start-date 2021-08-10]
+    python scripts/data/backfill_adjusted_prices.py [--mainboard] [--start-date 2021-08-10]
 
 参数：
     --mainboard      只回填主板股票（00/60/002 开头，约 2879 只）。策略 v5.0 只交易主板，
@@ -34,7 +34,7 @@ from pathlib import Path
 
 # 用脚本自身路径定位 .env，与 cwd 解耦（后台运行也能找到）
 _SCRIPT_DIR = Path(__file__).resolve().parent
-env_path = _SCRIPT_DIR.parent / ".env"  # scripts/../.env = quant_server/.env
+env_path = _SCRIPT_DIR.parent.parent / ".env"  # 2026-09-15 移入 data/ 后 +1 级（= quant_server/.env）
 for line in env_path.read_text(encoding="utf-8").splitlines():
     line = line.strip()
     if line and not line.startswith("#") and "=" in line:

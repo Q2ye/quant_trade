@@ -3,7 +3,7 @@
 
 北向资金从 2014-11(沪港通开通)、两融从 2010-03(融资融券开通) 分段拉到 2026-09。
 幂等：ON CONFLICT DO UPDATE。
-执行: .venv/Scripts/python.exe scripts/sync_margin_hsgt.py
+执行: .venv/Scripts/python.exe scripts/data/sync_margin_hsgt.py
 """
 import asyncio
 import pandas as pd

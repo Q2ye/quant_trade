@@ -6,7 +6,7 @@
 
 估值因子来源: index_dailybasic (6大指数 PE/PB) + etf_shares + etf_basic
 市场状态来源: market_state_daily (已填充5166天) → 映射到每只ETF
-执行: cd quant_server && .venv/Scripts/python.exe scripts/backfill_valuation_factors.py
+执行: cd quant_server && .venv/Scripts/python.exe scripts/data/backfill_valuation_factors.py
 """
 import asyncio, logging, math, uuid
 from datetime import date, datetime

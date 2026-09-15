@@ -5,13 +5,13 @@
 
 | # | 门 | 命令 | 拦什么 |
 |:--|:---|:---|:---|
-| 1 | **质量门** | `scripts/audit_strategy.py` | 策略代码：未来函数 / 硬编码凭证 / 除零 / 参数越界 |
+| 1 | **质量门** | `scripts/quality/audit_strategy.py` | 策略代码：未来函数 / 硬编码凭证 / 除零 / 参数越界 |
 | 2 | **回归门** | `pytest -q` | 任何新增失败（2026-09-15 已清至 0 failed / 0 errors，基线 276 passed） |
 | 3 | **范围门** | `git diff --name-only`（含未跟踪） | 改动是否超出本次声明的范围 |
 
 ## 用法
 
-    cd quant_server && .venv/Scripts/python.exe scripts/check_all.py
+    cd quant_server && .venv/Scripts/python.exe scripts/quality/check_all.py
     # 范围门需要先声明范围（一行一个路径前缀）：
     #   .claude/current_scope.txt   ← 或 --scope <文件>
 
@@ -35,8 +35,9 @@ try:  # Windows 控制台默认 GBK，中文输出会炸
 except Exception:
     pass
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-QUANT_SERVER = SCRIPT_DIR.parent
+SCRIPT_DIR = Path(__file__).resolve().parent          # scripts/quality/
+# 2026-09-15 移入 quality/ 后 +1 级（原先 SCRIPT_DIR.parent 即 quant_server/）
+QUANT_SERVER = SCRIPT_DIR.parent.parent
 REPO_ROOT = QUANT_SERVER.parent
 DEFAULT_SCOPE = REPO_ROOT / ".claude" / "current_scope.txt"
 
@@ -58,7 +59,7 @@ def _run(cmd: List[str], cwd: Path, timeout: int = 300) -> Tuple[int, str]:
 
 def gate_audit() -> Tuple[str, str]:
     """门 1：策略质量门（只取汇总行，避免把上百条除法启发式警告淹没结论）。"""
-    rc, out = _run([PYTHON, "scripts/audit_strategy.py"], QUANT_SERVER, timeout=120)
+    rc, out = _run([PYTHON, "scripts/quality/audit_strategy.py"], QUANT_SERVER, timeout=120)
     keep = [
         ln.strip() for ln in out.splitlines()
         if any(ln.startswith(k) for k in ("🔴 阻断", "🟡 警告", "⚪ 豁免", "结论"))
@@ -102,7 +103,7 @@ def gate_scope(scope_file: Optional[Path]) -> Tuple[str, str]:
     if scope_file is None or not scope_file.exists():
         return "SKIP", (
             f"未声明范围（无 {DEFAULT_SCOPE.relative_to(REPO_ROOT)}）—— 本门跳过\n"
-            f"声明方式：`python scripts/check_all.py --declare \".claude/,docs/,quant_server/scripts/\"`"
+            f"声明方式：`python scripts/quality/check_all.py --declare \".claude/,docs/,quant_server/scripts/\"`"
         )
     prefixes = [
         ln.strip().replace("\\", "/")

@@ -4,7 +4,7 @@
 
 建表（幂等）+ 计算 2019-01-01 ~ 昨天的恐慌指数。
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/backfill_panic_index.py [start]
+执行: cd quant_server && .venv/Scripts/python.exe scripts/data/backfill_panic_index.py [start]
 默认 start: 2019-01-01（stock_daily 全量可用起点，M2 反例统计同区间）
 """
 import asyncio
@@ -17,7 +17,7 @@ DEFAULT_START = "2019-01-01"
 
 def _load_env() -> dict:
     env = {}
-    p = Path(__file__).resolve().parents[1] / ".env"
+    p = Path(__file__).resolve().parents[2] / ".env"
     if p.exists():
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
             line = line.strip()

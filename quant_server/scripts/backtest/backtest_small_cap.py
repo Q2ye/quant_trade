@@ -12,7 +12,7 @@
   4. 个股止损 -9%（收盘价触发）
 
 执行:
-  cd quant_server && .venv/Scripts/python.exe scripts/backtest_small_cap.py [start] [end]
+  cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_small_cap.py [start] [end]
 默认区间: 2021-01-01 ~ 2026-08-07（5 年，覆盖 2024-01 微盘崩盘）
 对比:
   SMALL_CAP_SKIP=10 优化版（剔除最小 10 只）

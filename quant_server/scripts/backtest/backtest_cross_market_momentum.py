@@ -7,7 +7,7 @@
 撮合模型：order_mode=open → 买卖信号均「次日开盘成交」（对齐实盘 T+1，比 high_vol
 冒烟的「入场当日收盘」更贴近真实引擎）。
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest_cross_market_momentum.py [start] [end]
+执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_cross_market_momentum.py [start] [end]
 默认区间: 2021-01-01 ~ 2026-08-07（跨 A股牛熊切换 + 海外/商品多轮行情）
 验收（strategy-gates）: 至少 1 笔交易、无 NaN、收益率 ∈ [-95%, +500%]
 """

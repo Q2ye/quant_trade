@@ -4,7 +4,7 @@
 复用冒烟脚本的 SmokePortfolio（先卖后买、order_mode=open），对多个起始日分别回测，
 统计总收益/回撤的分布（中位数/下四分位/范围），判断路径依赖强度。
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/_rolling_start_cross_market.py [start1,start2,...]
+执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest/_rolling_start_cross_market.py [start1,start2,...]
 默认: 12 个起始日，覆盖牛/熊/震荡，固定结束 2026-09-08。
 """
 import asyncio

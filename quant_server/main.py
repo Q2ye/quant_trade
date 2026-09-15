@@ -334,14 +334,16 @@ class QuantServer:
 			if not _h.formatter:
 				_root.removeHandler(_h)
 
-		# 添加文件日志处理器（按天轮转，保留30天）
+		# 添加文件日志处理器（按天轮转，保留90天）
+		# 2026-09-15：30 → 90 天。该文件是**排查时的全量视图**；而「实盘决策」另有独立
+		# 文件（下方 decision handler）长期保留、按月归档，故此处保留期可放宽。
 		import os as _os
 		_log_dir = _os.path.join(_os.path.dirname(__file__), 'logs')
 		file_handler = HandlerFactory.create_timed_file_handler(
 			filename=_os.path.join(_log_dir, 'quant_server.log'),
 			level=LogLevel.DEBUG,
 			when='midnight',
-			backup_count=30
+			backup_count=90
 		)
 		# 设置与控制台一致的格式化器（复用上方已 import 的 _logging）
 		file_handler.setFormatter(_logging.Formatter(
@@ -350,6 +352,35 @@ class QuantServer:
 		))
 		root_logger = get_logger("")
 		root_logger.add_handler("file", file_handler)
+
+		# 2026-09-15 新增：**实盘决策日志**（独立文件，长期保留 → 按月归档）
+		# 背景：实盘决策过程（走弱期/候选/目标/止损/守卫跳过）**不落库**，日志是唯一记录。
+		# 分流靠 LiveDecisionFilter（实盘驱动期间 + 策略层命名空间），
+		# 否则会被回测日志淹没（实测 09-13 单日策略层 136k 行中 135.5k 是回测）。
+		# ⚠️ fail-safe：本块任何异常都不得影响主日志与启动。
+		try:
+			from utils.core_utils.logging_utils.decision_log import LiveDecisionFilter
+			decision_handler = HandlerFactory.create_timed_file_handler(
+				filename=_os.path.join(_log_dir, 'strategy_decision.log'),
+				level=LogLevel.INFO,
+				when='midnight',
+				backup_count=90
+			)
+			decision_handler.setFormatter(_logging.Formatter(
+				'%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
+				datefmt='%Y-%m-%d %H:%M:%S'
+			))
+			# ⚠️ 过滤顺序无关，但两个都必要：
+			#   ① LiveDecisionFilter：实盘驱动期间 + 策略层命名空间
+			#   ② 级别 ≥ INFO：排除 DEBUG 刷屏（add_handler 会把 handler.level
+			#      强制为 root logger 的级别，故级别判定放在 filter 里更可靠）
+			decision_handler.addFilter(LiveDecisionFilter())
+			decision_handler.addFilter(lambda _r: _r.levelno >= _logging.INFO)
+			root_logger.add_handler("decision", decision_handler)
+			logger.info("实盘决策日志已启用", extra={
+				"path": _os.path.join(_log_dir, 'strategy_decision.log')})
+		except Exception as _e:
+			logger.warning("实盘决策日志初始化失败（不影响主日志与启动）: %s", _e)
 
 		# 获取日志管理器并记录初始化
 		log_manager = get_global_log_manager()

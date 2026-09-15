@@ -4,7 +4,7 @@
 ========================================
 加载 etf_daily → 逐 ETF 批量计算 36 个因子 → 写入 factor_data
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/backfill_top100_factors.py
+执行: cd quant_server && .venv/Scripts/python.exe scripts/data/backfill_top100_factors.py
 预估耗时: ~15-20 分钟
 """
 import asyncio, logging, uuid

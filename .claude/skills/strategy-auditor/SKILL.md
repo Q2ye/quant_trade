@@ -10,7 +10,12 @@ description: 策略代码质量门。在回测前运行快速自动检查，拦�
 >
 > ⚠️ **事实性表述一律以代码与 DDL 为准**（表名查 `docs/sql/create_table.sql`，参数取值查策略文件本身）。
 > **2026-09-15 修正**：此前版本写入 `daily_quotes`（**不存在的表**，实为 `modules/data/constants.py` 的 `DataType` 枚举码）与「止损必须为负数」（与现行正数约定冲突），均已修正。
-> 🚧 **待办**：本清单 🔴 四项 **100% 可脚本化**，计划落为 `quant_server/scripts/audit_strategy.py` 并接入 hook —— 届时本文件只保留「运行脚本、🔴 清零」，**不再维护事实清单**（根治规则随代码漂移的问题）。见 `docs/review/17` §1-2。
+> ✅ **2026-09-15 已脚本化**：本清单 🔴 四项已落为 `quant_server/scripts/quality/audit_strategy.py`
+> （机检：未来函数 / 硬编码凭证 / 除零 / 参数越界；非零退出码），并已接入 hook
+> —— 改 `modules/strategy/strategies/**` 下的文件时**自动运行**（`.claude/hooks/audit_on_edit.py`）。
+> **日常用法：`cd quant_server && .venv/Scripts/python.exe scripts/quality/audit_strategy.py`，🔴 清零即可。**
+> 本文件保留为**判据来源**（供人阅读与评审）；**事实性清单**（表名/参数名）以代码与
+> `docs/sql/create_table.sql` 为准。见 `docs/review/17` §9。
 
 ## 检查清单（按阻断级别）
 

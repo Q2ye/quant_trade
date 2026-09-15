@@ -23,6 +23,10 @@ build
 dist
 *.local
 
+# 脚本自动备份（scripts/sync_strategy_code.py 写 DB code 前留的 .py 备份）
+# 2026-09-15 补：原未忽略 → 会在提交时被误带入（实测 scripts/_bak/ 有 10 个文件）
+_bak/
+
 # VeighNa
 .vntrader
 

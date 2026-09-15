@@ -18,10 +18,10 @@
     全局限流 <= ~400 次/分钟（Tushare daily_basic/moneyflow 500-600/min 留余量）。
 
 用法（quant_server/ 下）：
-    .venv/Scripts/python.exe scripts/backfill_coverage_gaps.py                            # 全量回填 daily_basic + moneyflow
-    .venv/Scripts/python.exe scripts/backfill_coverage_gaps.py --table daily_basic
-    .venv/Scripts/python.exe scripts/backfill_coverage_gaps.py --workers 4
-    .venv/Scripts/python.exe scripts/backfill_coverage_gaps.py --limit 20 --dry-run       # 小规模预检（只检测不回填）
+    .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py                            # 全量回填 daily_basic + moneyflow
+    .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py --table daily_basic
+    .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py --workers 4
+    .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py --limit 20 --dry-run       # 小规模预检（只检测不回填）
 
 幂等：bulk_upsert 按 (ts_code, trade_date) ON CONFLICT DO UPDATE。
 """
@@ -35,7 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -87,7 +87,7 @@ def _throttled_fetch(fn, kwargs: dict):
 
 def _load_env() -> dict:
     env = {}
-    p = Path(__file__).resolve().parents[1] / ".env"
+    p = Path(__file__).resolve().parents[2] / ".env"
     if p.exists():
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
             line = line.strip()

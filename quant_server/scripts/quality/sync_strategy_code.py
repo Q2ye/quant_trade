@@ -9,13 +9,13 @@
 
     cd quant_server
     # ① 巡检：列出全部 live 实例的磁盘↔DB 一致性（默认，只读）
-    .venv/Scripts/python.exe scripts/sync_strategy_code.py
+    .venv/Scripts/python.exe scripts/quality/sync_strategy_code.py
 
     # ② 看某个实例的差异明细（只读）
-    .venv/Scripts/python.exe scripts/sync_strategy_code.py --diff dc862847
+    .venv/Scripts/python.exe scripts/quality/sync_strategy_code.py --diff dc862847
 
     # ③ 同步：把磁盘写入指定实例的 DB code（**先自动备份**原 code 到 scripts/_bak/）
-    .venv/Scripts/python.exe scripts/sync_strategy_code.py --apply dc862847
+    .venv/Scripts/python.exe scripts/quality/sync_strategy_code.py --apply dc862847
 
 ⚠️ **同步前三问**（本脚本会提示，但不会替你判断）：
     1. 该实例的 `strategy_parameters` 是否有覆盖？若覆盖里含**磁盘已删除的键**，
@@ -46,7 +46,8 @@ CLASS_TO_FILE: Dict[str, str] = {
     "DeepDropReboundStrategy": "modules/strategy/strategies/reference/deep_drop_rebound_strategy.py",
 }
 
-BAK_DIR = Path(__file__).resolve().parent / "_bak"
+# 2026-09-15 移入 quality/ 后指向 scripts/_bak（保持与既有备份同处；.gitignore 已忽略 _bak/）
+BAK_DIR = Path(__file__).resolve().parent.parent / "_bak"
 
 
 def norm(text: str) -> str:
@@ -89,7 +90,7 @@ async def main() -> int:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     apply_mode = "--apply" in sys.argv
     show_diff = "--diff" in sys.argv
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]  # 2026-09-15 移入 quality/ 后 +1 级
 
     pool = get_connection_pool()
     try:

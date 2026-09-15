@@ -3,7 +3,7 @@
 实盘组合初始化脚本 — 创建 composite_groups + 绑定共享账户
 
 用法: 在 quant_server 目录下运行
-    .venv/Scripts/python.exe scripts/setup_composite.py
+    .venv/Scripts/python.exe scripts/ops/setup_composite.py
 
 功能:
   1. 将 ETF底部 + 低吸 两个策略绑定到共享账户（SHARED_ACCOUNT_ID）

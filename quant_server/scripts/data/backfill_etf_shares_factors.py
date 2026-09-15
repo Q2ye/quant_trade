@@ -3,7 +3,7 @@
 回填 ETF 份额/规模因子: share_change_5d, share_change_20d, fund_size_change_20d
 从 etf_shares 表计算 → 写入 factor_data
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/backfill_etf_shares_factors.py
+执行: cd quant_server && .venv/Scripts/python.exe scripts/data/backfill_etf_shares_factors.py
 """
 import asyncio, logging, uuid
 from datetime import date

@@ -8,7 +8,7 @@
   DEFAULT_PARAMS 的参数不可信。
 
 替代做法：
-  1) 用滚动起始日评估分布（scripts/rolling_start_analysis.py），
+  1) 用滚动起始日评估分布（scripts/backtest/rolling_start_analysis.py），
      至少看**中位数与下四分位（P25）**，不看单点最高值；
   2) 参数需在样本外（OOS）区间复核后才可固化。
 
@@ -17,7 +17,7 @@ V2 strategy parameter sweep -- Phase 1 + Phase 2
 
 Usage:
   cd quant_server
-  PYTHONPATH=. .venv/Scripts/python.exe scripts/v2_param_sweep.py
+  PYTHONPATH=. .venv/Scripts/python.exe scripts/ops/v2_param_sweep.py
 """
 
 import asyncio, csv, logging, os, time as _time
@@ -681,7 +681,8 @@ async def main():
             print(f"{r.name:<22} {delta_ann:>+10.1%}  {delta_mdd:>+10.1%}  {delta_cal:>+10.3f}")
 
     # CSV
-    csv_path = os.path.join(os.path.dirname(__file__), "..", "v2_sweep_results.csv")
+    # 2026-09-15 移入 ops/ 后 +1 级（CSV 位于 quant_server/ 下）
+    csv_path = os.path.join(os.path.dirname(__file__), "..", "..", "v2_sweep_results.csv")
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["Phase", "Name", "Pool", "AnnRet", "TotRet", "Sharpe", "MaxDD", "Calmar",

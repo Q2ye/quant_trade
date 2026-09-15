@@ -5,7 +5,7 @@
 创建「卫星池」独立账户（恐慌抄底 + 微盘策略的归属账户），主策略用主账户（默认）。
 幂等：账户名已存在则跳过；重复执行安全。
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/seed_satellite_account.py
+执行: cd quant_server && .venv/Scripts/python.exe scripts/data/seed_satellite_account.py
 """
 import asyncio
 import sys
@@ -19,7 +19,7 @@ INITIAL_BALANCE = 0               # 资金由主账户按需划转（铁律1：�
 
 def _load_env() -> dict:
     env = {}
-    p = Path(__file__).resolve().parents[1] / ".env"
+    p = Path(__file__).resolve().parents[2] / ".env"
     if p.exists():
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
             line = line.strip()

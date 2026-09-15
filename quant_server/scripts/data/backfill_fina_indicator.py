@@ -7,9 +7,9 @@
 补齐 2019 至今的历史数据。
 
 用法（quant_server/ 下）：
-    .venv/Scripts/python.exe scripts/backfill_fina_indicator.py              # 全量
-    .venv/Scripts/python.exe scripts/backfill_fina_indicator.py --limit 50   # 小规模验证
-    .venv/Scripts/python.exe scripts/backfill_fina_indicator.py --start 20210101
+    .venv/Scripts/python.exe scripts/data/backfill_fina_indicator.py              # 全量
+    .venv/Scripts/python.exe scripts/data/backfill_fina_indicator.py --limit 50   # 小规模验证
+    .venv/Scripts/python.exe scripts/data/backfill_fina_indicator.py --start 20210101
 
 幂等：bulk_upsert 按 (ts_code, end_date) ON CONFLICT 更新。
 """
@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -32,7 +32,7 @@ _END_DATE = "20260822"
 
 def _load_env() -> dict:
     env = {}
-    p = Path(__file__).resolve().parents[1] / ".env"
+    p = Path(__file__).resolve().parents[2] / ".env"
     if p.exists():
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
             line = line.strip()

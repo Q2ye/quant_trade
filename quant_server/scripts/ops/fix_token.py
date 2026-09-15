@@ -7,7 +7,8 @@ import sys
 import os
 from datetime import timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 2026-09-15 移入 ops/ 后 +1 级（原为双层 dirname）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from shared.security.jwt_handler import JWTManager
 

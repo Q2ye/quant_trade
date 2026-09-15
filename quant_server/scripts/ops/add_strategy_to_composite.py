@@ -3,7 +3,7 @@
 将新策略加入实盘组合 — 更新 composite_groups 的 strategy_ids + allocator_config
 
 用法: 在 quant_server 目录下运行
-    .venv/Scripts/python.exe scripts/add_strategy_to_composite.py \
+    .venv/Scripts/python.exe scripts/ops/add_strategy_to_composite.py \
         --group <组合ID> \
         --strategy <策略ID> \
         --allocator <allocator_id> \

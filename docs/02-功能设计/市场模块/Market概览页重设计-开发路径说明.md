@@ -517,7 +517,7 @@ temperature 样本不足，缺失维度: ['technical']
 | 文件 | 改动 |
 |:---|:---|
 | `modules/data/services/market_state_classifier.py` | +`_load_above_ma`（窗口 SQL 按日聚合 站上MA20/MA60 比例）+ `update_above_ma_ratios(conn, since)`（UPDATE 两列）+ 在 `classify_and_populate` 末尾挂 EOD 增量（since=最新日-400 天，非致命 try/except） |
-| `scripts/backfill_above_ma.py` | **新建**：全量回填（min(trade_date)-100 天起算，一次性） |
+| `scripts/data/backfill_above_ma.py` | **新建**：全量回填（min(trade_date)-100 天起算，一次性） |
 | `modules/market/services/market_temperature_service.py` | `_query_technical_dim`：**优先读 `market_state_daily.above_ma20_pct` 列**（≥60 样本 → 分位，approx=False）；列缺失/样本不足 → 保留原退路链（过渡期安全） |
 | `modules/market/services/breadth_service.py` | `get_breadth_metrics` 的 `above_ma20/60_market` 改读最新列值；列为空 → 原重查询兜底 |
 | `docs/sql/create_table.sql` | market_state_daily DDL +2 列（注释同步） |
@@ -554,7 +554,7 @@ ALTER TABLE market_state_daily ADD COLUMN IF NOT EXISTS above_ma60_pct NUMERIC(6
 | 文件 | 改动 |
 |:---|:---|
 | `modules/data/services/market_state_classifier.py` | +`_load_limit_up_counts`（JOIN 口径逐日聚合）+ `_load_avg_turnovers` + `update_emotion_metrics(conn, since)`（两列**独立** UPDATE，互不干扰）+ step 6.6 钩子（since=最新日-400 天，非致命） |
-| `scripts/backfill_emotion_metrics.py` | **新建**：全量回填（镜像 backfill_above_ma.py） |
+| `scripts/data/backfill_emotion_metrics.py` | **新建**：全量回填（镜像 backfill_above_ma.py） |
 | `modules/market/services/market_temperature_service.py` | `_query_emotion_dim`：列优先（两列**独立读取**，各自 ≥`EMOTION_MIN_SAMPLES=20` → 分位 0.5/0.5，approx=False）；不足/列缺失 → 原两条重查询兜底 |
 | `docs/sql/create_table.sql` | market_state_daily DDL +2 列 + 注释 |
 

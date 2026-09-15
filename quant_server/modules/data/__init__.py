@@ -288,7 +288,7 @@ async def initialize (
 							if _n > 0:
 								logger.warning(
 									"覆盖度校验: %s 近60日 %d 只股票覆盖不足"
-									"（建议 scripts/backfill_coverage_gaps.py 回填）", _tbl, _n)
+									"（建议 scripts/data/backfill_coverage_gaps.py 回填）", _tbl, _n)
 							else:
 								logger.info("覆盖度校验: %s 近60日覆盖正常", _tbl)
 				except Exception as _ce:

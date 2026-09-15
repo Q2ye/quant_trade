@@ -3,7 +3,7 @@
 合并账户余额 — 将源账户余额转入共享账户（资金池合并）
 
 用法: 在 quant_server 目录下运行
-    .venv/Scripts/python.exe scripts/merge_accounts.py
+    .venv/Scripts/python.exe scripts/ops/merge_accounts.py
 
 功能:
   1. 将 SOURCE_ACCOUNT（ETF 原账户 9188e19e）余额转入 TARGET_ACCOUNT（共享池 84d81a14）

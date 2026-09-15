@@ -12,7 +12,7 @@
   - execution_mode=semi_auto（信号 → 人工确认 → 执行）
 幂等：策略名已存在则跳过。
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/seed_satellite_strategies.py
+执行: cd quant_server && .venv/Scripts/python.exe scripts/data/seed_satellite_strategies.py
 """
 import asyncio
 import sys
@@ -24,7 +24,7 @@ SAT_ACCOUNT_NAME = "卫星池"
 
 def _load_env() -> dict:
     env = {}
-    p = Path(__file__).resolve().parents[1] / ".env"
+    p = Path(__file__).resolve().parents[2] / ".env"
     if p.exists():
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
             line = line.strip()
@@ -35,7 +35,7 @@ def _load_env() -> dict:
 
 
 def _read_strategy_code(rel_path: str) -> str:
-    p = Path(__file__).resolve().parents[1] / rel_path
+    p = Path(__file__).resolve().parents[2] / rel_path
     return p.read_text(encoding="utf-8")
 
 
@@ -76,7 +76,7 @@ async def main() -> None:
         ), {"n": SAT_ACCOUNT_NAME})
         acc = r.fetchone()
         if not acc:
-            print("错误: 卫星池账户不存在，先执行 scripts/seed_satellite_account.py")
+            print("错误: 卫星池账户不存在，先执行 scripts/data/seed_satellite_account.py")
             await engine.dispose()
             return
         account_id = acc[0]

@@ -9,7 +9,7 @@
 
 撮合：order_mode=open（买卖均次日开盘成交），含万1佣金 + 0.02% 滑点。
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/rolling_start_analysis.py [start1,start2,...]
+执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest/rolling_start_analysis.py [start1,start2,...]
 默认: 6 个起始日，覆盖牛/熊/震荡多段行情，固定结束 2026-09-04。
 """
 import asyncio
@@ -27,7 +27,7 @@ import pandas as pd
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-RESULTS_FILE = str(Path(__file__).resolve().parent.parent / "logs" / "rolling_start_results.txt")
+RESULTS_FILE = str(Path(__file__).resolve().parent.parent.parent / "logs" / "rolling_start_results.txt")
 
 
 def _progress(msg: str) -> None:

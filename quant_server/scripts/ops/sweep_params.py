@@ -10,7 +10,7 @@
      而线上实际加载的是 `etf_bottom_v5_20260816.joblib`（53 特征 / 阈值 0.48）
      → **扫参与线上不是同一个模型**，结论不可迁移。
 
-替代做法：先用滚动起始日评估分布（scripts/rolling_start_analysis.py），
+替代做法：先用滚动起始日评估分布（scripts/backtest/rolling_start_analysis.py），
 至少看中位数与下四分位（P25），并在样本外区间复核后再固化参数。
 
 --- 原说明（保留供追溯）---
@@ -19,7 +19,7 @@ LightGBM ETF 底部策略 — 参数扫描优化
 基于投资哲学（赔率优先、集中持仓、高波动标的、非对称止盈）扫描关键参数，
 找到最大化总收益的配置。
 
-执行: cd quant_server && .venv/Scripts/python.exe scripts/sweep_params.py
+执行: cd quant_server && .venv/Scripts/python.exe scripts/ops/sweep_params.py
 """
 import asyncio, logging, math, sys
 from datetime import date
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 DB = {"host": "localhost", "port": 5432, "user": "postgres", "password": "123456", "database": "quant_signals_dev"}
-MODEL_DIR = Path(__file__).resolve().parent.parent / "storage" / "models"
+MODEL_DIR = Path(__file__).resolve().parent.parent.parent / "storage" / "models"
 INITIAL_CAPITAL = 1_000_000
 COMMISSION = 0.0001  # 万分之一佣金（万一免五）
 

@@ -6,7 +6,7 @@
 on_bar 缓存 → on_bar_batch_end 调仓/风控 → 信号 → 简化持仓模拟 → NAV。
 
 成交口径：order_mode="open" —— 买卖信号均次日开盘成交（与策略声明、rolling_start_analysis.py 一致）。
-执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest_high_vol_momentum.py [start] [end]
+执行: cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_high_vol_momentum.py [start] [end]
 默认区间: 2026-08-03 ~ 2026-09-04（4 周；全市场预热 + 逐日取数约 15 秒/交易日，长区间请显式传参）
 验收（strategy-gates）: 至少 1 笔交易、无 NaN、收益率 ∈ [-95%, +500%]
 

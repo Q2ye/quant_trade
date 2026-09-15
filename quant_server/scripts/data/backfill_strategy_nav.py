@@ -20,8 +20,8 @@
 幂等：按 (strategy_id, trade_date) upsert，重复运行原地覆盖。
 
 用法（quant_server/ 下）：
-    .venv/Scripts/python.exe scripts/backfill_strategy_nav.py --dry-run
-    .venv/Scripts/python.exe scripts/backfill_strategy_nav.py --strategy-id <id>
+    .venv/Scripts/python.exe scripts/data/backfill_strategy_nav.py --dry-run
+    .venv/Scripts/python.exe scripts/data/backfill_strategy_nav.py --strategy-id <id>
 """
 import argparse
 import asyncio
@@ -31,7 +31,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -49,7 +49,7 @@ from shared.database.repositories.account.asset.strategy_daily_performance_repo 
 
 def _load_env() -> dict:
     env = {}
-    p = Path(__file__).resolve().parents[1] / ".env"
+    p = Path(__file__).resolve().parents[2] / ".env"
     if p.exists():
         for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
             line = line.strip()
