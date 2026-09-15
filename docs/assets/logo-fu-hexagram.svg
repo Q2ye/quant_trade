@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- 背景：更深的虚空，中心微带靛蓝（破晓前的天色） -->
+    <radialGradient id="voidBg" cx="50%" cy="60%" r="80%">
+      <stop offset="0%" stop-color="#16222f"/>
+      <stop offset="30%" stop-color="#0d1520"/>
+      <stop offset="65%" stop-color="#060a12"/>
+      <stop offset="100%" stop-color="#020409"/>
+    </radialGradient>
+
+    <!-- 一阳光晕 -->
+    <radialGradient id="originCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="14%" stop-color="#e8f7ff" stop-opacity="0.8"/>
+      <stop offset="38%" stop-color="#7ee0ff" stop-opacity="0.35"/>
+      <stop offset="62%" stop-color="#3cb8e0" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#0d1520" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="originSoft" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c8f0ff" stop-opacity="0.2"/>
+      <stop offset="55%" stop-color="#5ce0ff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#0d1520" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 上升光弧：自阳爻（下）向虚空（上）衰减 -->
+    <linearGradient id="rayC" gradientUnits="userSpaceOnUse" x1="200" y1="256" x2="200" y2="80">
+      <stop offset="0%" stop-color="#8ce8ff" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#5cb8d8" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#5ce0ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rayL1" gradientUnits="userSpaceOnUse" x1="200" y1="256" x2="130" y2="120">
+      <stop offset="0%" stop-color="#8ce8ff" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#5cb8d8" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#5ce0ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rayR1" gradientUnits="userSpaceOnUse" x1="200" y1="256" x2="270" y2="120">
+      <stop offset="0%" stop-color="#8ce8ff" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#5cb8d8" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#5ce0ff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- 阴爻底色 -->
+    <linearGradient id="barGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a2638"/>
+      <stop offset="100%" stop-color="#101a28"/>
+    </linearGradient>
+
+    <!-- 阳爻辉光 -->
+    <filter id="glowStrong" x="-40%" y="-200%" width="180%" height="500%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glowSoft" x="-40%" y="-300%" width="180%" height="700%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+  </defs>
+
+  <!-- 虚空背景 -->
+  <rect width="400" height="400" fill="url(#voidBg)"/>
+
+  <!-- 极细微噪点 -->
+  <g opacity="0.07">
+    <circle cx="52" cy="82" r="0.6" fill="#ffffff"/>
+    <circle cx="122" cy="42" r="0.5" fill="#ffffff"/>
+    <circle cx="300" cy="56" r="0.7" fill="#ffffff"/>
+    <circle cx="352" cy="116" r="0.4" fill="#ffffff"/>
+    <circle cx="72" cy="332" r="0.6" fill="#ffffff"/>
+    <circle cx="360" cy="322" r="0.5" fill="#ffffff"/>
+    <circle cx="188" cy="28" r="0.4" fill="#ffffff"/>
+    <circle cx="252" cy="372" r="0.5" fill="#ffffff"/>
+  </g>
+
+  <!-- ========== 同心涟漪：秩序扩散（微） ========== -->
+  <ellipse cx="200" cy="256" rx="95" ry="74" fill="none" stroke="#5ce0ff" stroke-width="0.5" opacity="0.25"/>
+  <ellipse cx="200" cy="256" rx="180" ry="140" fill="none" stroke="#5ce0ff" stroke-width="0.35" opacity="0.12"/>
+
+  <!-- ========== 一阳（初爻）：光之原点 ========== -->
+  <circle cx="200" cy="256" r="90" fill="url(#originSoft)"/>
+  <circle cx="200" cy="256" r="48" fill="url(#originCore)"/>
+
+  <!-- ========== 卦象：阴爻渐隐于虚空（自下而上消融） ========== -->
+  <!-- 阴爻 × 5：opacity 自下而上递减，顶部几近消散 -->
+  <g fill="url(#barGrad)" stroke="#5ce0ff" stroke-width="0.5" stroke-opacity="0.5">
+    <!-- 第6爻（上）：最淡 -->
+    <g opacity="0.16">
+      <rect x="140" y="113.5" width="54" height="9" rx="4.5"/>
+      <rect x="206" y="113.5" width="54" height="9" rx="4.5"/>
+    </g>
+    <!-- 第5爻 -->
+    <g opacity="0.24">
+      <rect x="140" y="139.5" width="54" height="9" rx="4.5"/>
+      <rect x="206" y="139.5" width="54" height="9" rx="4.5"/>
+    </g>
+    <!-- 第4爻 -->
+    <g opacity="0.32">
+      <rect x="140" y="165.5" width="54" height="9" rx="4.5"/>
+      <rect x="206" y="165.5" width="54" height="9" rx="4.5"/>
+    </g>
+    <!-- 第3爻（下卦之首） -->
+    <g opacity="0.42">
+      <rect x="140" y="199.5" width="54" height="9" rx="4.5"/>
+      <rect x="206" y="199.5" width="54" height="9" rx="4.5"/>
+    </g>
+    <!-- 第2爻 -->
+    <g opacity="0.55">
+      <rect x="140" y="225.5" width="54" height="9" rx="4.5"/>
+      <rect x="206" y="225.5" width="54" height="9" rx="4.5"/>
+    </g>
+  </g>
+  <!-- 初爻：阳爻 —— 一阳来复，唯一实体之光 -->
+  <rect x="140" y="251.5" width="120" height="9" rx="4.5" fill="#3cb8e0" opacity="0.5" filter="url(#glowSoft)"/>
+  <rect x="140" y="251.5" width="120" height="9" rx="4.5" fill="#7ee0ff" opacity="0.85" filter="url(#glowStrong)"/>
+  <rect x="140" y="251.5" width="120" height="9" rx="4.5" fill="#ffffff"/>
+
+  <!-- ========== 光弧：阳气透过阴爻之缝，升腾入虚 ========== -->
+  <!-- 中央光柱：恰好穿过阴爻中缝（x=200 处缺口） -->
+  <path d="M 200 258 C 200 216, 200 150, 200 80" fill="none" stroke="url(#rayC)" stroke-linecap="round" stroke-width="1.4"/>
+  <!-- 两侧光弧 -->
+  <path d="M 200 258 C 176 220, 152 176, 130 120" fill="none" stroke="url(#rayL1)" stroke-linecap="round" stroke-width="1.1"/>
+  <path d="M 200 258 C 224 220, 248 176, 270 120" fill="none" stroke="url(#rayR1)" stroke-linecap="round" stroke-width="1.1"/>
+
+  <!-- ========== 信号点：沿光弧的微弱异动 ========== -->
+  <g>
+    <circle cx="200" cy="132" r="1.0" fill="#8ed8f0" opacity="0.5"/>
+    <circle cx="200" cy="100" r="1.2" fill="#c8f0ff" opacity="0.65"/>
+    <circle cx="146" cy="168" r="0.85" fill="#a0d8f0" opacity="0.45"/>
+    <circle cx="254" cy="168" r="0.85" fill="#a0d8f0" opacity="0.45"/>
+    <circle cx="64" cy="118" r="1.4" fill="#c8f0ff" opacity="0.6"/>
+    <circle cx="336" cy="124" r="1.1" fill="#a0d8f0" opacity="0.45"/>
+    <circle cx="50" cy="224" r="0.9" fill="#a0c8e8" opacity="0.45"/>
+    <circle cx="350" cy="224" r="0.9" fill="#a0c8e8" opacity="0.45"/>
+    <circle cx="252" cy="316" r="0.85" fill="#a0d8f0" opacity="0.4"/>
+  </g>
+
+  <!-- ========== 文字：复 · 一阳来复 · 天地之心 ========== -->
+  <g font-family="'Noto Serif SC','Songti SC','STSong',serif">
+    <text x="34" y="348" font-size="24" font-weight="500" fill="#b9ccd8" letter-spacing="4">复</text>
+    <text x="34" y="372" font-size="11" font-weight="400" fill="#8ba0b0" letter-spacing="3">一阳来复</text>
+    <text x="34" y="388" font-size="9.5" font-weight="300" fill="#6b8090" letter-spacing="2">天地之心</text>
+  </g>
+</svg>

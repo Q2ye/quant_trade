@@ -1,0 +1,5 @@
+# pnpm v10.4+ 配置（2026-08 前端修复）
+# 允许运行构建脚本：esbuild（Vite 核心，postinstall 校验平台二进制）、@parcel/watcher（Vite 可选 watcher）
+allowBuilds:
+  esbuild: true
+  "@parcel/watcher": true
