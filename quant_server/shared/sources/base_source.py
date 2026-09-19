@@ -34,8 +34,19 @@ class BaseDataSource(ABC):
 		"""获取A股列表"""
 		pass
 
-	async def get_stock_basic (self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
-		"""获取股票基础信息"""
+	async def get_stock_basic (self, exchange: str = '', list_status: str = '') -> List[Dict]:
+		"""获取股票基础信息
+
+		Args:
+			exchange: 交易所 (SSE/SZSE)，空 = 全部
+			list_status: L-上市 / D-退市 / P-暂停上市；
+			             **空 = 全部**
+
+		⚠️ 2026-09-19：契约默认值由 ``'L'`` 改为 ``''``（空 = 全部）。
+		   原默认 ``'L'`` 使「调用方漏传」静默只拿到上市股 ——
+		   退市股 339 只因此从未入库（个股回测幸存者偏差）。
+		   **实现方不得再把默认解释为"仅上市"**；漏传须 fail-safe 为全部。
+		"""
 		raise NotImplementedError("子类需实现 get_stock_basic")
 
 	def get_daily (self, symbol: str = '', trade_date: str = '',

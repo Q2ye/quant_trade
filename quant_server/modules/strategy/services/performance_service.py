@@ -263,19 +263,38 @@ class PerformanceService:
             )
             returns = returns + [float(daily_return)]
             sharpe = None
+            annual_volatility = None
             if len(returns) >= 5:
                 arr = np.array(returns, dtype=float)
                 std = float(np.std(arr, ddof=1))
+                # ⚠️ 2026-09-19 新增：**年化波动率**。
+                #    复用上面为夏普算好的 `std`（日频），乘 √252 年化。
+                #    用途：① 准入标准 B5 判据 ② 实盘健康监控的波动放大告警
+                #    ③ 波动损耗 = σ²/2（每年被波动吃掉的复利）。
+                #    ⚠️ 单位务必区分：`std` 是**日频**，`annual_volatility` 才是年化（差 15.87 倍）。
+                annual_volatility = float(std * np.sqrt(252)) if std > 0 else None
                 if std > 1e-12:
                     sharpe = float(np.mean(arr)) / std * np.sqrt(252)
 
             return {
                 "strategy_id": strategy_id,
                 "trade_date": trade_date,
+                # ⚠️ 2026-09-19 修复：**必须写 `strategy_run_id`** —— 原返回值缺此字段，
+                #    DB 列恒为 NULL，导致 `_get_run_daily_returns` 里
+                #    `[r for r in records if r.strategy_run_id == run_id]` **过滤后恒为空**
+                #    → `returns` 只剩当日 1 个 → `len(returns) >= 5` 不成立
+                #    → **实盘 `sharpe_ratio` 恒为 None**（实测：`跨市场…-2.0` 5 行全空；
+                #    新加的 `annual_volatility` 同样被它挡住）。
+                #    此处 `active_run` 本就在上文用于查 run 级收益，直接落库即可。
+                "strategy_run_id": getattr(active_run, "id", None) if active_run else None,
                 "daily_return": round(float(daily_return), 6),
                 "total_return": round(float(total_return), 6),
                 "max_drawdown": round(float(max_dd), 6),
                 "sharpe_ratio": round(sharpe, 6) if sharpe is not None else None,
+                # 年化波动率（= 日频 std × √252）；2026-09-19 新增，见上方注释
+                "annual_volatility": (
+                    round(annual_volatility, 6) if annual_volatility is not None else None
+                ),
                 "total_assets": round(float(nav_t), 2),
                 "cash": round(float(cash_t), 2),
                 "peak_nav": round(float(peak_t), 2),

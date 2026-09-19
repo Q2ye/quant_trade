@@ -86,6 +86,38 @@ class DataQualityService:
 			)
 		return self._cache
 
+	# ⚠️ 2026-09-19 修复①：质量侧适配【同步侧的类型命名】
+	#
+	#    背景：同步侧 `handlers.py:2832` 传的是 `SUPPORTED_DATA_TYPES[TUSHARE]` 里的
+	#    【同步类型】(stock_list / daily_quotes / adj_factor / daily_basic / etf_daily / ... 41 种)，
+	#    而本服务原先只认 3 个类别名 → 实测 `data_quality_checks` 53 种 data_type 里
+	#    **50 种不匹配**，全部被写成 0 分记录（"检查了但什么也没查"，0 分还会被误读为"质量很差"）。
+	#
+	#    现按【以同步为准】分两条路：
+	#      special —— 有针对性逻辑的 3 类（stock_list / daily_quotes / factor_data）
+	#      generic —— 其余同步类型：按 `DataSource.DATA_TYPE_TABLE_MAP` 定位到表，
+	#                 走通用表级完整性检查
+	#    两者都定位不到 → **明确跳过、不写记录**
+	_SPECIAL_TYPES = ("stock_list", "daily_quotes", "factor_data", "all")
+
+	@classmethod
+	def _resolve_target (cls, dt: str):
+		"""data_type → ``(kind, value)``
+
+		kind: ``"special"``（专用检查，value=类别名）/ ``"generic"``（通用表级，value=表名）
+		无对应检查项 → ``None``（调用方跳过、不写记录）。
+		"""
+		if dt in cls._SPECIAL_TYPES:
+			return ("special", dt)
+		try:
+			from modules.data.constants import DataSource
+			_tbl = DataSource.DATA_TYPE_TABLE_MAP.get(dt)
+		except Exception:
+			_tbl = None
+		if _tbl:
+			return ("generic", _tbl)
+		return None
+
 	async def check_data_quality (
 			self,
 			data_type: str,
@@ -102,12 +134,27 @@ class DataQualityService:
 		"""
 		# data_type 为 None 时默认为 "all"，避免 DB NOT NULL 约束报错
 		effective_data_type = data_type or "all"
+
+		# 2026-09-19 修复①：解析目标；无对应检查项则**明确跳过、不落库**
+		_target = self._resolve_target(effective_data_type)
+		if _target is None:
+			logger.info("质量检查跳过（本服务无对应检查项，不写记录）: data_type=%s",
+			            effective_data_type)
+			return {
+				"success": False,
+				"skipped": True,
+				"result": {},
+				"message": f"data_type='{effective_data_type}' 无对应检查项，已跳过（不写记录）",
+			}
+		_kind, _val = _target
+
 		logger.info("开始数据质量检查: 类型=%s, 日期=%s~%s", effective_data_type, start_date or "不限", end_date or "不限")
 
 		try:
 			# 执行数据采样和质量评估（使用标准化后的类型，None→all）
 			quality_metrics = await self._collect_quality_metrics(
-				effective_data_type, start_date, end_date, ts_code
+				effective_data_type, start_date, end_date, ts_code,
+				_kind=_kind, _target=_val
 			)
 
 			logger.info("质量指标收集完成: 总数=%s, 有效=%s, 得分=%.1f",
@@ -189,10 +236,16 @@ class DataQualityService:
 			data_type: str,
 			start_date: Optional[date],
 			end_date: Optional[date],
-			ts_code: Optional[str]
+			ts_code: Optional[str],
+			_kind: str = "special",
+			_target: Optional[str] = None,
 	) -> Dict[str, Any]:
 		"""
 		收集数据质量指标
+
+		路由（2026-09-19 修复①）：
+		  ``special`` → 类别名走 3 个专用检查（stock_list / daily_quotes / factor_data）
+		  ``generic`` → 表名走通用表级完整性检查（覆盖其余同步类型）
 		"""
 		metrics = {
 			"total_records": 0,
@@ -205,13 +258,19 @@ class DataQualityService:
 		}
 
 		try:
-			logger.info("开始收集质量指标: 类型=%s", data_type)
-			if data_type in ("daily_quotes", "all"):
-				await self._check_daily_quotes_quality(metrics, ts_code, start_date, end_date)
-			if data_type in ("stock_list", "all"):
-				await self._check_stock_list_quality(metrics)
-			if data_type in ("factor_data", "all"):
-				await self._check_factor_data_quality(metrics, ts_code, start_date, end_date)
+			logger.info("开始收集质量指标: 类型=%s (kind=%s)", data_type, _kind)
+			if _kind == "special":
+				_tgt = _target or data_type
+				if _tgt in ("daily_quotes", "all"):
+					await self._check_daily_quotes_quality(metrics, ts_code, start_date, end_date)
+				if _tgt in ("stock_list", "all"):
+					await self._check_stock_list_quality(metrics)
+				if _tgt in ("factor_data", "all"):
+					await self._check_factor_data_quality(metrics, ts_code, start_date, end_date)
+			else:
+				# 通用表级完整性检查（覆盖专用检查之外的全部同步类型）
+				await self._check_generic_table_quality(
+					metrics, _target, start_date, end_date)
 
 			# 计算总体得分
 			if metrics["total_records"] > 0:
@@ -252,16 +311,20 @@ class DataQualityService:
 			) if ts_code else await self._check_market_wide_integrity(start_date, end_date)
 
 			# 填充指标
-			metrics.update({
-				"total_records": integrity_result.get("actual_data_days", 0),
-				"valid_records": int(integrity_result.get("actual_data_days", 0) *
-				                     integrity_result.get("data_quality", {}).get("quality_score", 0.95)),
-				"invalid_records": integrity_result.get("actual_data_days", 0) -
-				                   int(integrity_result.get("actual_data_days", 0) *
-				                       integrity_result.get("data_quality", {}).get("quality_score", 0.95)),
-				"missing_records": integrity_result.get("missing_count", 0),
-				"duplicate_records": 0  # 日行情数据通常不会有重复
-			})
+			# 2026-09-19 修复②（量纲）+ ③（累加）：
+			#   原实现把「平均每股覆盖天数」(actual_data_days，如 21.97) 当作 total_records，
+			#   且 valid = 天数 × 覆盖率（两个不同量纲相乘）→ 无语义。
+			#   现改为：total/valid/invalid **一律是记录数**；天数另存 coverage_days。
+			#   并改为 `+=` 累加（原用 update 无条件覆盖，导致 all 模式被后一个检查清零）。
+			_dq = integrity_result.get("data_quality", {}) or {}
+			_total = int(_dq.get("total_records", 0) or 0)
+			_null_close = int(_dq.get("null_close_count", 0) or 0)
+			metrics["total_records"] += _total
+			metrics["valid_records"] += max(_total - _null_close, 0)
+			metrics["invalid_records"] += _null_close
+			metrics["missing_records"] += int(integrity_result.get("missing_count", 0) or 0)
+			metrics["coverage_days"] = integrity_result.get("actual_data_days", 0)
+			metrics["expected_trading_days"] = integrity_result.get("expected_trading_days", 0)
 
 			# 添加具体问题
 			if integrity_result.get("missing_count", 0) > 0:
@@ -288,12 +351,8 @@ class DataQualityService:
 
 		except Exception as e:
 			logger.error(f"检查行情数据质量失败: {str(e)}", exc_info=True)
-			metrics.update({
-				"error": str(e),
-				"total_records": 0,
-				"valid_records": 0,
-				"invalid_records": 0
-			})
+			# 2026-09-19：不再把计数清零（累加语义下清零会抹掉前序检查的结果），只记录错误
+			metrics["error"] = str(e)
 
 	async def _check_market_wide_integrity (self, start_date: date, end_date: date) -> Dict[str, Any]:
 		"""全市场完整性真实聚合（修复 2026-08 A12：替代硬编码假数据）"""
@@ -341,11 +400,119 @@ class DataQualityService:
 				                 "zero_volume_count": 0, "quality_score": 0}
 			}
 
+	async def _check_generic_table_quality (
+			self,
+			metrics: Dict[str, Any],
+			table: str,
+			start_date: Optional[date],
+			end_date: Optional[date]
+	):
+		"""通用表级质量检查（2026-09-19 新增）
+
+		**覆盖专用检查之外的全部同步类型** —— 以同步侧 `DataSource.SUPPORTED_DATA_TYPES`
+		为准（41 种），按 `DataSource.DATA_TYPE_TABLE_MAP` 定位到表。
+
+		只做**完整性**：表存在 / 记录数 / 主键列(ts_code)空值 / 日期覆盖。
+		不做**正确性**（各表列差异过大）—— 故在结果里标注
+		``coverage="completeness_only"``，避免把"只查了完整性"误读为"正确性也过关"。
+
+		⚠️ `table` 仅来自 `DATA_TYPE_TABLE_MAP` 白名单；日期列仅来自 information_schema
+		   的固定候选集 → 拼接 SQL 安全。
+		"""
+		try:
+			# 1. 表是否存在
+			_ex = await self.session.execute(
+				text("SELECT to_regclass(:t) AS reg"), {"t": f"public.{table}"})
+			if _ex.scalar() is None:
+				metrics["issues"].append({
+					"issue_type": "table_missing",
+					"description": f"表 {table} 不存在（同步类型映射到了不存在的表）",
+					"severity": "high"})
+				metrics["error"] = f"table_missing: {table}"
+				return
+
+			# 2. 记录数 + 主键列空值
+			#    ⚠️ 2026-09-19：**不要用 `COUNT(*) FILTER (WHERE ts_code IS NULL)`** ——
+			#       实测在 TimescaleDB **压缩 hypertable**（如 `stock_daily_basic`）上报
+			#       `InternalServerError: unexpected column type 'character varying'`。
+			#       改用等价的 `COUNT(*) - COUNT(ts_code)`，已在 stock_daily /
+			#       stock_daily_basic / stock_moneyflow / stock_adj_factor 上验证通过。
+			#    ⚠️ 2026-09-19 补：**不是所有表都有 ts_code** —— `trade_calendar` /
+			#       `stock_moneyflow_hsgt` / `index_sw_classify` 三张表没有该列，
+			#       硬编码 `COUNT(ts_code)` 会抛 UndefinedColumnError 并**中止事务**。
+			#       故先探测主键列，探不到就只计数（跳过空值检查）。
+			_pk = await self.session.execute(text(
+				"SELECT column_name FROM information_schema.columns "
+				"WHERE table_schema='public' AND table_name=:t AND column_name IN "
+				"('ts_code','index_code','cal_date','trade_date') "
+				"ORDER BY array_position(ARRAY['ts_code','index_code','cal_date',"
+				"'trade_date'], column_name) LIMIT 1"), {"t": table})
+			pkcol = _pk.scalar()
+			if pkcol:
+				_r = await self.session.execute(text(
+					f"SELECT COUNT(*) AS n, COUNT({pkcol}) AS nc FROM {table}"))
+				row = _r.first()
+				n = int(row.n or 0)
+				nc = max(n - int(row.nc or 0), 0)
+				metrics["pk_column"] = pkcol
+			else:
+				_r = await self.session.execute(text(f"SELECT COUNT(*) AS n FROM {table}"))
+				n = int(_r.first().n or 0)
+				nc = 0
+				metrics["pk_column"] = None
+			metrics["total_records"] += n
+			metrics["valid_records"] += max(n - nc, 0)
+			metrics["invalid_records"] += nc
+
+			# 3. 日期覆盖（自动挑日期列；候选集固定 → 无注入面）
+			_dc = await self.session.execute(text(
+				"SELECT column_name FROM information_schema.columns "
+				"WHERE table_schema='public' AND table_name=:t AND column_name IN "
+				"('trade_date','cal_date','ann_date','end_date','list_date') "
+				"ORDER BY array_position(ARRAY['trade_date','cal_date','ann_date',"
+				"'end_date','list_date'], column_name) LIMIT 1"), {"t": table})
+			dcol = _dc.scalar()
+			if dcol:
+				_dr = await self.session.execute(text(
+					f"SELECT MIN({dcol}) AS d0, MAX({dcol}) AS d1 FROM {table}"))
+				drow = _dr.first()
+				metrics["date_range"] = [str(drow.d0), str(drow.d1)]
+				metrics["latest_date"] = str(drow.d1)
+				if drow.d0 is None:
+					metrics["issues"].append({
+						"issue_type": "empty_table",
+						"description": f"表 {table} 无数据",
+						"severity": "medium"})
+
+			metrics["coverage"] = "completeness_only"
+			logger.info("通用表级检查完成: %s 记录=%s 空ts_code=%s 最新=%s",
+			            table, n, nc, metrics.get("latest_date", "—"))
+		except Exception as e:
+			# ⚠️ 2026-09-19 补：**必须 rollback** —— PostgreSQL 中任一语句失败后
+			#    事务进入 aborted 状态，后续任何语句都只会报
+			#    `InFailedSQLTransactionError`，把**真实根因完全掩盖**
+			#    （实测：本函数失败后，下游 `get_by_check_date` 报
+			#    「获取检查日期记录失败」，整类检查被误判为 DB 故障）。
+			#    此处尚未产生任何写入，回滚是安全的。
+			try:
+				await self.session.rollback()
+			except Exception:
+				logger.warning("通用表级检查失败后回滚未成功: %s", table, exc_info=True)
+			logger.warning("通用表级质量检查失败: %s, %s", table, e, exc_info=True)
+			metrics["error"] = f"{table}: {e}"
+
 	async def _check_stock_list_quality (self, metrics: Dict[str, Any]):
-		"""检查股票列表质量"""
+		"""检查股票列表质量
+
+		⚠️ 2026-09-19 补：新增 `list_status` 分布校验。
+		   此前本检查只看「总数 + 近30日活跃」，**与上市状态无关** ——
+		   因此「退市股一只都没有」这类**静默缺口它永远发现不了**
+		   （实测 L=5531 / D=0 / P=0，而 Tushare 可返回 D=339）。
+		   见 `docs/02-功能设计/数据模块/数据源验证-退市股缺口-2026-09.md`
+		"""
 		try:
 			total_stocks = await self.stock_repo.count()
-			metrics["total_records"] = total_stocks
+			metrics["total_records"] += total_stocks
 			# 修复 2026-08（A12）：不再硬编码 "98% 有效"，改为真实统计最近 30 日有日行情的股票数
 			try:
 				_active = await self.session.execute(text(
@@ -356,9 +523,31 @@ class DataQualityService:
 			except Exception:
 				logger.warning("活跃股票统计失败，降级为总数", exc_info=True)
 				_active_count = total_stocks
-			metrics["valid_records"] = _active_count
-			metrics["invalid_records"] = max(total_stocks - _active_count, 0)
-			logger.info("股票列表质量检查完成: 总数=%s, 近30日活跃=%s", total_stocks, _active_count)
+			metrics["valid_records"] += _active_count
+			metrics["invalid_records"] += max(total_stocks - _active_count, 0)
+
+			# 2026-09-19 新增：list_status 分布校验
+			#   退市股缺失属「静默缺口」——总数看不出、活跃度也看不出，必须显式查分布。
+			try:
+				_rows = await self.session.execute(text(
+					"SELECT COALESCE(list_status, '?') AS st, COUNT(*) AS n "
+					"FROM stock_basic GROUP BY 1"
+				))
+				_dist = {str(r[0]): int(r[1]) for r in _rows.fetchall()}
+			except Exception:
+				logger.warning("list_status 分布统计失败", exc_info=True)
+				_dist = {}
+			metrics["list_status_distribution"] = _dist
+
+			_n_delisted = _dist.get("D", 0) + _dist.get("P", 0) if _dist else 0
+			if _dist and _n_delisted == 0:
+				logger.warning(
+					"股票列表质量异常：退市(D)/暂停(P) 股数为 0 —— "
+					"疑似同步未传 list_status（只拉了 L）。分布=%s。"
+					"后果：个股策略回测将含幸存者偏差。", _dist)
+			else:
+				logger.info("股票列表质量检查完成: 总数=%s, 近30日活跃=%s, 退市/暂停=%s",
+				            total_stocks, _active_count, _n_delisted)
 
 		except Exception as e:
 			logger.error(f"检查股票列表质量失败: {str(e)}")
@@ -395,15 +584,14 @@ class DataQualityService:
 				universe=[ts_code] if ts_code else None
 			)
 
-			# 填充指标
-			metrics.update({
-				"total_records": coverage_stats.get("total_records", 0),
-				"valid_records": coverage_stats.get("total_records", 0),  # 因子数据要么有效要么不存在
-				"invalid_records": 0,  # 因子数据没有无效概念
-				"missing_records": coverage_stats.get("total_dates", 0) * (1 if ts_code else 100) -
-				                   coverage_stats.get("total_records", 0),  # 估算缺失记录数
-				"duplicate_records": 0  # 因子数据不应该有重复
-			})
+			# 填充指标（2026-09-19 修复③：改为累加，原 update 会覆盖前序检查的计数）
+			_f_total = int(coverage_stats.get("total_records", 0) or 0)
+			metrics["total_records"] += _f_total
+			metrics["valid_records"] += _f_total          # 因子数据要么有效要么不存在
+			metrics["invalid_records"] += 0               # 因子数据没有无效概念
+			metrics["missing_records"] += max(
+				int(coverage_stats.get("total_dates", 0) or 0) * (1 if ts_code else 100) - _f_total, 0)
+			metrics["duplicate_records"] += 0             # 因子数据不应该有重复
 
 			# 检查数据质量问题
 			if coverage_stats.get("total_records", 0) == 0:

@@ -431,6 +431,33 @@ def _fmt_err(e: Exception, max_len: int = 200) -> str:
 	return s if len(s) <= max_len else s[:max_len] + f"...({len(s)}字节截断)"
 
 
+def _market_from_ts_code(ts_code: Any) -> Any:
+	"""从 `ts_code` 推断板块 —— **代码段是板块的权威来源**。
+
+	⚠️ 2026-09-19 新增：`stock_basic.market` 是 **NOT NULL**，但 Tushare 对
+	   **个别特殊代码不提供 `market`**。实测：`T600018.SH`（上港集箱(退)，
+	   `T` 前缀）返回的 `market` 为 None。
+	   不兜底 → 整批 `stock_basic` 同步因 `NotNullViolationError: null value
+	   in column "market"` 失败（一批 1000 行全部回滚）。
+
+	规则与本项目既有的 `scripts/data/backfill_delisted_stocks.py::_market_from_code`
+	一致（本函数为该规则在**生产同步链路**中的权威实现）。
+	"""
+	if not ts_code:
+		return None
+	s = str(ts_code).upper()
+	code = "".join(ch for ch in s.split(".")[0] if ch.isdigit())
+	suf = s.split(".")[-1] if "." in s else ""
+	if suf == "BJ":
+		return "北交所"
+	if code.startswith("688"):
+		return "科创板"
+	if code.startswith(("300", "301")):
+		return "创业板"
+	# 600/601/603/605/000/001/002/003 = 主板；900/200 = 主板B股
+	return "主板"
+
+
 def _preprocess_records(records, date_fields=(), known_cols=None, fill_numeric=()):
 	"""一趟完成：pandas类型转换 + NaN清洗 + 日期转换 + null→0填充 + 列过滤。
 
@@ -451,9 +478,29 @@ def _preprocess_records(records, date_fields=(), known_cols=None, fill_numeric=(
 			elif value is not None and _has_pd_isna and pd.isna(value):
 				record[key] = None
 		# 2. 日期转换
+		# ⚠️ 2026-09-19 修复：原写法 `if record.get(field):` 是**真值判断**，
+		#    会把**假值**（`0.0` / `0` / `''`）当成"无值"**直接跳过**，
+		#    于是 `0.0` 原样传给 asyncpg → 整批写入失败：
+		#      `invalid input for query argument: 0.0
+		#       (expected a datetime.date or datetime.datetime instance, got 'float')`
+		#    实测触发：`stock_basic.delist_date` —— 上市股无退市日，
+		#    pandas/sanitizer 把缺失值变成 float `0.0`（见 sanitizer 同名修复）。
+		#    现改为**按类型分派**：已是 date 的跳过；datetime 取 `.date()`；
+		#    字符串走 `_convert_to_date`；**其余类型一律视为缺失 → None**。
+		#    （`_convert_to_date` 对非 str/date 类型会抛 ValueError，故不可直接喂给它。）
 		for field in date_fields:
-			if record.get(field):
-				record[field] = _convert_to_date(record[field])
+			_value = record.get(field)
+			if _value is None:
+				continue
+			if isinstance(_value, datetime):
+				record[field] = _value.date()
+			elif isinstance(_value, date):
+				continue
+			elif isinstance(_value, str):
+				record[field] = _convert_to_date(_value) if _value.strip() else None
+			else:
+				# 数值/其他类型（含 pandas 把缺失值转出的 0.0 / NaN 残留）→ 缺失
+				record[field] = None
 		# 3. null→0填充（防止NOT NULL约束）
 		for field in fill_numeric:
 			if record.get(field) is None:
@@ -2063,11 +2110,26 @@ class DataSyncService:
 			Dict: ``{records_added, records_updated, records_failed, total_items, message}``
 		"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		logger.info("开始同步股票列表...")
-		stock_list = await self._cancellable_run_in_executor(source.get_stock_basic, )
+		# 2026-09-19 修复：原先调用未传 list_status → 走默认 'L'
+		#   → 退市股(D)/暂停股(P) 从未入库。实测缺口 339 只（D=339 / P=0），
+		#   且退市集中在 2022+（193 只 = 57%）→ 个股策略回测含幸存者偏差。
+		#   见 docs/02-功能设计/数据模块/数据源验证-退市股缺口-2026-09.md
+		logger.info("开始同步股票列表（L 上市 / D 退市 / P 暂停上市，三次拉取合并）...")
+		stock_list = []
+		for _st in ("L", "D", "P"):
+			_part = await self._cancellable_run_in_executor(
+				source.get_stock_basic, "", _st)
+			logger.info("  list_status=%s → %d 只", _st, len(_part))
+			stock_list.extend(_part)
 		total = len(stock_list)
 		# 批量预处理 + bulk upsert（替代逐行 SELECT+INSERT/UPDATE）
 		if hasattr(self.stock_basic_repo, 'bulk_upsert'):
+			# ⚠️ 2026-09-19 补：`market` 是 NOT NULL，而 Tushare 对个别特殊代码
+			#    （实测 `T600018.SH`）不提供 → 必须先兜底，否则整批 1000 行
+			#    因 NotNullViolationError 全部回滚。
+			for _rec in stock_list:
+				if not _rec.get('market'):
+					_rec['market'] = _market_from_ts_code(_rec.get('ts_code'))
 			_preprocess_records(stock_list, date_fields=['list_date', 'delist_date'])
 			records_added = await self.stock_basic_repo.bulk_upsert(stock_list)
 			records_updated = 0  # PG ON CONFLICT DO UPDATE 将 upsert 全部计入 rowcount
@@ -3010,6 +3072,17 @@ class DataSyncService:
 						continue
 
 					if constituent_data:
+						# 2026-09-19 补：本路径原先**无任何清洗/转换**（全仓 59 个 _sync_* 里唯一缺口）。
+						#   数据来自 `weight_df`，`float(row.get('weight', 0))` 遇 pandas NaN
+						#   会得到 `float('nan')`，`ts_code`/`trade_date` 同样可能带 NaN →
+						#   直接 upsert 会写入脏值或触发 asyncpg 类型错误。
+						#   现与其余 58 个方法对齐：先做类型转换 + NaN→None。
+						#   见 docs/02-功能设计/数据模块/数据清洗现状-核查记录-2026-09.md
+						_preprocess_records(
+							constituent_data,
+							date_fields=('trade_date',),
+							known_cols=('index_code', 'ts_code', 'weight', 'trade_date'),
+						)
 						async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, idx_code):
 							await weight_repo.batch_upsert(
 								match_fields=["index_code", "ts_code", "trade_date"],

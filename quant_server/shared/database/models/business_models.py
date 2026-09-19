@@ -217,6 +217,14 @@ class StrategyDailyPerformance(Base):
     total_return = Column(Numeric(10, 6), nullable=False, comment='累计收益率')
     max_drawdown = Column(Numeric(10, 6), nullable=False, comment='最大回撤')
     sharpe_ratio = Column(Numeric(10, 6), comment='夏普比率')
+    # 2026-09-19 新增：年化波动率（= 日收益率标准差 × √252）。
+    # ⚠️ 与回测结果 `BacktestResult.volatility`（**日频**）区分 —— 差 √252 ≈ 15.87 倍。
+    annual_volatility = Column(Numeric(10, 6), nullable=True,
+                               comment='年化波动率（= 日频 std × √252）')
+    # 2026-09-19 新增：同窗口**基准**年化波动率（CSI500），用于「策略变野 vs 市场变野」归因。
+    # 缺少它时，市场整体波动上升会被误报成「策略失效」。
+    benchmark_annual_vol = Column(Numeric(10, 6), nullable=True,
+                                  comment='同窗口基准（CSI500）年化波动率')
     # 2026-08-26 修复：模型对齐 DB 表缺失字段——perf dict 含 total_assets，
     # 此前模型缺该字段导致 save 报 "total_assets is an invalid keyword argument"。
     strategy_run_id = Column(String(36), nullable=True, comment='策略运行ID')

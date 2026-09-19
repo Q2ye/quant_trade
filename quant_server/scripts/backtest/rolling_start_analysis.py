@@ -167,6 +167,14 @@ async def run_single(sf, strategy_cls, full: Dict[str, pd.DataFrame], start: dat
     strategy._db_session_factory = sf
     strategy.initialize()
     await strategy.on_start()
+    # 2026-09-19：**降级门禁** —— regime 指数不可用时策略退化为「只持防御标的」，
+    # 而冒烟门对满仓国债免疫 → 研究路径必须硬失败，不得静默产出不可比结果。
+    if getattr(strategy, "_index_cache_ok", True) is False:
+        raise RuntimeError(
+            f"regime 指数缓存不可用（_index_cache_ok=False，起始日 {start}）→ 本臂会退化为"
+            f"『只持防御标的』，该滚动起始日的结果不可作为口径；"
+            f"请检查 index_daily 覆盖率与 DB 连接后重跑"
+        )
 
     start_s = start.isoformat()
     # warmup：截止 start 前（视图切片 + 行指针，避免逐 bar 创建 DataFrame）

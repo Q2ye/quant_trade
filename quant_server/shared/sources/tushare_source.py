@@ -153,21 +153,45 @@ class TushareSource(BaseDataSource):
 
 	# ==================== 股票基础数据 ====================
 
-	def get_stock_basic (self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
+	def get_stock_basic (self, exchange: str = '', list_status: str = '') -> List[Dict]:
 		"""获取股票基本信息（同步方法，由调用方丢线程池）
 
 		Args:
 			exchange: 交易所 (SSE/SZSE), 空表示全部
-			list_status: L-上市, D-退市, P-暂停上市
+			list_status: L-上市, D-退市, P-暂停上市；
+			             **空字符串 = 全部（L/D/P 三次拉取后合并）** —— 默认值
 
 		Returns:
 			股票基本信息列表
+
+		⚠️ 2026-09-19：默认值由 ``'L'`` 改为 ``''``（空 = 全部）。
+		   原默认 ``'L'`` 使「调用方漏传」**静默地只拿到上市股**，
+		   导致 339 只退市股从未入库（个股策略回测含幸存者偏差）。
+		   改后漏传是 **fail-safe**（拿全部），而非静默拿子集。
+		   见 `docs/02-功能设计/数据模块/数据源验证-退市股缺口-2026-09.md`
 		"""
 		fields = ('ts_code,symbol,name,area,industry,market,exchange,'
 		          'list_date,delist_date,is_hs')
 		try:
-			df = self.pro.stock_basic(exchange=exchange, list_status=list_status, fields=fields)
-			from utils.core_utils.data_utils.sanitizer import df_to_safe_records; return df_to_safe_records(df)
+			# ⚠️ Tushare 的 stock_basic **不传 list_status 时只返回 L**，
+			#    故「全部」必须显式三次拉取再合并。
+			_statuses = (list_status,) if list_status else ('L', 'D', 'P')
+			frames = []
+			for _st in _statuses:
+				_df = self.pro.stock_basic(exchange=exchange, list_status=_st, fields=fields)
+				if _df is not None and not _df.empty:
+					# ⚠️ 关键：Tushare 的 `fields` **不含 list_status**，
+					#    而 DB 列 `stock_basic.list_status` 默认值是 'L'
+					#    → 不显式打标，退市股会被写成"上市股"（比不补还糟：
+					#      它们会被当成正常标的参与选股）。故此处强制回填。
+					_df = _df.copy()
+					_df["list_status"] = _st
+					frames.append(_df)
+			if not frames:
+				return []
+			merged = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+			from utils.core_utils.data_utils.sanitizer import df_to_safe_records
+			return df_to_safe_records(merged)
 		except Exception as e:
 			logger.error(f"获取股票基本信息失败: {e}")
 			return []
@@ -1262,7 +1286,14 @@ class TushareSource(BaseDataSource):
 			start_date: 开始日期
 			end_date: 结束日期
 		Returns:
-			DataFrame: columns: ts_code, trade_date, pre_close, up_limit, down_limit
+			DataFrame: columns: **trade_date, ts_code, up_limit, down_limit**（共 4 列）
+
+		⚠️ 2026-09-19 实测订正：原 docstring 写「含 pre_close」，**实际不返回**。
+		   `stk_limit` 只给 `up_limit` / `down_limit`。
+		   → `stock_daily_limit` 表的 `pre_close` / `up_percent` / `down_percent` /
+		     `price_range` **四列在上游无来源、100% 为空**（实测 350,992 行全为 NULL）。
+		   该表可用于**门 2.3 极值判定**（`up_limit`/`down_limit` 是齐的），
+		   但**不要依赖那四列**。见 `docs/02-功能设计/数据模块/数据质量五门实测-2026-09-19.md`。
 		"""
 		try:
 			kwargs = {}

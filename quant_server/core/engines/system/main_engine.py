@@ -136,6 +136,8 @@ class MainEngine(EngineBase):
         # 每项 (order, name, fn)；pre_gate=门之前（数据准备），post_gate=门之后（驱动）
         self._pre_gate_tasks: List[tuple] = []
         self._post_gate_tasks: List[tuple] = []
+        # 数据门附加校验（模块注入，2026-09-19）：(name, async fn(today) -> (ok, reason))
+        self._gate_checks: List[tuple] = []
 
         # 事件处理器
         self._event_handlers: Dict[str, List[str]] = {}
@@ -216,6 +218,23 @@ class MainEngine(EngineBase):
         target.sort(key=lambda x: x[0])
         logger.info("日终任务已注册: [%s] %s (order=%s)", phase, name, order)
 
+    def register_gate_check(self, name: str, fn: Callable) -> None:
+        """模块注册「数据门附加校验」（2026-09-19 新增）。
+
+        用途：让 `modules/*` 向 `core` 的 `_data_integrity_gate` 注入校验，
+        **不产生 core→modules 的反向依赖**（与 `register_daily_task` 同为依赖反转）。
+
+        Args:
+            name: 校验名（日志用）
+            fn: 异步回调 ``fn(today) -> Tuple[bool, str]``。
+                返回 ``(ok, reason)``；``ok=False`` 时**阻断** post_gate 策略驱动。
+
+        语义（2026-09-19 决策）：**仅 critical 级问题应返回 ok=False**；
+        回调自身抛异常 → 按 `_data_integrity_gate` 既有惯例**保守阻断**并告警。
+        """
+        self._gate_checks.append((name, fn))
+        logger.info("数据门附加校验已注册: %s", name)
+
     async def _run_daily_pipeline(self, today) -> None:
         """日终流水线（2026-08 C15）：pre_gate 任务 → 数据完整性门 → post_gate 任务。
 
@@ -250,10 +269,14 @@ class MainEngine(EngineBase):
                 logger.warning("日终任务 %s 失败（非致命）: %s", name, e)
 
     async def _data_integrity_gate(self, today) -> bool:
-        """数据完整性校验门（2026-08 C15 从内联代码抽取，语义不变）。
+        """数据完整性校验门（2026-08 C15 抽取；2026-09-19 订正判据 + 附加校验）。
 
         仅依赖 shared 层（get_session_manager + 文本 SQL），core→shared 合法方向。
         600833 事故根因防护：当日行情未同步完整则跳过策略驱动。
+
+        ⚠️ 2026-09-19 订正：原判据 `MAX(trade_date) == today` 在**非交易日必然失败**
+        （周末/节假日 `today` 不是交易日）→ **每个周一开盘前、每个长假后都会误停**。
+        改为与**最近交易日**（`trade_calendar` 中 `<= today` 的最后一个 `is_open=true`）比对。
         """
         try:
             from shared.database.session import get_session_manager
@@ -261,24 +284,50 @@ class MainEngine(EngineBase):
 
             sm = get_session_manager()
             async with sm.get_session() as _ds:
+                # 最近交易日（2026-09-19 新增）：非交易日时 today 不是交易日，须回退
+                _t = await _ds.execute(_text(
+                    "SELECT MAX(cal_date) FROM trade_calendar "
+                    "WHERE exchange = 'SSE' AND is_open = true AND cal_date <= :d"),
+                    {"d": today})
+                _last_td = _t.scalar()
                 _r = await _ds.execute(_text("SELECT MAX(trade_date) FROM stock_daily"))
                 _max_d = _r.scalar()
                 _c = await _ds.execute(_text(
-                    "SELECT COUNT(*) FROM stock_daily WHERE trade_date=:d"), {"d": today})
+                    "SELECT COUNT(*) FROM stock_daily WHERE trade_date=:d"), {"d": _last_td})
                 _n = _c.scalar() or 0
-            if not _max_d or str(_max_d) != str(today):
+
+            if _last_td is None:
+                # 交易日历缺失 → 回退旧行为（与 today 比对），并告警
+                logger.warning("交易日历无数据，回退为与 today(%s) 比对", today)
+                _last_td = today
+            if not _max_d or str(_max_d) != str(_last_td):
                 logger.warning(
-                    f"数据完整性校验失败: stock_daily 最新交易日={_max_d}, 目标={today}"
+                    f"数据完整性校验失败: stock_daily 最新交易日={_max_d}, "
+                    f"最近交易日={_last_td}（today={today}）"
                     f" → 跳过实盘策略驱动（防止旧数据假信号）")
                 return False
-            elif _n < 4000:
+            if _n < 4000:
                 logger.warning(
-                    f"数据完整性校验失败: 当日仅 {_n} 条行情（A股全市场约5000+）"
-                    f" → 跳过实盘策略驱动（数据不完整）")
+                    f"数据完整性校验失败: 最近交易日 {_last_td} 仅 {_n} 条行情"
+                    f"（A股全市场约5000+） → 跳过实盘策略驱动（数据不完整）")
                 return False
-            else:
-                logger.info(f"数据完整性校验通过: stock_daily 最新={_max_d}, 当日 {_n} 条")
-                return True
+            logger.info(
+                f"数据完整性校验通过: stock_daily 最新={_max_d}（最近交易日={_last_td}）, "
+                f"当日 {_n} 条")
+
+            # ---- 附加校验（模块注入，2026-09-19）—— 仅 critical 级应返回 False ----
+            for _gname, _gfn in self._gate_checks:
+                try:
+                    _gok, _greason = await _gfn(_last_td)
+                except Exception as _ge:
+                    logger.warning("附加校验 [%s] 异常: %s → 保守跳过驱动", _gname, _ge)
+                    return False
+                if not _gok:
+                    logger.warning(
+                        "附加校验未通过 [%s]: %s → 跳过实盘策略驱动", _gname, _greason)
+                    return False
+                logger.info("附加校验通过 [%s]: %s", _gname, _greason)
+            return True
         except Exception as _de:
             logger.warning(f"数据完整性校验异常: {_de} → 保守跳过实盘策略驱动")
             return False
@@ -317,7 +366,7 @@ class MainEngine(EngineBase):
                 name="日终数据同步+策略驱动",
                 # 2026-08 修复：POST_MARKET 不校验交易日（周六也跑日终产生候选），改 TRADING_DAY 只在交易日执行
                 schedule_type=ScheduleType.TRADING_DAY,
-                schedule_config={"time": "18:50"},
+                schedule_config={"time": "19:20"},
                 func=_daily_sync_job,
                 description="盘后（交易日）：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,

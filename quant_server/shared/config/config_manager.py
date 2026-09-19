@@ -503,14 +503,36 @@ class ConfigSettings(BaseSettings):
 			self.DATABASE.MAX_OVERFLOW = int(os.getenv("DB_DEV_MAX_OVERFLOW", str(self.DATABASE.MAX_OVERFLOW)))
 			logger.info(f"使用开发环境数据库配置: {self.DATABASE.NAME}")
 		else:
-			# 生产环境：从 DB_PROD_* 读取
-			self.DATABASE.HOST = os.getenv("DB_PROD_HOST", self.DATABASE.HOST)
-			self.DATABASE.PORT = int(os.getenv("DB_PROD_PORT", str(self.DATABASE.PORT)))
-			self.DATABASE.USER = os.getenv("DB_PROD_USER", self.DATABASE.USER)
-			self.DATABASE.PASSWORD = os.getenv("DB_PROD_PASSWORD", self.DATABASE.PASSWORD)
-			self.DATABASE.NAME = os.getenv("DB_PROD_NAME", "quant_signals")
-			self.DATABASE.POOL_SIZE = int(os.getenv("DB_PROD_POOL_SIZE", str(self.DATABASE.POOL_SIZE)))
-			self.DATABASE.MAX_OVERFLOW = int(os.getenv("DB_PROD_MAX_OVERFLOW", str(self.DATABASE.MAX_OVERFLOW)))
+			# 生产环境：从 PROD_DB_* 读取
+			# ⚠️ 2026-09-19 修复：原读的是 `DB_PROD_*` —— **前缀顺序与 `.env` 相反**。
+			#    `.env` 定义的是 `PROD_DB_HOST/PORT/USER/PASSWORD/NAME/POOL_SIZE`，
+			#    于是**一个都读不到**，全部**静默**回退：
+			#      · 库名 → 硬编码 "quant_signals"（碰巧正确）
+			#      · host/port/user/password → `self.DATABASE.*`，即 `.env` 的
+			#        `DB_*`（**开发库那套凭证**）
+			#    → 「生产库配置写没写、写对没写对，行为完全一样」。
+			#    现改为读 `PROD_DB_*`（与 `.env` 一致），并在发生回退时**打 WARNING**，
+			#    避免同一个坑再次静默复发。
+			# 只对**连接关键项**告警：库名/主机/端口/用户/口令。
+			# 池大小与溢出上限属**调优参数**，回退到基础 `DB_*` 是设计意图，不告警。
+			_missing = [k for k in (
+				"PROD_DB_HOST", "PROD_DB_PORT", "PROD_DB_USER",
+				"PROD_DB_PASSWORD", "PROD_DB_NAME",
+			) if os.getenv(k) is None]
+
+			self.DATABASE.HOST = os.getenv("PROD_DB_HOST", self.DATABASE.HOST)
+			self.DATABASE.PORT = int(os.getenv("PROD_DB_PORT", str(self.DATABASE.PORT)))
+			self.DATABASE.USER = os.getenv("PROD_DB_USER", self.DATABASE.USER)
+			self.DATABASE.PASSWORD = os.getenv("PROD_DB_PASSWORD", self.DATABASE.PASSWORD)
+			self.DATABASE.NAME = os.getenv("PROD_DB_NAME", "quant_signals")
+			self.DATABASE.POOL_SIZE = int(os.getenv("PROD_DB_POOL_SIZE", str(self.DATABASE.POOL_SIZE)))
+			self.DATABASE.MAX_OVERFLOW = int(os.getenv("PROD_DB_MAX_OVERFLOW", str(self.DATABASE.MAX_OVERFLOW)))
+
+			if _missing:
+				logger.warning(
+					"生产环境缺少 %d 个 `PROD_DB_*` 配置（%s）→ 已回退到 `.env` 的 `DB_*`"
+					"（**开发库那套凭证**）与硬编码库名。若生产库不在同一实例/同凭证，会连到错误的库。",
+					len(_missing), ", ".join(_missing))
 			logger.info(f"使用生产环境数据库配置: {self.DATABASE.NAME}")
 
 		return self

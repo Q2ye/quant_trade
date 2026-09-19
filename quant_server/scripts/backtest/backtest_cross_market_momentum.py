@@ -174,6 +174,14 @@ async def run_smoke(start: str = START, end: str = END) -> None:
     strategy._db_session_factory = sf
     strategy.initialize()
     await strategy.on_start()
+    # 2026-09-19：**降级门禁** —— regime 指数不可用时策略退化为「只持防御标的」，
+    # 而本脚本的冒烟门（≥1 笔交易 / 无 NaN / 收益∈[−95%,+500%]）**对该形态完全免疫**
+    # → 必须硬失败，不得静默产出一条"只持国债"的净值当结果。
+    if getattr(strategy, "_index_cache_ok", True) is False:
+        raise RuntimeError(
+            "regime 指数缓存不可用（_index_cache_ok=False）→ 本次回测会退化为『只持防御标的』，"
+            "结果不可作为口径；请检查 index_daily 覆盖率与 DB 连接后重跑"
+        )
 
     # 注入最小 context（positions 对账用），模拟真实引擎的 broker 持仓反馈
     from types import SimpleNamespace

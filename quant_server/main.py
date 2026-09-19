@@ -315,7 +315,12 @@ class QuantServer:
 		# 从 ConfigLoader 获取日志配置
 		log_config = {
 			"level": LogLevel(self.config.config_manager.get("settings.LOG.LEVEL", "INFO").upper()),
-			"format": LogFormat.JSON if self.config.mode == "production" else LogFormat.TEXT,
+			# ⚠️ 2026-09-19：**不再按 mode 切 JSON** —— 原 `production → LogFormat.JSON`
+			#    只对 `StructuredLogger`（全仓仅本文件使用）生效，而其余 **156 个模块**
+			#    用标准 logging → 生产模式下 console 用 `'%(message)s'` 透传，
+			#    导致它们**时间戳/级别/模块名全丢**，同一段输出出现两种格式。
+			#    现恒定 TEXT，由 `UnifiedLogFormatter` 统一形状。
+			"format": LogFormat.TEXT,
 			"color_mode": ColorMode.NEVER if self.config.mode == "production" else ColorMode.AUTO,
 			"async_enabled": True,
 			"handlers": [],
@@ -348,11 +353,13 @@ class QuantServer:
 			when='midnight',
 			backup_count=0
 		)
-		# 设置与控制台一致的格式化器（复用上方已 import 的 _logging）
-		file_handler.setFormatter(_logging.Formatter(
-			'%(asctime)s | %(process)-6d | %(threadName)-20s | %(levelname)-8s | %(name)s | %(message)s',
-			datefmt='%Y-%m-%d %H:%M:%S'
-		))
+		# 设置与控制台一致的格式化器（同一 `UnifiedLogFormatter`，形状逐位一致）。
+		# ⚠️ 2026-09-19：改用 `UnifiedLogFormatter` 而非裸 `logging.Formatter` ——
+		#    前者对「已由 StructuredLogger 预格式化」的记录**原样透传**；
+		#    而本文件已改为 `propagate=True`（见 `StructuredLogger.__init__`），
+		#    故 `main.py` 的日志现在**也会进入本文件**，必须用同一 formatter 才不会双前缀。
+		from utils.core_utils.logging_utils.structured_logger import UnifiedLogFormatter
+		file_handler.setFormatter(UnifiedLogFormatter())
 		root_logger = get_logger("")
 		root_logger.add_handler("file", file_handler)
 

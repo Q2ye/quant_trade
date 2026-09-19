@@ -99,8 +99,12 @@ class BaostockSource(BaseDataSource):
         df = df[~df['code_name'].str.contains('ST', na=False)]
         return df['code'].tolist()
 
-    async def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
-        """获取股票基本信息"""
+    async def get_stock_basic(self, exchange: str = '', list_status: str = '') -> List[Dict]:
+        """获取股票基本信息
+
+        ⚠️ 本实现**不使用 `list_status`**（`bs.query_stock_basic()` 一次返回全部）。
+        默认值 2026-09-19 由 'L' 改为 '' 仅为与 `base_source` 契约一致。
+        """
         import asyncio
 
         async def _fetch():

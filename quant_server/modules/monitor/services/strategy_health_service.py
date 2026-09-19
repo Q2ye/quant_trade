@@ -104,6 +104,9 @@ class StrategyHealthService:
 			"hist_max_mdd": None,
 			"recent_signal_count": 0,
 			"hist_monthly_signal_avg": None,
+			# 年化波动率（2026-09-19 新增）：近段「当前水平」vs 历史「均值」
+			"recent_annual_vol": None,
+			"hist_annual_vol": None,
 		}
 
 		# ---- 信号频率（2026-08 修复：前置统计——信号数与绩效样本无关；
@@ -140,6 +143,13 @@ class StrategyHealthService:
 		metrics["recent_return"] = round((end_cr - start_cr) / (1 + start_cr) if (1 + start_cr) != 0 else 0.0, 6)
 		# 回撤统一为「正值深度」口径（兼容旧正值写入与新负值口径写入，abs 取最深）
 		metrics["recent_mdd"] = round(max(abs(float(p.max_drawdown or 0)) for p in recent), 6)
+		# 年化波动率：取**最近一日**的滚动窗口值（每个交易日由绩效服务重算，
+		# 见 `performance_service.calculate_daily_performance`），代表"当前波动水平"。
+		# ⚠️ 字段是**年化**（已 ×√252）；历史遗留的 `volatility`（回测结果里）是日频，勿混。
+		_recent_vols = [float(p.annual_volatility) for p in recent
+		                if getattr(p, "annual_volatility", None) is not None]
+		if _recent_vols:
+			metrics["recent_annual_vol"] = round(_recent_vols[-1], 6)
 
 		if len(recent) < 20:
 			return {"strategy_id": strategy_id, "name": name, "status": "insufficient",
@@ -165,6 +175,11 @@ class StrategyHealthService:
 				sum(hist_returns) / len(hist_returns) if hist_returns else 0.0, 6)
 			# 与近段一致：正值深度口径
 			metrics["hist_max_mdd"] = round(max(abs(float(p.max_drawdown or 0)) for p in hist_sorted), 6)
+			# 历史年化波动：取**均值**（代表该策略的常态水平），与近段的"当前值"对照
+			_hist_vols = [float(p.annual_volatility) for p in hist_sorted
+			              if getattr(p, "annual_volatility", None) is not None]
+			if _hist_vols:
+				metrics["hist_annual_vol"] = round(sum(_hist_vols) / len(_hist_vols), 6)
 			hist_monthly_avg = (
 				sum(hist_months.values()) / len(hist_months) if hist_months else 0.0)
 		else:
@@ -230,6 +245,21 @@ class StrategyHealthService:
 				   recent_monthly_sig < metrics["hist_monthly_signal_avg"] * 0.5:
 					alerts.append("信号频率异常（近 {} 个月 vs 历史均值偏差 > 2x）".format(months))
 					status = "warning"
+
+				# 年化波动率放大（**2026-09-19 新增**）
+				# 判据用「近段 vs 历史」**相对**口径 —— 评估器不知道策略定位，
+				# 绝对上限由准入标准 B5 管（`06_策略实盘准入标准.md` §4.2）。
+				# 为什么值得告警：波动放大通常是「**杠杆/集中度上升**」或
+				# 「**市场状态切换**」的先兆；且波动损耗 = σ²/2 会直接吃掉复利。
+				if (metrics.get("hist_annual_vol") or 0) > 0 and \
+				   metrics.get("recent_annual_vol") is not None:
+					if metrics["recent_annual_vol"] > metrics["hist_annual_vol"] * 1.5:
+						alerts.append(
+							"年化波动率放大（近 {} 个月 {} vs 历史均值 {}，> 1.5x）".format(
+								months,
+								"{:.2%}".format(metrics["recent_annual_vol"]),
+								"{:.2%}".format(metrics["hist_annual_vol"])))
+						status = "warning"
 
 		if not alerts:
 			alerts = ["策略健康"]

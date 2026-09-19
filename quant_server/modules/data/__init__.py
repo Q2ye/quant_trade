@@ -317,6 +317,58 @@ async def initialize (
 			await main_engine.register_daily_task("coverage_validate", _task_coverage_validate, phase="pre_gate", order=15)
 			await main_engine.register_daily_task("market_state_update", _task_market_state, phase="pre_gate", order=20)
 			await main_engine.register_daily_task("etf_factor", _task_etf_factor, phase="pre_gate", order=30)
+
+			# ---- 数据质量门（2026-09-19 新增）：接入 `_data_integrity_gate` ----
+			async def _gate_quality_check(latest_trade_date):
+				"""数据质量门 —— **仅 critical 级阻断**（2026-09-19 决策）。
+
+				对实盘依赖的关键表跑质检，只在三种情况返回 ok=False：
+				  1. 质检本身失败（**无法确认**数据可用）
+				  2. 关键表记录数为 0（策略无数据可用）
+				  3. 存在 `severity == 'critical'` 的 issue（如价格列 NULL）
+				`high` / `medium` 只记日志、**不阻断** —— 避免新接入的门误停实盘。
+
+				另：结果落库到 `data_quality_checks`（供前端与事后追溯）。
+				"""
+				# 实盘链路直接依赖的关键表（3 个策略 + regime 判定）
+				_CRITICAL = ("daily_quotes", "etf_daily", "index_daily", "daily_basic")
+				_crit, _warn = [], []
+				from modules.data.services.quality_service import DataQualityService
+				from shared.database.session import get_session_manager
+				_sm = get_session_manager()
+				for _dt in _CRITICAL:
+					try:
+						async with _sm.get_session() as _qs:
+							_svc = DataQualityService(_qs)
+							_rep = await _svc.check_data_quality(_dt)
+							if _rep.get("skipped"):
+								continue
+							if not _rep.get("success"):
+								_crit.append(f"{_dt}: 质检失败({_rep.get('error')})")
+								await _qs.rollback()
+								continue
+							_m = _rep.get("result") or {}
+							_issues = _m.get("issues") or []
+							for _it in _issues:
+								_sev = _it.get("severity")
+								_desc = f"{_dt}: {_it.get('issue_type')} {_it.get('description', '')}"
+								if _sev == "critical":
+									_crit.append(_desc)
+								else:
+									_warn.append(f"[{_sev}] {_desc}")
+							if not int(_m.get("total_records") or 0):
+								_crit.append(f"{_dt}: 记录数为 0（无数据可用）")
+							await _qs.commit()
+					except Exception as _qe:
+						_crit.append(f"{_dt}: 质检异常 {type(_qe).__name__}: {_qe}")
+				for _w in _warn:
+					logger.warning("数据质量门（不阻断）: %s", _w)
+				if _crit:
+					return False, "；".join(_crit[:5])
+				return True, f"关键表质检通过（{len(_CRITICAL)} 类，无 critical）"
+
+			if hasattr(main_engine, "register_gate_check"):
+				main_engine.register_gate_check("data_quality_gate", _gate_quality_check)
 		return success
 
 	except Exception as e:

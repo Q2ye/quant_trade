@@ -134,8 +134,12 @@ class XtpSource(BaseDataSource):
 
         return symbols
 
-    async def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
-        """获取股票基本信息 (XTP不直接支持，返回空)"""
+    async def get_stock_basic(self, exchange: str = '', list_status: str = '') -> List[Dict]:
+        """获取股票基本信息 (XTP不直接支持，返回空)
+
+        ⚠️ 本实现恒返回空，`list_status` 不生效。默认值 2026-09-19 由 'L' 改为 ''
+        仅为与 `base_source` 契约一致。
+        """
         logger.warning("XTP 不支持 get_stock_basic，请使用Tushare")
         return []
 

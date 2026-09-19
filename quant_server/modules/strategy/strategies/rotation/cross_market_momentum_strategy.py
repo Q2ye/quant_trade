@@ -47,6 +47,10 @@ _EFF_TOPN = 3          # 高/低动量各取几只算价差
 _EFF_WINDOW = 20       # 价差滚动求和窗口（≈ 策略 3 个持仓周期）
 _EFF_MIN_CODES = 8     # 有效标的少于此数 → 本日信号不可用（沿用上一有效值）
 _EFF_HIST_MAX = 200    # eff 历史保留长度（安慰剂 lag 用）
+#: regime 指数（`index_daily`）最少行数：低于此视为「数据缺失 / 被截断」而非「加载成功」。
+#: 依据：`_update_weak_period` 的 MA 投票至少需要 `weak_period_ma_lookback`(10) 行才能投票，
+#: 且**可用指数 < `weak_enter_votes`(3) 时走弱期永不可能成立** —— 那正是被修的静默降级形态。
+_INDEX_MIN_ROWS = 30
 # 「闸门关闭」哨兵阈值。eff 是 20 日价差之和，实测落在 ±0.2 内，故 ≤ −1.0 永不触发。
 # 取到该值时 `_update_momentum_efficacy` 走快速路径**直接跳过计算** ——
 # 不为一个关闭的功能每天构建 DataFrame（实测计算路径 ≈100 µs/日 × 1846 日 ≈ 0.2 s/次回测）。
@@ -511,6 +515,10 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # ---- 状态 ----
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._index_cache: Dict[str, Dict[str, float]] = {}  # {index_code: {date: close}}
+        # 降级标记（2026-09-19）：regime 指数**加载失败**时为 False → 走姿态 A（禁止新开进攻仓）。
+        # ⚠️ 初值 True 是刻意的：只在「尝试加载并失败」时才置 False，
+        #    这样回测/冒烟 harness 等「未走 DB 加载」的路径**行为逐位不变**。
+        self._index_cache_ok: bool = True
         self._holdings: Dict[str, Dict] = {}    # {code: {entry_price, weight, shares, entry_date, fill_date, peak_high}}
         self._pending_buys: Dict[str, dict] = {}  # 已发买入信号待次日成交
         # {code: 上次发出退出信号时的 _rebalance_seq}，用于超期重发（F3 修复）
@@ -560,22 +568,144 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._last_trade_date = ""
         self._bar_dates.clear()
         self._held_days.clear()
+        # 复用同一对象再启动时，不得带着上一次的陈旧降级标记（2026-09-19 复审建议 2）
+        self._index_cache_ok = True
 
         # 加载 regime 指数日线（走弱期 MA10 判定用）
+        # ⚠️ 2026-09-19 修复：**失败不再静默** —— 见 `_ensure_index_cache`
+        #    （重试 1 次 → 仍失败则 ERROR + `_index_cache_ok=False` → 姿态 A 保守化 + 次日自愈）。
+        #    修复前：失败只打 WARNING，而 `on_start` **每进程只跑一次**
+        #    → `_index_cache` 在整个进程生命周期内永久为空
+        #    → ① 走弱期判定整体失效（永不切防御）② `rel_strength` 静默 fail-open。
         sf = getattr(self, "_db_session_factory", None)
         if sf:
             try:
-                from sqlalchemy import text
                 async with sf() as db:
-                    for code in self.weak_indices:
-                        rows = (await db.execute(text(
-                            "SELECT trade_date, close FROM index_daily "
-                            "WHERE ts_code = :c ORDER BY trade_date"
-                        ), {"c": code})).fetchall()
-                        self._index_cache[code] = {str(r[0])[:10]: float(r[1]) for r in rows}
-                logger.info(f"[{self.name}] regime 指数加载: {[(c, len(v)) for c, v in self._index_cache.items()]}")
+                    await self._ensure_index_cache(db)
             except Exception as e:
-                logger.warning(f"[{self.name}] regime 指数加载失败（走弱期判定降级为常正常）: {e}")
+                # 连会话都建不起来（连接池不可用）→ 走同一降级路径，不静默
+                self._index_cache_ok = False
+                logger.error(
+                    f"[{self.name}] ❌ 无法建立 DB 会话 → regime 指数不可用，**降级运行**"
+                    f"（姿态 A：目标降为防御标的 {self.defensive_etf}）：{type(e).__name__}: {e}"
+                )
+
+    async def load_live_state(self, db, strategy_id: str = "") -> None:
+        """框架**每日驱动前**调用（`strategy_manager.py:1743`）→ 在此**重试加载 regime 指数**，实现自愈。
+
+        修复背景：`on_start` 每进程只跑一次，而每日驱动只调 `load_live_state`。
+        故启动那天加载失败 = 整个进程生命周期内失效；在此补一次带重试的加载，
+        使**次日驱动即自愈**（`_ensure_index_cache` 在缓存已可用时直接返回，不重复查询）。
+
+        ⚠️ 签名**与基类严格一致、不收 `**kwargs`**（2026-09-19 复审）：基类不接受额外 kwarg，
+        若写成 `**kwargs` 再透传，日后一旦给本策略开 `BACKTEST_PRELOAD_STATE=True`，
+        `backtest_service` 传入的 `start_date=` 会一路透传到基类 → `TypeError`。
+        """
+        await super().load_live_state(db, strategy_id=strategy_id)
+        await self._ensure_index_cache(db)
+
+    async def _fetch_index_rows(self, db) -> Dict[str, Dict[str, float]]:
+        """读取 `weak_indices` 的全历史收盘价，**返回新字典**（不直接写 `self`，便于原子替换）。"""
+        from sqlalchemy import text
+
+        out: Dict[str, Dict[str, float]] = {}
+        for code in self.weak_indices:
+            rows = (await db.execute(text(
+                "SELECT trade_date, close FROM index_daily "
+                "WHERE ts_code = :c ORDER BY trade_date"
+            ), {"c": code})).fetchall()
+            out[code] = {str(r[0])[:10]: float(r[1]) for r in rows}
+        return out
+
+    def _validate_index_cache(self, cache: Dict[str, Dict[str, float]]) -> Optional[str]:
+        """校验加载结果：None = 通过；否则返回**失败原因**（供 ERROR 日志）。
+
+        ⚠️ **为什么必须有这道校验（2026-09-19 独立复审 · 阻断项 2）**：
+        查询成功但**返回 0 行**不是异常。若直接赋值，`_index_cache` 会变成 `{4 键: 空}`，
+        而 `_index_cache_ok` 被置 True → 诊断还会显示"4 个指数齐"；
+        此时**有效指数 < `weak_enter_votes` → 走弱期永不可能成立 + `rel_strength` 静默 fail-open**
+        —— **与被修的缺陷一字不差**，却零 ERROR。本校验就是专门防它的。
+        """
+        need = max(_INDEX_MIN_ROWS, self.weak_period_ma_lookback + 1)
+        usable, detail = 0, []
+        for code in self.weak_indices:
+            n = len(cache.get(code) or {})
+            detail.append(f"{code}:{n}")
+            if n >= need:
+                usable += 1
+        if usable < max(1, self.weak_enter_votes):
+            return (f"可用指数 {usable}/{len(self.weak_indices)} < weak_enter_votes="
+                    f"{self.weak_enter_votes}（各自行数 {', '.join(detail)}；下限 {need}）"
+                    f" → 走弱期判定必然失效")
+        return None
+
+    async def _ensure_index_cache(self, db=None) -> bool:
+        """确保 regime 指数缓存可用：**失败重试 1 次**，仍失败 → `logger.error` + 降级标记。
+
+        为什么重试有效：实测该故障为 `InvalidCachedStatementError`
+        （TimescaleDB chunk 变更使 prepared statement 计划失效）—— **瞬态**，换新事务重跑即恢复。
+        ⚠️ 但**不保证必然成功**（asyncpg 的计划缓存是 per-connection，一次失败只修好那条连接）
+        —— 故降级分支必须存在且可靠，不能假设重试一定过。
+
+        返回：True = 可用；False = 已降级（`_index_cache_ok=False`，`_run_rebalance` 走姿态 A）。
+        """
+        if not self.weak_indices:
+            # 不再静默 ok=True（复审建议 3）：`strategy_parameters` 把它覆盖成 [] 时，
+            # 策略会静默失去 regime 却报健康
+            self._index_cache_ok = False
+            logger.error(
+                f"[{self.name}] ❌ `weak_indices` 为空 → regime 判定不可用"
+                f"（检查 `strategy_parameters` 是否覆盖成 []）→ **降级运行**"
+            )
+            return False
+        if self._index_cache_ok and self._validate_index_cache(self._index_cache) is None:
+            return True                      # 已可用（且行数达标）→ 不重复查询
+        sf = getattr(self, "_db_session_factory", None)
+        if db is None and sf is None:
+            # 无 DB 通道（回测 / 冒烟 harness）：**不改变既有行为**，交由调用方注入缓存
+            self._index_cache_ok = True
+            return True
+
+        last_exc: Optional[Exception] = None
+        last_reason: Optional[str] = None
+        for attempt in (1, 2):
+            try:
+                if attempt == 1 and db is not None:
+                    fetched = await self._fetch_index_rows(db)
+                else:                                    # 第 2 次用**新事务**（瞬态故障重试）
+                    async with sf() as _db:              # type: ignore[misc]
+                        fetched = await self._fetch_index_rows(_db)
+                reason = self._validate_index_cache(fetched)
+                if reason:
+                    last_reason, last_exc = reason, None
+                    logger.warning(
+                        f"[{self.name}] regime 指数校验未通过（第 {attempt}/2 次）：{reason}"
+                    )
+                    continue
+                self._index_cache = fetched          # ★ 原子替换：绝不留下"半满"缓存
+                self._index_cache_ok = True
+                logger.info(
+                    f"[{self.name}] regime 指数加载: {[(c, len(v)) for c, v in self._index_cache.items()]}"
+                )
+                return True
+            except Exception as e:                       # noqa: BLE001 — 任何加载失败都要降级
+                last_exc, last_reason = e, None
+                logger.warning(
+                    f"[{self.name}] regime 指数加载第 {attempt}/2 次失败"
+                    f"{'，换新事务重试' if attempt == 1 else '，放弃'}：{type(e).__name__}: {e}"
+                )
+
+        # 两次都不通过 → **清空缓存**（消除半满/陈旧残留，避免半投票污染 `_is_weak`）+ 置降级
+        self._index_cache.clear()
+        self._index_cache_ok = False
+        logger.error(
+            f"[{self.name}] ❌ regime 指数不可用（已重试）→ **降级运行**："
+            f"① 走弱期判定不可用（不会切防御国债）② `rel_strength` 会静默 fail-open。"
+            f"**姿态 A 生效：目标强制降为防御标的 {self.defensive_etf}**，禁止新开进攻仓。"
+            f"下一次每日驱动（`load_live_state`）会自动重试。"
+            f"失败原因：{last_reason or f'{type(last_exc).__name__}: {last_exc}'}"
+        )
+        return False
 
     def on_stop(self) -> None:
         self._data_cache.clear()
@@ -658,7 +788,11 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         # 2.5 最小持有期守卫（降换手）：持仓未满 min_hold_days 且本次未触发止损 → 跳过换仓。
         # 止损优先：止损卖出已进 signals，此时须继续换仓补位，不受最小持有期约束。
-        if self.min_hold_days > 0 and self._holdings and not signals:
+        # ⚠️ **降级日不得早退**（2026-09-19 复审指出）：降级时姿态 A 要求**当天**就切防御标的，
+        #     若被本守卫拦下（持仓未满 min_hold_days），则注释宣称的「禁止持有进攻标的」不成立，
+        #     且**全程无任何日志**。故降级时跳过本守卫（`_index_cache_ok is False`）。
+        if (self.min_hold_days > 0 and self._holdings and not signals
+                and self._index_cache_ok):
             if all(self._held_days.get(_c, 0) < self.min_hold_days for _c in self._holdings):
                 return signals
 
@@ -669,6 +803,21 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
         # 4. 无候选 或 动量失效闸门触发 → 防御
         if not targets or self._momentum_gate:
+            targets = self._defensive_target()
+
+        # 4.5 ★ 降级保守化（**姿态 A**，2026-09-19）：regime 指数加载失败时无法判定走弱期，
+        #     → **禁止持有/新开进攻标的**，目标强制降为防御标的（允许退出、允许切防御，**不裸奔**）。
+        #     触发条件**只认显式失败标记** `_index_cache_ok is False`（刻意不用「缓存为空」判定）：
+        #     回测/冒烟 harness 等未走 DB 加载的路径初值为 True → **行为逐位不变**。
+        #     代价：降级期间放弃进攻收益（含一次换仓成本，约 6bp）；
+        #     收益：不会在识别不出弱市时满仓进攻标的。降级由 `load_live_state` 次日自动重试解除。
+        if self._index_cache_ok is False:
+            _before = [m["etf"] for m in targets]
+            if any(c != self.defensive_etf for c in _before):
+                logger.error(
+                    f"[{self.name}] ⚠️ 降级运行（regime 指数不可用）→ 目标由 {_before} "
+                    f"强制降为防御标的 {self.defensive_etf}（姿态 A：禁止新开进攻仓）"
+                )
             targets = self._defensive_target()
 
         target_codes = [m["etf"] for m in targets]
@@ -688,7 +837,7 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             if not self._should_retry_exit(code):
                 continue
             self._exit_pending[code] = self._rebalance_seq
-            sig = self._make_exit_signal(code, "轮动换仓: 不在目标池")
+            sig = self._make_exit_signal(code, self._degraded_prefix() + "轮动换仓: 不在目标池")
             if sig:
                 signals.append(sig)
 
@@ -1466,6 +1615,15 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     # =========================================================================
     # 信号构造（四大模块）
     # =========================================================================
+    def _degraded_prefix(self) -> str:
+        """降级期间的信号前缀（2026-09-19 复审建议）。
+
+        为什么需要：本策略是**半自动**（系统出信号 → 人工下单）。降级驱动的换仓若不带标记，
+        其买/卖 reason 与「正常无候选兜底」**字符串完全同形**，人工照单执行会把
+        **一次数据库故障变成真实成交**。
+        """
+        return "[DEGRADED] " if self._index_cache_ok is False else ""
+
     def _make_entry_signal(self, code: str, metrics: Dict, weight: float, price: float) -> Optional[TradingSignal]:
         # 满仓买入：金额 = 基准资本×权重，不封顶到 available_capital。
         # 轮动时序为「先卖出（broker 提前释放资金）→ 后买入」，封顶到陈旧现金会致长期半仓闲置。
@@ -1488,7 +1646,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             amount=shares * price,
             confidence=self.entry_confidence,
             reason=(
-                f"跨市场轮动买入: score={metrics.get('score', 0):.2f} "
+                self._degraded_prefix()
+                + f"跨市场轮动买入: score={metrics.get('score', 0):.2f} "
                 f"R²={metrics.get('r2', 0):.2f} 仓{weight:.0%}"
             ),
             timestamp=beijing_now(),
@@ -1790,11 +1949,18 @@ class CrossMarketMomentumStrategy(BaseStrategy):
 
     def get_daily_diagnostic(self) -> Optional[Dict[str, Any]]:
         try:
+            rows = {c: len(v) for c, v in self._index_cache.items()}
             return {
                 "holdings": list(self._holdings.keys()),
                 "pending_buys": list(self._pending_buys.keys()),
                 "is_weak": self._is_weak,
                 "weak_days": self._weak_days_count,
+                # 2026-09-19：降级状态必须可见。
+                # ⚠️ 报**行数**而非键数 —— 键数在「查询成功但 0 行」时会显示"4 个指数齐"（假绿，
+                #    独立复审阻断项 2），行数才能暴露真相。
+                "index_cache_ok": self._index_cache_ok,
+                "index_cache_rows": rows,
+                "index_cache_min_rows": min(rows.values()) if rows else 0,
             }
         except Exception as e:
             logger.warning(f"[{self.name}] 诊断信息生成失败: {e}")

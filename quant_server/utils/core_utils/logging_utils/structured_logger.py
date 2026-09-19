@@ -282,15 +282,18 @@ class StructuredLogger:
         self.context = context or LogContext()
 
         # 创建Python标准记录器
+        # ⚠️ 2026-09-19 行为订正（两处）：
+        #   ① **不再自建无 formatter 的 `StreamHandler(sys.stdout)`** ——
+        #      它会绕过统一格式，让本 logger 的输出与其余模块**形状不同**。
+        #   ② `propagate` 由 `False` 改为 **`True`** ——
+        #      原来 `propagate=False` + 只有自建的 stdout handler，导致本 logger 的
+        #      记录**永远到不了 root 的 file handler**。实测：`main.py` 的日志
+        #      （含 `已启动模块`、`量化交易系统启动成功` 等关键启动信息）
+        #      在 `logs/quant_server.log` 里 **一条都没有**（`grep '| __main__ |'` = 0）。
+        #    现在交由 root 统一输出，形状由 `UnifiedLogFormatter` 决定。
         self._logger = logging.getLogger(name)
         self._logger.setLevel(level.to_int())
-        self._logger.propagate = False  # 防止重复记录
-
-        # 添加默认处理器（如果没有处理器）
-        if not self._logger.handlers:
-            handler = logging.StreamHandler(sys.stdout)
-            handler.setLevel(level.to_int())
-            self._logger.addHandler(handler)
+        self._logger.propagate = True
 
         # 存储处理器映射
         self._handlers: Dict[str, logging.Handler] = {}
@@ -455,15 +458,36 @@ class StructuredLogger:
 
         return True
 
-    def _format_log_record(self, log_record: LogRecord) -> str:
+    def _message_with_context(self, log_record: LogRecord) -> str:
+        """TEXT 模式下发给处理器的消息：**原文 + 上下文/额外字段后缀**。
+
+        形状里的「时间 | 进程 | 线程 | 级别 | logger」由 `UnifiedLogFormatter`
+        统一添加；本方法只补它拿不到的部分（上下文与额外字段）。
+        —— 这样 TEXT 模式下 `main.py` 与其余 156 个模块的输出形状一致。
         """
-        格式化日志记录
+        msg = log_record.message
 
-        Args:
-            log_record: 日志记录
+        parts = []
+        if log_record.request_id:
+            parts.append(f"req:{log_record.request_id[:8]}")
+        if log_record.user_id:
+            parts.append(f"usr:{log_record.user_id[:8]}")
+        if log_record.duration_ms is not None:
+            parts.append(f"dur:{log_record.duration_ms:.2f}ms")
+        if parts:
+            msg += f" [{' '.join(parts)}]"
 
-        Returns:
-            str: 格式化后的日志字符串
+        if log_record.extra:
+            msg += " {" + " ".join(f"{k}={v}" for k, v in log_record.extra.items()) + "}"
+
+        # 异常不在此拼装 —— 由 `exc_info` 交给 logging 统一处理（含 traceback）
+        return msg
+
+    def _format_log_record(self, log_record: LogRecord) -> str:
+        """格式化日志记录。
+
+        ⚠️ 2026-09-19：**仅非 TEXT 模式（JSON / GELF / CSV）使用**。
+        TEXT 模式已改为把裸消息交给处理器（`UnifiedLogFormatter`），见 `_log`。
         """
         if self.format == LogFormat.JSON:
             return log_record.to_json()
@@ -532,17 +556,27 @@ class StructuredLogger:
             self._stats["dropped_logs"] += 1
             return
 
-        # 格式化日志记录
-        formatted_message = self._format_log_record(log_record)
-
         # 使用Python logging记录
         log_method = getattr(self._logger, level.value.lower())
 
+        # ⚠️ 2026-09-19：**TEXT 模式改为发「裸消息 + 上下文后缀」**，把时间/级别/logger
+        #    这些前缀交给处理器（`UnifiedLogFormatter`）统一加 ——
+        #    这样本 logger 与其余 156 个标准 logging 模块的输出**形状完全一致**。
+        #    （原先一律预格式化，处理器再透传，导致 `main.py` 的日志形状与全仓不同。）
+        #    非 TEXT（JSON / GELF / CSV）仍走 `_format_log_record` 预格式化，
+        #    并打 `_PREFORMATTED_ATTR` 标记让处理器**原样透传**。
+        if self.format == LogFormat.TEXT:
+            _msg = self._message_with_context(log_record)
+            _extra = None
+        else:
+            _msg = self._format_log_record(log_record)
+            _extra = {_PREFORMATTED_ATTR: True}
+
         # 如果是异常日志，使用exc_info参数
         if exception:
-            log_method(formatted_message, exc_info=exception)
+            log_method(_msg, exc_info=exception, extra=_extra)
         else:
-            log_method(formatted_message)
+            log_method(_msg, exc_info=None, extra=_extra)
 
         # 更新统计信息
         self._stats["total_logs"] += 1
@@ -894,27 +928,75 @@ def get_global_context() -> LogContext:
 
 
 # 预定义的处理器工厂
+#: 标记：该 LogRecord 已由 `StructuredLogger` 完整格式化过，处理器必须**原样透传**
+_PREFORMATTED_ATTR = "_sf_preformatted"
+
+
+class UnifiedLogFormatter(logging.Formatter):
+	"""统一日志格式（2026-09-19 新增）。
+
+	## 为什么需要
+
+	本项目有**两类日志来源**，此前输出的**形状不同、且混在同一处**：
+
+	  ① `StructuredLogger`（全仓仅 `main.py` 使用）：在 `_log` 里先把 record
+	     完整格式化成最终字符串，再交给 `logging` → 处理器必须**透传**，
+	     否则前缀会叠加两次；
+	  ② 其余 **156 个模块**：用标准 `logging.getLogger(__name__)` → 消息是**裸文本**，
+	     经 root 传播过来 → 处理器必须**补前缀**，否则时间/级别/模块名全丢。
+
+	而 `setup_logging` 在生产模式下把 console 的 formatter 设为 `'%(message)s'`
+	（只对 ① 正确）→ **② 全部输出裸文本**。实测表现为同一段启动日志里
+	既有 JSON 行、又有无前缀的裸文本行。
+
+	## 形状
+
+	与既有日志文件（`quant_server.log`）**完全一致**，便于连续归档比对：
+
+	    2026-09-19 20:47:58 | 18068  | MainThread | INFO     | modules.account | 消息
+	"""
+
+	def format (self, record: logging.LogRecord) -> str:
+		if getattr(record, _PREFORMATTED_ATTR, False):
+			# ① StructuredLogger 已完整格式化 → 原样透传
+			msg = record.getMessage()
+		else:
+			# ② 标准 logging 的裸文本 → 补统一前缀
+			msg = (
+				f"{self.formatTime(record, '%Y-%m-%d %H:%M:%S')} | "
+				f"{record.process:<6d} | {record.threadName:<20s} | "
+				f"{record.levelname:<8s} | {record.name} | {record.getMessage()}"
+			)
+
+		# ⚠️ 必须自行补异常/堆栈：上面**绕过了 `logging.Formatter.format` 的默认拼装**，
+		#    若不补，`logger.exception(...)` 与 exc_info 的 **traceback 会静默丢失**。
+		if record.exc_info and not record.exc_text:
+			record.exc_text = self.formatException(record.exc_info)
+		if record.exc_text:
+			msg = f"{msg}\n{record.exc_text}"
+		if record.stack_info:
+			msg = f"{msg}\n{self.formatStack(record.stack_info)}"
+		return msg
+
+
 class HandlerFactory:
     """处理器工厂类"""
 
     @staticmethod
     def create_console_handler(level: LogLevel = LogLevel.INFO,
                                format: LogFormat = LogFormat.TEXT) -> logging.Handler:
-        """创建控制台处理器"""
+        """创建控制台处理器
+
+        ⚠️ 2026-09-19：**不再按 `format` 分叉**，控制台统一用 `UnifiedLogFormatter`
+        （与日志文件同一形状）。原来的非 TEXT 分支用 `'%(message)s'` 透传 ——
+        那只对 `StructuredLogger` 正确，而全仓 **156/157 个文件**用标准 logging
+        → 它们的时间戳/级别/模块名**全部丢失**，表现为「同一段输出两种格式」。
+
+        `format` 参数**保留以兼容调用方**（`init_logging` 仍会传），但不再影响控制台形状。
+        """
         handler = logging.StreamHandler(sys.stdout)
         handler.setLevel(level.to_int())
-
-        # 设置格式化器
-        if format == LogFormat.TEXT:
-            formatter = logging.Formatter(
-                '%(asctime)s | %(process)-6d | %(levelname)-8s | %(name)s | %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            )
-        else:
-            # 对于非文本格式，使用原始消息格式化器
-            formatter = logging.Formatter('%(message)s')
-
-        handler.setFormatter(formatter)
+        handler.setFormatter(UnifiedLogFormatter())
         handler.name = "console"
         return handler
 

@@ -73,7 +73,13 @@ class FactorAttribution:
 				'factor_contributions': factor_contributions,
 				'total_factor_contribution': sum(factor_contributions.values()),
 				'specific_return': specific_return,
-				'portfolio_return': float(portfolio_aligned.mean() * 252),  # 年化
+				# ⚠️ 2026-09-19 订正：原为 `float(mean() * 252)`（**算术年化**），
+				#    与回测引擎的**几何年化** `(1+total)**(252/n) - 1`
+				#    （`backtest_engine.py:1223`）**口径冲突** —— 同一条净值、
+				#    两处报出不同的「年化收益」。
+				#    算术年化会**系统性高估**，高估幅度 ≈ σ²/2（波动损耗），
+				#    年化波动 25% 的策略上可达 **3pp**。现统一为几何。
+				'portfolio_return': self._geometric_annual(portfolio_aligned),
 				'regression_statistics': regression_stats,
 				'quality_metrics': quality_metrics,
 				'factor_model': factor_model,
@@ -594,6 +600,30 @@ class FactorAttribution:
 		return quality
 
 	@staticmethod
+	@staticmethod
+	def _geometric_annual (returns: "pd.Series") -> float:
+		"""几何年化收益（与回测引擎口径一致：`(1+total) ** (252/n) - 1`）。
+
+		⚠️ 2026-09-19 新增：本模块原先用 `mean() * 252`（**算术年化**）报
+		`portfolio_return`，而 `backtest_engine.py:1223` 用**几何年化** ——
+		**同一条净值、两处两套口径**。算术年化会**系统性高估**，高估幅度
+		≈ σ²/2（**波动损耗**）：年化波动 25% 的策略约 **3pp/年**。
+		现与回测引擎统一为几何。
+
+		Args:
+			returns: 组合日收益率序列
+
+		Returns:
+			年化收益率（几何）；净值归零返回 -1.0（与引擎 `total_return <= -1` 分支一致）
+		"""
+		n = len(returns)
+		if n == 0:
+			return 0.0
+		cum = float((1.0 + returns).prod())
+		if cum <= 0:
+			return -1.0
+		return float(cum ** (252.0 / n) - 1.0)
+
 	def _validate_attribution (
 			attribution_result: Dict[str, Any],
 			portfolio_returns: pd.Series

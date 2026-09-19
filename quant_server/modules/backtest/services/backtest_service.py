@@ -620,6 +620,35 @@ class BacktestService:
 		except Exception:
 			return False
 
+	def _assert_index_cache_ready(self, sids: List[str], task_id: str) -> None:
+		"""**回测路径的降级门禁：指数缓存不可用即硬失败**（2026-09-19）。
+
+		## 为什么回测必须硬失败，而实盘允许降级运行
+
+		跨市场动量避险在 regime 指数不可用时会置 `_index_cache_ok=False` → 走「姿态 A」
+		（目标强制降为防御标的）。对**实盘**这是有意的保守化（宁可少赚，不可裸奔）；
+		但对**回测**，它会让整段净值变成"只持国债"——而三条冒烟门
+		（≥1 笔交易 / 无 NaN / 收益∈[−95%,+500%]）**对该形态完全免疫**，
+		于是被降级的净值会**静默进入 `backtest_tasks` 当权威口径**（AGENTS.md 口径），
+		且 `_index_cache_ok` 不落库，事后无法分辨哪一次结果是被降级的。
+
+		→ 故研究/回测路径按 `scripts/quality/permutation_test.py` 的既有范式**硬失败**。
+
+		⚠️ 本门禁**只覆盖 BacktestService**；`scripts/backtest/*` 下的脚本另有各自的同名校验
+		（或直接由 `permutation_test.py` 承担），两者都要，缺一不可。
+		"""
+		for sid in sids:
+			obj = self.strategy_manager.get_strategy_object(sid)
+			if obj is None:
+				continue
+			if getattr(obj, "_index_cache_ok", True) is False:
+				raise RuntimeError(
+					f"回测 {task_id}: 策略「{getattr(obj, 'name', sid)}」的 regime 指数缓存不可用"
+					f"（`_index_cache_ok=False`）→ 该策略会退化为「只持防御标的」，"
+					f"结果**不可作为口径**（冒烟门对此形态免疫，无法事后分辨）。"
+					f"请检查 `index_daily` 覆盖与 DB 连接后重跑。"
+				)
+
 	async def run_composite_backtest(self, task_id: str) -> None:
 		"""
 		执行组合回测 — 调用 BacktestEngine.run_composite()。
@@ -699,6 +728,10 @@ class BacktestService:
 						f"回测 {task_id}: {_sat_obj.name} 市场数据预加载完成 "
 						f"(回测窗口 start_date={_bt_start})"
 					)
+
+				# 2026-09-19：**降级门禁** —— 指数缓存不可用则整段回测会退化为"只持国债"，
+				# 而冒烟门对此免疫 → 必须硬失败，不得静默入库当权威口径（见方法文档）
+				self._assert_index_cache_ready([sid], task_id)
 
 			# ---- Step 5: 解析股票池 ----
 			symbols = config.get("symbols", [])
@@ -1543,6 +1576,10 @@ class BacktestService:
 					f"回测 {task_id}: {_sat_obj.name} 市场数据预加载完成 "
 					f"(回测窗口 start_date={_bt_start})"
 				)
+
+			# 2026-09-19：**降级门禁** —— 指数缓存不可用则整段回测会退化为"只持国债"，
+			# 而冒烟门对此免疫 → 必须硬失败，不得静默入库当权威口径（见方法文档）
+			self._assert_index_cache_ready([str(task.strategy_id)], task_id)
 
 			# =================================================================
 			# Step 7: 解析股票池（三级优先级降级策略）

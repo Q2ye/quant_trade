@@ -69,6 +69,15 @@ async def run_single(strategy_cls, sf, full, start: date, dates, symbols):
     strategy._db_session_factory = sf
     strategy.initialize()
     await strategy.on_start()
+    # 2026-09-19：**降级门禁** —— regime 指数不可用时策略退化为「只持防御标的」，
+    # 而冒烟门对满仓国债免疫 → 研究路径必须硬失败，不得静默产出不可比结果
+    # （尤其本脚本产出「滚动起始日分布」，正是采纳参数的判据）。
+    if getattr(strategy, "_index_cache_ok", True) is False:
+        raise RuntimeError(
+            f"regime 指数缓存不可用（_index_cache_ok=False，起始日 {start}）→ 本臂会退化为"
+            f"『只持防御标的』，该滚动起始日的结果不可作为口径；"
+            f"请检查 index_daily 覆盖率与 DB 连接后重跑"
+        )
     strategy.context = SimpleNamespace(
         positions={}, total_assets=INITIAL_CAPITAL, available_capital=INITIAL_CAPITAL,
     )

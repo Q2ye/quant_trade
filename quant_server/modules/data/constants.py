@@ -378,6 +378,85 @@ class DataSource:
 		YAHOO: ["daily_quotes", "historical_quotes"]
 	}
 
+	# ⚠️ 同步类型 → 数据库表名（2026-09-19 新增）
+	#    用途：质量检验侧按【同步类型】定位到【表】（见 services/quality_service.py）。
+	#    为什么需要：同步侧传的是同步类型名（`adj_factor`/`daily_basic`/... 41 种），
+	#    而质量侧原先只认 3 个类别名 → 实测 53 种 data_type 里 50 种不匹配、
+	#    全部被写成 0 分记录（"检查了但什么也没查"）。
+	#    范围：以 `SUPPORTED_DATA_TYPES[TUSHARE]` 为准；表名以 information_schema 实查为准。
+	#    无对应表者（如 `tick_quotes`）**不列入** → 调用方按"无检查项"跳过、不写记录。
+	DATA_TYPE_TABLE_MAP = {
+		"stock_list": "stock_basic",
+		"daily_quotes": "stock_daily",
+		"minute_quotes": "stock_minutes",
+		"weekly_quotes": "stock_weekly",
+		"monthly_quotes": "stock_monthly",
+		"moneyflow": "stock_moneyflow",
+		"moneyflow_hsgt": "stock_moneyflow_hsgt",
+		"adj_factor": "stock_adj_factor",
+		"suspend": "stock_suspend_info",
+		"daily_basic": "stock_daily_basic",
+		"daily_limit": "stock_daily_limit",
+		"calendar": "trade_calendar",
+		"etf_basic": "etf_basic",
+		"etf_index": "etf_index",
+		"etf_minute": "etf_minute",
+		"etf_daily": "etf_daily",
+		"etf_share": "etf_shares",
+		"fund_adj_factor": "fund_adj_factor",
+		"index_data": "index_daily",
+		"index_weekly": "index_weekly",
+		"index_weight": "index_weight",
+		"index_dailybasic": "index_dailybasic",
+		"index_sw_classify": "index_sw_classify",
+		"index_sw_member": "index_sw_member",
+		"index_sw_daily": "index_sw_daily",
+		"stk_factor": "stock_factor_daily",
+		"stk_factor_pro": "stock_factor_pro_daily",
+		"idx_factor_pro": "index_factor_pro_daily",
+		"stock_hsgt": "stock_hsgt",
+		"st_list": "stock_st_list",
+		"st_stockrisk": "stock_st_risk",
+		"share_float": "stock_share_float",
+		"disclosure_date": "financial_disclosure_dates",
+		"stk_holdernumber": "stock_stk_holdernumber",
+		"stk_holdertrade": "stock_stk_holdertrade",
+		"top10_holders": "stock_top10_holders",
+		"top10_floatholders": "stock_top10_float_holders",
+		"pledge_stat": "stock_pledge_stat",
+		"stk_managers": "stk_managers",
+		"stk_rewards": "stk_rewards",
+		"financial": "financial_income",
+		"financial_income": "financial_income",
+		"financial_balance": "financial_balance",
+		"financial_cashflow": "financial_cashflow",
+		"financial_indicator": "stock_fina_indicators",
+		"company": "stock_company",
+		"stock_company": "stock_company",
+		"forecast": "stock_forecasts",
+		"forecast_pro": "stock_forecast_pro",
+		"express": "stock_expresses",
+		"dividend": "stock_dividends",
+		"audit_opinion": "stock_audit_opinions",
+		"business_income": "stock_business_incomes",
+		# ⚠️ 2026-09-19 补：`DataType` 枚举值 与 本映射键 曾用两套命名，
+		#    导致 8 个类型对不上 → 质检**静默跳过**（`index_daily` 尤其严重：
+		#    它是 13 类日终同步之一，且有 290 万行）。
+		#    此处按 `DataType` 的**枚举值**补齐（原别名键保留，双键指向同表无副作用）。
+		"index_daily": "index_daily",          # DataType.INDEX_DAILY
+		"index_basic": "index_basic",          # DataType.INDEX_BASIC
+		"managers": "stk_managers",            # DataType.MANAGERS
+		"rewards": "stk_rewards",              # DataType.REWARDS
+		"financial_data": "financial_income",  # DataType.FINANCIAL_DATA
+		"gdp": "macro_gdp",                    # DataType.GDP
+		"cpi": "macro_cpi",                    # DataType.CPI
+		"ppi": "macro_ppi",                    # DataType.PPI
+		# 兼容历史上以【表名】直接写入的 data_type
+		"stock_basic": "stock_basic",
+		"stock_daily": "stock_daily",
+		"factor_data": "factor_data",
+	}
+
 
 # ==================== 数据类型常量（枚举） ====================
 

@@ -104,8 +104,12 @@ class MockSource(BaseDataSource):
         result = await self.get_stock_basic()
         return [item["ts_code"] for item in result]
 
-    async def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
-        """获取股票基础信息"""
+    async def get_stock_basic(self, exchange: str = '', list_status: str = '') -> List[Dict]:
+        """获取股票基础信息
+
+        ⚠️ 本实现仅把 `list_status` 当作返回记录里的**标签**，不影响筛选
+        （mock 池固定）。默认值 2026-09-19 由 'L' 改为 '' 仅为契约一致。
+        """
         stocks = []
         for code in self.stock_codes:
             info = DEFAULT_STOCKS.get(code, {"name": code, "industry": "未知", "area": "未知", "market": "主板"})

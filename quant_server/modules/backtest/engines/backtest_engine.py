@@ -133,7 +133,13 @@ class BacktestResult:
 	profit_factor: float = 0.0  # 盈亏比（总盈利 / |总亏损|）
 	num_trades: int = 0  # 交易总笔数
 	avg_trade_return: float = 0.0  # 平均每笔交易收益
-	volatility: float = 0.0  # 波动率（日收益率标准差）
+	# ⚠️ 单位澄清（2026-09-19）：`volatility` = **日频**标准差（未年化）；
+	#    `annual_volatility` = 年化（= 日频 × √252）。原先只有一个未标单位的
+	#    `volatility`，极易被当成年化用（**差 √252 ≈ 15.87 倍**）。
+	#    `volatility` 保持日频不动 —— ① 夏普计算内部依赖它
+	#    ② 历史 `backtest_tasks.result` JSONB 里已有值也是日频，改语义会让新旧不可比。
+	volatility: float = 0.0  # 波动率（**日频**收益标准差，未年化）
+	annual_volatility: float = 0.0  # 年化波动率（= 日频 × √252）
 
 	# ---- 时序数据（列表字段，__post_init__ 保证非 None） ----
 	equity_curve: List[Dict] = None  # 净值曲线 [{trade_date, total_assets, cumulative_return}, ...]
@@ -192,7 +198,8 @@ class BacktestResult:
 			"profit_factor": self._sanitize_float(self.profit_factor),
 			"num_trades": self.num_trades,
 			"avg_trade_return": self._sanitize_float(self.avg_trade_return),
-			"volatility": self._sanitize_float(self.volatility),
+			"volatility": self._sanitize_float(self.volatility),          # 日频（未年化）
+			"annual_volatility": self._sanitize_float(self.annual_volatility),  # 年化 = 日频 × √252
 			"equity_curve": self._sanitize_json(self.equity_curve),
 			"drawdown_curve": self._sanitize_json(self.drawdown_curve),
 			"trades": self._sanitize_json(self.trades),
@@ -1225,7 +1232,13 @@ class BacktestEngine(EngineBase):
 			# 日收益率序列（v1.3: 使用总资产的百分比变化 pct_change）
 			daily_returns = equity_df["total_assets"].pct_change().dropna()
 			if len(daily_returns) > 1:
+				# ⚠️ 单位澄清（2026-09-19）：`volatility` 是 **日频**标准差（未年化）。
+				#    下方夏普的 `* sqrt(252)` 才把它换算到年化。
+				#    为免误用，另存一个**年化**字段 `annual_volatility`；
+				#    `volatility` 保持日频不动 —— ① 夏普计算依赖它 ② 历史
+				#    `backtest_tasks.result` JSONB 里已有的值也是日频，改语义会让新旧不可比。
 				result.volatility = float(daily_returns.std())
+				result.annual_volatility = float(result.volatility * np.sqrt(252))
 				rf_daily = RISK_FREE_RATE / 252
 				if result.volatility > 0:
 					result.sharpe_ratio = float(

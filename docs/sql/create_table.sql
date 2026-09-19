@@ -30,7 +30,7 @@ COMMENT ON EXTENSION timescaledb IS '时序数据库扩展，用于处理高频�
 CREATE TABLE sys_users (
     id VARCHAR(36) PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(100) NOT NULL,
+    password VARCHAR(500) NOT NULL,   -- 2026-09-19 对齐 dev：原 VARCHAR(100) 偏窄
     email VARCHAR(100),
     phone VARCHAR(20),
     real_name VARCHAR(50),
@@ -79,7 +79,9 @@ COMMENT ON COLUMN sys_roles.updated_at IS '更新时间';
 -- 用户角色关联表
 CREATE TABLE sys_user_roles (
     id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE,
+    -- ⚠️ 2026-09-19 对齐 dev：`user_id` 上**无 ON DELETE CASCADE**
+    --    （本脚本原有 CASCADE → 「删用户」会级联删其角色绑定；dev 会直接拒绝）
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     role_id VARCHAR(36) NOT NULL REFERENCES sys_roles(id) ON DELETE CASCADE,
     assigned_by VARCHAR(36) REFERENCES sys_users(id),
     assigned_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -116,7 +118,8 @@ COMMENT ON COLUMN sys_permissions.can_execute IS '是否可执行（如交易、
 -- 用户偏好设置表
 CREATE TABLE user_preferences (
     id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE UNIQUE,
+    -- ⚠️ 2026-09-19 对齐 dev：去掉了 ON DELETE CASCADE（同上）
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id) UNIQUE,
     language VARCHAR(10) DEFAULT 'zh-CN',
     timezone VARCHAR(50) DEFAULT 'Asia/Shanghai',
     theme VARCHAR(20) DEFAULT 'light',
@@ -649,6 +652,37 @@ CREATE INDEX idx_account_audit_logs_date ON account_audit_logs(audit_date DESC);
 -- 1.4 策略管理模块
 -- ------------------------------------------------------------
 
+-- 策略版本管理表
+-- ⚠️ 2026-09-19：**必须先于 `strategies` 创建**（循环依赖，见下方 ALTER 注释）。
+--    此处 `strategy_id` **故意不带 FK** —— 对 `strategies(id)` 的约束在
+--    `strategies` 建好之后由 `ALTER TABLE` 补上。
+CREATE TABLE strategy_versions (
+    id VARCHAR(36) PRIMARY KEY,
+    strategy_id VARCHAR(36) NOT NULL,
+    version_number VARCHAR(20) NOT NULL,
+    version_name VARCHAR(100),
+    description TEXT,
+    code_content TEXT NOT NULL,
+    parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
+    is_current BOOLEAN DEFAULT FALSE,
+    created_by VARCHAR(36) REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (strategy_id, version_number)
+);
+
+COMMENT ON TABLE strategy_versions IS '策略版本管理表';
+COMMENT ON COLUMN strategy_versions.strategy_id IS '策略ID';
+COMMENT ON COLUMN strategy_versions.version_number IS '版本号（如1.0.0）';
+COMMENT ON COLUMN strategy_versions.version_name IS '版本名称';
+COMMENT ON COLUMN strategy_versions.description IS '版本描述';
+COMMENT ON COLUMN strategy_versions.code_content IS '策略代码内容';
+COMMENT ON COLUMN strategy_versions.parameters IS '版本参数（JSON格式）';
+COMMENT ON COLUMN strategy_versions.is_current IS '是否为当前版本';
+COMMENT ON COLUMN strategy_versions.created_by IS '创建人ID';
+
+CREATE INDEX idx_strategy_versions_strategy_id ON strategy_versions(strategy_id);
+CREATE INDEX idx_strategy_versions_current ON strategy_versions(is_current) WHERE is_current = TRUE;
+
 -- 策略实例表
 CREATE TABLE strategies (
     id VARCHAR(36) PRIMARY KEY,
@@ -659,17 +693,28 @@ CREATE TABLE strategies (
     module_path VARCHAR(200) NOT NULL,
     strategy_type VARCHAR(50),
     code TEXT,
-    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'backtested', 'running', 'paused', 'stopped', 'error'))  -- v3.3: +backtested,
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'backtested', 'running', 'paused', 'stopped', 'error')),  -- v3.3: +backtested
     run_mode VARCHAR(20) DEFAULT 'backtest' CHECK (run_mode IN ('backtest', 'live', 'paper')),
     execution_mode VARCHAR(20) CHECK (execution_mode IN ('semi_auto', 'full_auto')),
     account_id VARCHAR(36) REFERENCES accounts(id),
-    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
+    -- ⚠️ 2026-09-19 移除 `strategy_version_id`：本列**只有本脚本有** ——
+    --    现有库（dev）无此列，ORM `Strategy` 模型（business_models.py）亦无此字段
+    --    （`strategy_version_id` 只存在于 `StrategyRun` / `Signal` / `BacktestTask` 三处）。
+    --    属「写进 DDL 但从未落地、也从未被使用」的臆测列 → 按 dev 口径移除。
+    --    若日后要做「策略版本绑定」（见回测框架可靠性报告 §五-1），
+    --    再连同 ORM 字段一并加回。
     allocated_capital NUMERIC(16,4) DEFAULT 0,
-    template_id VARCHAR(36) REFERENCES strategy_templates(id) ON DELETE SET NULL,
+    template_id VARCHAR(36),  -- ⚠️ 对 strategy_templates 的 FK 在 strategy_templates 建好后由 ALTER 补（前向引用）
     promoted_from_scenario_id VARCHAR(36),  -- v3.3: 从场景晋升而来  -- v3.0: 关联模板
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ⚠️ 2026-09-19 补：`strategies` 与 `strategy_versions` **循环引用**，
+--    故 strategy_versions 先建（不带 FK），此处把对 strategies 的 FK 补上。
+ALTER TABLE strategy_versions
+    ADD CONSTRAINT strategy_versions_strategy_id_fkey
+    FOREIGN KEY (strategy_id) REFERENCES strategies(id) ON DELETE CASCADE;
 
 CREATE INDEX IF NOT EXISTS idx_strategies_template_id ON strategies(template_id);
 
@@ -698,12 +743,15 @@ CREATE TABLE strategy_runs (
     run_mode VARCHAR(20) DEFAULT 'backtest' CHECK (run_mode IN ('backtest', 'live', 'paper')),
     execution_mode VARCHAR(20) CHECK (execution_mode IN ('semi_auto', 'full_auto')),
     account_id VARCHAR(36) REFERENCES accounts(id),
-    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
     allocated_capital NUMERIC(16,4) DEFAULT 0,
     log_path TEXT,
     state_snapshot JSONB,
-    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
-    strategy_version_id VARCHAR(36),         -- v3.1: 运行使用的策略版本ID
+    -- ⚠️ 2026-09-19 修复：本列原被**重复声明 3 次**（两行 v3.3 FK + 一行 v3.1），
+    --    导致建表报 `字段 "strategy_version_id" 被指定多次`。保留带 FK 的一条；
+    --    约束名对齐现有库（`fk_strategy_runs_version`）。
+    --    用途：v3.1/v3.3 —— 本次运行使用的策略版本ID，用于溯源。
+    strategy_version_id VARCHAR(36) CONSTRAINT fk_strategy_runs_version
+        REFERENCES strategy_versions(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -720,32 +768,11 @@ COMMENT ON COLUMN strategy_runs.status IS '运行结果状态：completed, stopp
 COMMENT ON COLUMN strategy_runs.log_path IS '本次运行日志文件存储路径';
 
 -- 策略版本管理表
-CREATE TABLE strategy_versions (
-    id VARCHAR(36) PRIMARY KEY,
-    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
-    version_number VARCHAR(20) NOT NULL,
-    version_name VARCHAR(100),
-    description TEXT,
-    code_content TEXT NOT NULL,
-    parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
-    is_current BOOLEAN DEFAULT FALSE,
-    created_by VARCHAR(36) REFERENCES sys_users(id),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (strategy_id, version_number)
-);
-
-COMMENT ON TABLE strategy_versions IS '策略版本管理表';
-COMMENT ON COLUMN strategy_versions.strategy_id IS '策略ID';
-COMMENT ON COLUMN strategy_versions.version_number IS '版本号（如1.0.0）';
-COMMENT ON COLUMN strategy_versions.version_name IS '版本名称';
-COMMENT ON COLUMN strategy_versions.description IS '版本描述';
-COMMENT ON COLUMN strategy_versions.code_content IS '策略代码内容';
-COMMENT ON COLUMN strategy_versions.parameters IS '版本参数（JSON格式）';
-COMMENT ON COLUMN strategy_versions.is_current IS '是否为当前版本';
-COMMENT ON COLUMN strategy_versions.created_by IS '创建人ID';
-
-CREATE INDEX idx_strategy_versions_strategy_id ON strategy_versions(strategy_id);
-CREATE INDEX idx_strategy_versions_current ON strategy_versions(is_current) WHERE is_current = TRUE;
+-- ⚠️ 2026-09-19 移到了 `strategies` **之前**创建（见「1.4 策略管理模块」开头）。
+--    原因：`strategies.strategy_version_id` 引用 `strategy_versions(id)`，
+--    而 `strategy_versions.strategy_id` 又引用 `strategies(id)` —— **互相引用（循环依赖）**，
+--    谁先建都报「关系不存在」。故 strategy_versions 先建且**不带对 strategies 的 FK**，
+--    待 strategies 建好后再用 ALTER 补上。
 
 -- 策略模板表
 CREATE TABLE strategy_templates (
@@ -758,11 +785,20 @@ CREATE TABLE strategy_templates (
     category VARCHAR(50),
     is_public BOOLEAN DEFAULT TRUE,
     is_builtin BOOLEAN DEFAULT FALSE,                                           -- v3.0: 内置模板标记
-    source_template_id VARCHAR(36) REFERENCES strategy_templates(id),           -- v3.0: fork来源
+    -- ⚠️ 2026-09-19 对齐 dev：去掉了自引用 FK
+    --    （本脚本原为 `REFERENCES strategy_templates(id)`；dev 无此外键）
+    source_template_id VARCHAR(36),                                             -- v3.0: fork来源
     created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ⚠️ 2026-09-19 补：`strategies.template_id` 引用本表，而本表在第 760+ 行才创建
+--    （`strategies` 在第 680+ 行）→ **前向引用**。故 strategies 侧不带 FK，
+--    在此处补上。
+ALTER TABLE strategies
+    ADD CONSTRAINT fk_strategies_template
+    FOREIGN KEY (template_id) REFERENCES strategy_templates(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_strategy_templates_is_builtin ON strategy_templates(is_builtin);
 -- 防止重复内置模板（每个模板名只有一个内置版本）
@@ -845,7 +881,7 @@ CREATE TABLE orders (
     signal_id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     order_type VARCHAR(10) NOT NULL CHECK (order_type IN ('limit', 'market', 'stop')),
-    direction VARCHAR(10) NOT NULL CHECK (direction IN ('buy', 'sell', 'short', 'cover'))  -- v2.4: 扩展支持做空/平仓,
+    direction VARCHAR(10) NOT NULL CHECK (direction IN ('buy', 'sell', 'short', 'cover')),  -- v2.4: 扩展支持做空/平仓
     price NUMERIC(10, 4),
     volume INT NOT NULL,
     filled_volume INT DEFAULT 0,
@@ -1220,10 +1256,10 @@ COMMENT ON COLUMN backtest_tasks.strategy_version_id IS 'v3.1: 关联的策略�
 -- 回测交易记录表
 CREATE TABLE backtest_trades (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,  -- v3.3 ON DELETE CASCADE
     trade_time TIMESTAMPTZ NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
-    direction VARCHAR(10) NOT NULL CHECK (direction IN ('buy', 'sell', 'short', 'cover'))  -- v2.4: 扩展支持做空/平仓,
+    direction VARCHAR(10) NOT NULL CHECK (direction IN ('buy', 'sell', 'short', 'cover')),  -- v2.4: 扩展支持做空/平仓
     price NUMERIC(10, 4) NOT NULL,
     volume INT NOT NULL,
     value NUMERIC(16, 4) NOT NULL,
@@ -1246,7 +1282,7 @@ COMMENT ON COLUMN backtest_trades.tax IS '交易税费';
 -- 回测持仓快照表
 CREATE TABLE backtest_positions (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,  -- v3.3 ON DELETE CASCADE
     trade_date DATE NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
     volume INT NOT NULL DEFAULT 0,
@@ -1267,7 +1303,7 @@ COMMENT ON COLUMN backtest_positions.market_value IS '持仓市值';
 -- 回测参数配置表
 CREATE TABLE backtest_parameters (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,  -- v3.3 ON DELETE CASCADE
     param_category VARCHAR(50) NOT NULL,
     param_name VARCHAR(100) NOT NULL,
     param_value JSONB NOT NULL,
@@ -1291,7 +1327,8 @@ CREATE TABLE backtest_scenarios (
     parameters JSONB DEFAULT '{}'::JSONB,                   -- v3.3: 参数快照
     template_id VARCHAR(36),                                -- v3.3: 来源模板
     source_strategy_id VARCHAR(36),                          -- v3.3: 来源策略
-    status VARCHAR(20) DEFAULT 'draft',                     -- v3.3: 场景状态
+    -- ⚠️ 2026-09-19 补：现有库（dev）对本列有 CHECK，本脚本缺 → 补齐（与 dev 一致）
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'completed', 'promoted', 'archived', 'discarded')),  -- v3.3: 场景状态
     archived_at TIMESTAMPTZ,                                -- v3.3: 归档时间
     discarded_at TIMESTAMPTZ,                               -- v3.3: 丢弃时间
     scenario_id VARCHAR(36) NOT NULL UNIQUE,
@@ -1345,7 +1382,7 @@ CREATE INDEX idx_backtest_comparisons_name ON backtest_comparisons(comparison_na
 -- 回测资源使用表
 CREATE TABLE backtest_resource_usage (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,  -- v3.3 ON DELETE CASCADE
     resource_type VARCHAR(50) NOT NULL,
     metric_name VARCHAR(100) NOT NULL,
     metric_value NUMERIC(18,6) NOT NULL,
@@ -1396,7 +1433,8 @@ COMMENT ON COLUMN risk_rules.is_active IS '规则是否启用';
 CREATE TABLE data_sync_tasks (
     id VARCHAR(36) PRIMARY KEY,
     task_id VARCHAR(64) NOT NULL UNIQUE,
-    parent_task_id VARCHAR(36),  -- 修复 2026-08：batch/child 两层任务体系关联列（ORM business_models.py 已有，此处补建）
+    parent_task_id VARCHAR(64),  -- 2026-09-19 对齐 dev：原 VARCHAR(36) 偏窄
+    -- 修复 2026-08：batch/child 两层任务体系关联列（ORM business_models.py 已有，此处补建）
     task_type VARCHAR(50) NOT NULL,
     user_id VARCHAR(36) REFERENCES sys_users(id),
     data_types JSON,
@@ -1954,15 +1992,19 @@ CREATE TABLE data_quality_issues (
 );
 
 COMMENT ON TABLE data_quality_issues IS '数据质量指标历史表';
-COMMENT ON COLUMN data_quality_metrics.metric_date IS '指标日期';
-COMMENT ON COLUMN data_quality_metrics.data_type IS '数据类型';
-COMMENT ON COLUMN data_quality_metrics.metric_name IS '指标名称';
-COMMENT ON COLUMN data_quality_metrics.metric_value IS '指标值';
-COMMENT ON COLUMN data_quality_metrics.target_value IS '目标值';
-COMMENT ON COLUMN data_quality_metrics.status IS '状态：normal/warning/critical';
+-- ⚠️ 2026-09-19 修复：本表的 COMMENT / INDEX 原写作 `data_quality_metrics` ——
+--    **该表名不存在**（dev 与 prod 均无此表）。本表由 `data_quality_metrics`
+--    重命名为 `data_quality_issues` 时，下方 8 行未同步，导致整脚本在此中断。
+--    已全部改为 `data_quality_issues`，索引名一并订正。
+COMMENT ON COLUMN data_quality_issues.metric_date IS '指标日期';
+COMMENT ON COLUMN data_quality_issues.data_type IS '数据类型';
+COMMENT ON COLUMN data_quality_issues.metric_name IS '指标名称';
+COMMENT ON COLUMN data_quality_issues.metric_value IS '指标值';
+COMMENT ON COLUMN data_quality_issues.target_value IS '目标值';
+COMMENT ON COLUMN data_quality_issues.status IS '状态：normal/warning/critical';
 
-CREATE INDEX idx_data_quality_metrics_date ON data_quality_metrics(metric_date DESC);
-CREATE INDEX idx_data_quality_metrics_type ON data_quality_metrics(data_type);
+CREATE INDEX idx_data_quality_issues_date ON data_quality_issues(metric_date DESC);
+CREATE INDEX idx_data_quality_issues_type ON data_quality_issues(data_type);
 
 -- ------------------------------------------------------------
 -- 1.12 分析相关表
@@ -2851,7 +2893,7 @@ CREATE TABLE stock_daily (
     close NUMERIC(9,3),
     pre_close NUMERIC(9,3),
     change NUMERIC(10,3),
-    pct_chg NUMERIC(10,4),
+    pct_chg NUMERIC(18,6),            -- 2026-09-19 对齐 dev：原 NUMERIC(10,4) 偏窄
     vol BIGINT,
     amount NUMERIC(16,4),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -2987,6 +3029,9 @@ CREATE TABLE stock_adj_factor (
     PRIMARY KEY (ts_code, trade_date)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_adj_factor_code_date ON stock_adj_factor(ts_code, trade_date);
+-- ⚠️ 2026-09-19 说明：本索引**保持 UNIQUE**（与现有库 dev 一致）。
+--    （曾一度改为非唯一，是因为当时把本表当作超表 —— 超表不允许「唯一索引不含分区列」。
+--      但本表**不做超表**，见上方 `create_hypertable` 的移除说明，故此约束成立且应保留。）
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_adj_factor_id ON stock_adj_factor(id);
 
 
@@ -3110,7 +3155,11 @@ COMMENT ON COLUMN stock_daily_limit.price_range IS '价格区间（涨停价-跌
 
 -- 个股资金流向表（TimescaleDB超表）
 CREATE TABLE stock_moneyflow (
-    id VARCHAR(36) PRIMARY KEY,
+    -- ⚠️ 2026-09-19 修复：原为 `id VARCHAR(36) PRIMARY KEY` —— 主键落在 `id` 单列上、
+    --    **不含分区列 `trade_date`**，导致 `create_hypertable` 直接失败：
+    --      cannot create a unique index without the column "trade_date" (used in partitioning)
+    --    业务键已是下方 `UNIQUE (ts_code, trade_date)`（与现有库一致，dev 亦无 PK）→ 去掉 PK。
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     buy_sm_vol INT,
@@ -3191,7 +3240,7 @@ COMMENT ON COLUMN etf_daily.pre_close IS '前收盘价';
 COMMENT ON COLUMN etf_daily.change IS '涨跌额';
 COMMENT ON COLUMN etf_daily.pct_chg IS '涨跌幅（%）';
 COMMENT ON COLUMN etf_daily.vol IS '成交量（手）';
-COMMENT ON COLUMN etf_daily.amount IS '成交额（万元）';
+COMMENT ON COLUMN etf_daily.amount IS '成交额（单位：千元人民币）';
 
 -- ETF历史分钟行情数据（TimescaleDB超表）
 CREATE TABLE etf_minute (
@@ -3267,7 +3316,7 @@ COMMENT ON COLUMN index_daily.pre_close IS '前收盘价';
 COMMENT ON COLUMN index_daily.change IS '涨跌额';
 COMMENT ON COLUMN index_daily.pct_chg IS '涨跌幅（%）';
 COMMENT ON COLUMN index_daily.vol IS '成交量（手）';
-COMMENT ON COLUMN index_daily.amount IS '成交额（万元）';
+COMMENT ON COLUMN index_daily.amount IS '成交额（单位：千元人民币）';
 
 -- 指数成分股权重表
 -- 存储各指数在特定日期的成分股及其权重，支持历史时点查询
@@ -3329,6 +3378,8 @@ CREATE TABLE strategy_daily_performance (
     total_return NUMERIC(10,6),                              -- v3.3: 改为可选
     max_drawdown NUMERIC(10,6),                              -- v3.3: 改为可选
     sharpe_ratio NUMERIC(10,6),
+    annual_volatility NUMERIC(10,6),                          -- 2026-09-19 新增：年化波动率（= 日频 std × √252）
+    benchmark_annual_vol NUMERIC(10,6),                       -- 2026-09-19 新增：同窗口基准（CSI500）年化波动率（L2 归因用）
     total_assets NUMERIC(16,4),                              -- v3.3: 当日总资产（策略真实净值）
     cash NUMERIC(18,2),                                      -- 策略现金台账（虚拟子账户）
     peak_nav NUMERIC(18,2),                                  -- 运行峰值净值（用于回撤计算）
@@ -3343,6 +3394,8 @@ COMMENT ON COLUMN strategy_daily_performance.daily_return IS '当日收益率（
 COMMENT ON COLUMN strategy_daily_performance.total_return IS '累计收益率（%）';
 COMMENT ON COLUMN strategy_daily_performance.max_drawdown IS '最大回撤（%）';
 COMMENT ON COLUMN strategy_daily_performance.sharpe_ratio IS '夏普比率';
+COMMENT ON COLUMN strategy_daily_performance.annual_volatility IS '年化波动率（= 日收益率标准差 × √252）；用于准入 B5 判据与实盘波动放大告警。⚠️ 与回测结果里的 `volatility`（日频）区分，差 √252 倍';
+COMMENT ON COLUMN strategy_daily_performance.benchmark_annual_vol IS '同窗口基准（CSI500 000905.SH）年化波动率；用于「策略变野 vs 市场变野」归因（L2）—— 仅当策略波动相对基准也放大，才判为策略问题';
 COMMENT ON COLUMN strategy_daily_performance.total_assets IS '当日总资产（策略真实净值）';
 COMMENT ON COLUMN strategy_daily_performance.cash IS '策略现金台账（虚拟子账户）';
 COMMENT ON COLUMN strategy_daily_performance.peak_nav IS '运行峰值净值（用于回撤计算）';
@@ -3357,19 +3410,22 @@ CREATE TABLE signals (
     signal_time TIMESTAMPTZ NOT NULL,
     price NUMERIC(10,4),
     quantity INT DEFAULT 0,
-    price_limit_low NUMERIC(10,4),
-    price_limit_high NUMERIC(10,4),
-    max_slippage_pct NUMERIC(5,4) DEFAULT 0.02,
+    price_limit_low DOUBLE PRECISION,   -- 2026-09-19 对齐 dev：原 NUMERIC(10,4)
+    price_limit_high DOUBLE PRECISION,  -- 2026-09-19 对齐 dev
+    max_slippage_pct DOUBLE PRECISION DEFAULT 0.02,  -- 2026-09-19 对齐 dev
     order_type VARCHAR(20) DEFAULT 'limit_range' CHECK (order_type IN ('limit', 'limit_range', 'market')),
     strength NUMERIC(5,2),
     confidence NUMERIC(5,4) DEFAULT 1.0,
     reason TEXT,
-    signal_status VARCHAR(20) DEFAULT 'pending_manual' CHECK (signal_status IN ('pending_manual', 'confirmed', 'executed', 'partial', 'cancelled', 'rejected', 'expired', 'approved')),  -- v3.3: 统一信号状态字段
+    -- ⚠️ 2026-09-19 订正：原 CHECK 只有 8 个值，**缺 `pending_confirm` / `promoted`**，
+    --    而现有库（dev）实际使用 `pending_confirm`（ETF 底部候选待确认）→
+    --    按本脚本重建后**数据装载会被 CHECK 拦下**。现对齐 dev 的 10 个值。
+    signal_status VARCHAR(20) DEFAULT 'pending_manual' CHECK (signal_status IN ('pending_manual', 'confirmed', 'executed', 'partial', 'cancelled', 'rejected', 'expired', 'approved', 'pending_confirm', 'promoted')),  -- v3.3: 统一信号状态字段（v3.x 补 pending_confirm/promoted）
     order_id VARCHAR(36),
     reviewed_at TIMESTAMPTZ,
     reviewed_by VARCHAR(36),
     account_id VARCHAR(36) REFERENCES accounts(id),
-    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK（生成该信号的策略版本ID）
+    strategy_version_id VARCHAR(36) CONSTRAINT fk_signals_version REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK（生成该信号的策略版本ID）；约束名对齐 dev
     parent_id VARCHAR(36),  -- v3.4: 父信号ID（候选→买入信号 链路关联）。FK REFERENCES signals(id) 受 TimescaleDB 超表约束（signals.id 无单列唯一索引），实库以 ALTER TABLE 添加
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -3400,7 +3456,7 @@ COMMENT ON COLUMN signals.reviewed_by IS '审核人ID';
 -- 回测净值曲线表（TimescaleDB超表）
 CREATE TABLE backtest_equity_curves (
     id VARCHAR(36),
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,  -- v3.3: cascade
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,  -- v3.3 ON DELETE CASCADE  -- v3.3: cascade
     trade_date DATE NOT NULL,
     equity NUMERIC(16,4) NOT NULL,
     cash NUMERIC(16,4) NOT NULL,
@@ -3526,21 +3582,20 @@ COMMENT ON COLUMN market_state_daily.extra IS '扩展字段：各策略特有的
 -- 第三部分：TimescaleDB超表转换
 -- ============================================================
 
--- 转换为超表，按trade_date分区，7天一个分区
-SELECT create_hypertable(
-    'stock_daily',
-    'trade_date',
-    chunk_time_interval => INTERVAL '7 days',
-    if_not_exists => TRUE
-);
+-- ⚠️ 2026-09-19 移除：`stock_daily` **不做超表**（对齐现有库 dev）。
+--    原因：本表有 `uq_stock_daily_id`（`id` 单列 **UNIQUE**），而 TimescaleDB 要求
+--    超表的唯一索引必须含分区列 `trade_date` → 做成超表会与既有唯一索引冲突、
+--    并改变这张**策略核心大表**（690 万行）的存储/压缩特性。
+--    dev 中 `stock_daily` 为**普通表**，生产库应与之一致。
+--    原语句：
+--      SELECT create_hypertable('stock_daily', 'trade_date',
+--          chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);
 
--- 添加空间分区键（按ts_code）
-SELECT add_dimension(
-    'stock_daily',
-    'ts_code',
-    number_partitions => 50,
-    if_not_exists => TRUE
-);
+-- ⚠️ 2026-09-19 移除：`stock_daily` 的空间分区键（`add_dimension` 只对超表有效，
+--    而本表已改为普通表，见上方说明）。
+--    原语句：
+--      SELECT add_dimension('stock_daily', 'ts_code',
+--          number_partitions => 50, if_not_exists => TRUE);
 
 -- 分钟数据分区更细（1天）
 SELECT create_hypertable(
@@ -3587,13 +3642,12 @@ SELECT create_hypertable(
     if_not_exists => TRUE
 );
 
--- 复权因子转换为超表
-SELECT create_hypertable(
-    'stock_adj_factor',
-    'trade_date',
-    chunk_time_interval => INTERVAL '180 days',
-    if_not_exists => TRUE
-);
+-- ⚠️ 2026-09-19 移除：`stock_adj_factor` **不做超表**（对齐现有库 dev）。
+--    原因同 `stock_daily`：本表有 `uq_stock_adj_factor_id`（`id` 单列 UNIQUE），
+--    与超表「唯一索引须含分区列」冲突；dev 中本表为普通表。
+--    原语句：
+--      SELECT create_hypertable('stock_adj_factor', 'trade_date',
+--          chunk_time_interval => INTERVAL '180 days', if_not_exists => TRUE);
 
 -- 复权行情转换为超表
 SELECT create_hypertable(
@@ -3710,13 +3764,12 @@ SELECT create_hypertable(
     if_not_exists => TRUE
 );
 
--- 交易日历转换为超表
-SELECT create_hypertable(
-    'trade_calendar',
-    'cal_date',
-    chunk_time_interval => INTERVAL '365 days',
-    if_not_exists => TRUE
-);
+-- ⚠️ 2026-09-19 移除：`trade_calendar` **不做超表**（对齐现有库 dev）。
+--    该表仅 2.6 万行、是**字典表**（按 `exchange`+`cal_date` 查询），分区无收益；
+--    dev 中亦为普通表。
+--    原语句：
+--      SELECT create_hypertable('trade_calendar', 'cal_date',
+--          chunk_time_interval => INTERVAL '365 days', if_not_exists => TRUE);
 
 -- 每日市场状态标签转换为超表（v3.1 新增）
 SELECT create_hypertable(
@@ -3735,6 +3788,10 @@ CREATE INDEX IF NOT EXISTS idx_stock_daily_ts_code ON stock_daily (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_daily_date ON stock_daily (trade_date DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_code_date ON stock_daily(ts_code, trade_date);
 CREATE INDEX IF NOT EXISTS idx_stock_daily_id ON stock_daily(id);
+-- ⚠️ 2026-09-19 补：现有库（dev）对 `id` 有**唯一索引**，本脚本缺 → `id` 唯一性无保障。
+--    与 `idx_stock_daily_id` 并存（一唯一一普通），与 dev 一致。
+--    注：本索引也决定了 `stock_daily` **不能做超表**（唯一索引须含分区列）。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_id ON stock_daily(id);
 
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_ts_code ON stock_minutes (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_time ON stock_minutes (trade_time DESC);
@@ -3806,17 +3863,13 @@ CREATE INDEX IF NOT EXISTS idx_file_attachments_reference ON file_attachments(re
 -- ============================================================
 
 -- 启用压缩（适用于历史数据）
--- 1. 为stock_daily启用压缩（30天以上的数据）
-ALTER TABLE stock_daily SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'ts_code',
-    timescaledb.compress_orderby = 'trade_date DESC, id'
-);
+-- ⚠️ 2026-09-19 移除 `stock_daily` 的压缩配置与压缩策略：
+--      ALTER TABLE stock_daily SET (timescaledb.compress, ...);
+--      SELECT add_compression_policy('stock_daily', INTERVAL '30 days');
+--    原因：`stock_daily` **已改为普通表**（见上方 `create_hypertable` 移除说明），
+--    非超表无法启用压缩。dev 中 `stock_daily` 亦未压缩。
 
--- 创建压缩策略（30天后自动压缩）
-SELECT add_compression_policy('stock_daily', INTERVAL '30 days');
-
--- 2. 为stock_minutes启用压缩（7天以上的分钟数据）
+-- 1. 为stock_minutes启用压缩（7天以上的分钟数据）
 ALTER TABLE stock_minutes SET (
     timescaledb.compress,
     timescaledb.compress_segmentby = 'ts_code, freq',
@@ -3847,13 +3900,34 @@ ALTER TABLE stock_daily_limit SET (
 );
 SELECT add_compression_policy('stock_daily_limit', INTERVAL '30 days');
 
-SELECT add_compression_policy('etf_daily', INTERVAL '30 days');
-SELECT add_compression_policy('index_daily', INTERVAL '30 days');
+-- ⚠️ 2026-09-19 移除两条「压缩策略」：
+--      SELECT add_compression_policy('etf_daily',   INTERVAL '30 days');
+--      SELECT add_compression_policy('index_daily', INTERVAL '30 days');
+--    原因：本脚本只对 **5 张**超表启用压缩（`stock_daily` / `stock_minutes` /
+--    `stock_moneyflow` / `stock_daily_basic` / `stock_daily_limit`，且各自显式配了
+--    `compress_segmentby` / `compress_orderby`）；`etf_daily` 与 `index_daily`
+--    **从未启用压缩**，却给它们加策略 → 建库时中断：
+--      columnstore not enabled on hypertable "etf_daily"
+--    现有库（dev）中这两张表亦**未压缩**，故按现网口径移除策略（复制粘贴遗留）。
+--    若日后确需压缩，须先补 `ALTER TABLE <tbl> SET (timescaledb.compress,
+--    timescaledb.compress_segmentby='...', timescaledb.compress_orderby='...')`。
 
 -- 4. 数据保留策略（自动删除旧数据）
-SELECT add_retention_policy('stock_minutes', INTERVAL '3 years');
-SELECT add_retention_policy('stock_daily', INTERVAL '10 years');
-SELECT add_retention_policy('stock_moneyflow', INTERVAL '2 years');
+-- 🔴 2026-09-19 **整段移除**（原 3 条）：
+--      SELECT add_retention_policy('stock_minutes',  INTERVAL '3 years');
+--      SELECT add_retention_policy('stock_daily',    INTERVAL '10 years');
+--      SELECT add_retention_policy('stock_moneyflow', INTERVAL '2 years');
+--
+--    原因：**现有库 dev 上一条保留策略都没有**（实测 `timescaledb_information.jobs`
+--    只有 4 条 `policy_compression` + 作业历史 + 遥测）。
+--    若按本脚本重建，会创建**每天运行的后台作业自动删数据**：
+--      · `stock_moneyflow` drop_after=2 年 —— 而 dev 存有 **约 7 年 / 1,400 万行**
+--        → 装载完成后会被逐步删除约 5 年历史（**静默数据丢失**）
+--      · `stock_minutes` drop_after=3 年（该表当前为空，无实际影响）
+--      · `stock_daily` 已改为普通表，保留策略对其本就无效
+--
+--    如确需生命周期管理，应作为**独立的数据治理决策**显式开启，
+--    而不是夹在建表脚本里默认生效。
 
 -- ============================================================
 -- 第六部分：触发器函数（用于自动更新时间）
@@ -3937,45 +4011,21 @@ CREATE TRIGGER trigger_update_factor_research_status_timestamps
 -- 第七部分：视图和物化视图（用于性能优化）
 -- ============================================================
 
--- 创建接近涨停的股票视图
-CREATE VIEW v_near_up_limit AS
-SELECT d.ts_code, d.trade_date, d.close,
-       l.up_limit, l.up_percent,
-       (l.up_limit - d.close) AS space,
-       (l.up_limit - d.close) / d.close * 100 AS space_pct
-FROM stock_daily d
-JOIN stock_daily_limit l ON d.ts_code = l.ts_code AND d.trade_date = l.trade_date
-WHERE d.close >= l.up_limit * 0.99  -- 接近涨停（99%以上）
-  AND d.close < l.up_limit;         -- 未涨停
+-- ⚠️ 2026-09-19 移除两个视图对象（对齐现有库 dev）：
+--    · `CREATE VIEW v_near_up_limit`（依赖 stock_daily_limit；dev 中不存在）
+--    · `CREATE MATERIALIZED VIEW mv_consecutive_limit_up`（dev 中不存在，
+--       且物化视图需定期 REFRESH，否则读到陈旧数据）
+--    两对象在 dev 上**均无**，保留会造出「无人维护」的对象。
 
--- 创建连续涨停股票池物化视图（每日刷新）
-CREATE MATERIALIZED VIEW mv_consecutive_limit_up AS
-WITH limit_up AS (
-    SELECT
-        d.ts_code AS ts_code,
-        d.trade_date AS trade_date,
-        LAG(d.trade_date) OVER (PARTITION BY d.ts_code ORDER BY d.trade_date) AS prev_date
-    FROM stock_daily d
-    JOIN stock_daily_limit l ON d.ts_code = l.ts_code AND d.trade_date = l.trade_date
-    WHERE d.close = l.up_limit  -- 实际涨停
-)
-SELECT
-    ts_code,
-    MIN(trade_date) AS start_date,
-    MAX(trade_date) AS end_date,
-    COUNT(*) AS consecutive_days
-FROM (
-    SELECT
-        ts_code,
-        trade_date,
-        prev_date,
-        trade_date - ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date)::INT AS grp
-    FROM limit_up
-    WHERE trade_date = prev_date + INTERVAL '1 day' OR prev_date IS NULL
-) t
-GROUP BY ts_code, grp
-HAVING COUNT(*) >= 3  -- 连续3天涨停
-WITH DATA;
+-- ⚠️ 2026-09-19 补：现有库（dev）有 `daily_basic` 视图（`stock_daily_basic` 的直读封装），
+--    本脚本原先缺 → 任何 `FROM daily_basic` 的查询在按本脚本建的库上都会失败。
+CREATE OR REPLACE VIEW daily_basic AS
+SELECT id, ts_code, trade_date, close,
+       turnover_rate, turnover_rate_f, volume_ratio,
+       pe, pe_ttm, pb, ps, ps_ttm, dv_ratio, dv_ttm,
+       total_share, float_share, free_share, total_mv, circ_mv,
+       created_at, updated_at
+FROM stock_daily_basic;
 
 -- 创建股票基本信息视图
 CREATE VIEW v_stock_info AS
@@ -4914,7 +4964,7 @@ CREATE TABLE stock_factor_pro_daily (
     close NUMERIC(18, 6),
     pre_close NUMERIC(18, 6),
     change NUMERIC(18, 6),
-    pct_chg NUMERIC(8, 4),
+    pct_chg NUMERIC(18, 6),   -- 2026-09-19 对齐 dev：原 NUMERIC(8,4) 偏窄
     vol NUMERIC(18, 2),
     amount NUMERIC(18, 2),
     -- 复权价格（后复权/前复权）
@@ -4929,16 +4979,16 @@ CREATE TABLE stock_factor_pro_daily (
     pre_close_hfq NUMERIC(18, 6),
     pre_close_qfq NUMERIC(18, 6),
     -- 估值与股本
-    turnover_rate NUMERIC(8, 4),
-    turnover_rate_f NUMERIC(8, 4),
-    volume_ratio NUMERIC(8, 4),
+    turnover_rate NUMERIC(18, 6),   -- 2026-09-19 对齐 dev：原 NUMERIC(8,4) 偏窄
+    turnover_rate_f NUMERIC(18, 6),   -- 2026-09-19 对齐 dev：原 NUMERIC(8,4) 偏窄
+    volume_ratio NUMERIC(18, 6),   -- 2026-09-19 对齐 dev：原 NUMERIC(8,4) 偏窄
     pe NUMERIC(18, 6),
     pe_ttm NUMERIC(18, 6),
     pb NUMERIC(18, 6),
     ps NUMERIC(18, 6),
     ps_ttm NUMERIC(18, 6),
-    dv_ratio NUMERIC(8, 4),
-    dv_ttm NUMERIC(8, 4),
+    dv_ratio NUMERIC(18, 6),   -- 2026-09-19 对齐 dev：原 NUMERIC(8,4) 偏窄
+    dv_ttm NUMERIC(18, 6),   -- 2026-09-19 对齐 dev：原 NUMERIC(8,4) 偏窄
     total_share NUMERIC(18, 2),
     float_share NUMERIC(18, 2),
     free_share NUMERIC(18, 2),
@@ -5106,7 +5156,7 @@ CREATE TABLE index_factor_pro_daily (
     close NUMERIC(12, 4),
     pre_close NUMERIC(12, 4),
     change NUMERIC(12, 4),
-    pct_change NUMERIC(8, 4),
+    pct_change NUMERIC(18, 6),   -- 2026-09-19 对齐 dev：原 NUMERIC(8,4) 偏窄
     vol NUMERIC(18, 2),
     amount NUMERIC(18, 2),
     asi_bfq NUMERIC(18, 6),
@@ -5326,3 +5376,147 @@ CREATE TABLE IF NOT EXISTS panic_index (
 CREATE INDEX IF NOT EXISTS idx_panic_index_date ON panic_index(trade_date);
 COMMENT ON TABLE panic_index IS '恐慌指数（阶段4b）：全市场恐慌程度日频指标，恐慌抄底策略触发判据';
 COMMENT ON COLUMN panic_index.panic_idx IS '恐慌指数 = |跌幅中位数(%)| × 下跌比例；>=3.0 为触发阈值（M2 反例统计修订）';
+
+
+
+-- ============================================================
+-- 第七部分：对齐现有库（dev）  —— 2026-09-19
+-- ============================================================
+-- 背景：本脚本与实际运行的 `quant_signals_dev` 存在三类差异，
+--       会让「按本脚本重建生产库」**静默丢数据**。此处**以 dev 为准**收敛：
+--
+--   · dev 有、本脚本缺的 **24 个列**（`signals.is_executed` /
+--     `signals.pnl_outcome` / `market_state_daily.above_ma250_pct` /
+--     `stock_expresses.*` 21 列）→ 补齐
+--   · dev 有、本脚本缺的表 `margin`（8,856 行）→ 补齐
+--   · dev 有的 **21 个非约束索引** → 补齐
+--
+--   另有**已就地修正**的差异（见文件内各处注释）：
+--     `sys_users.password` VARCHAR(100→500)、`stock_daily.pct_chg`
+--     NUMERIC(10,4→18,6)、`signals.{price_limit_low,price_limit_high,
+--     max_slippage_pct}` NUMERIC→DOUBLE PRECISION、
+--     `*_factor_pro_daily` 六列 NUMERIC(8,4→18,6)、
+--     以及 `stock_daily` / `stock_adj_factor` / `trade_calendar`
+--     三张表的**超表声明移除**（dev 中均为普通表）。
+--
+-- ⚠️ 已排除：`signals_backup_20260825`（mock 数据污染的备份表，**待 DROP**，
+--    不应建进新库）。
+-- ============================================================
+
+-- ---------- A. 补 dev 有、DDL 无的列 ----------
+ALTER TABLE market_state_daily ADD COLUMN IF NOT EXISTS above_ma250_pct NUMERIC(6,3);
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS is_executed BOOLEAN DEFAULT false;
+ALTER TABLE signals ADD COLUMN IF NOT EXISTS pnl_outcome NUMERIC(10,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS diluted_roe NUMERIC(12,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS bps NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS eps_last_year NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS growth_assets NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS growth_bps NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS is_audit INTEGER;
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS np_last_year NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS op_last_year NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS open_bps NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS open_net_assets NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS or_last_year NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS perf_summary TEXT;
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS remark TEXT;
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS tp_last_year NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS update_flag VARCHAR(10);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS yoy_dedu_np NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS yoy_equity NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS yoy_op NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS yoy_roe NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS yoy_sales NUMERIC(18,4);
+ALTER TABLE stock_expresses ADD COLUMN IF NOT EXISTS yoy_tp NUMERIC(18,4);
+--  （共 24 列）
+
+-- ---------- B. 补表 margin ----------
+CREATE TABLE IF NOT EXISTS margin (
+    id SERIAL,
+    trade_date DATE NOT NULL,
+    exchange_id VARCHAR(10),
+    rzye NUMERIC,
+    rzmre NUMERIC,
+    rzche NUMERIC,
+    rqye NUMERIC,
+    rqmcl NUMERIC,
+    rzrqye NUMERIC,
+    rqyl NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE margin
+    ADD PRIMARY KEY (id),
+    ADD UNIQUE (trade_date, exchange_id);
+
+-- ---------- C. 补 dev 有的非约束索引 ----------
+CREATE INDEX IF NOT EXISTS idx_scenarios_discarded ON public.backtest_scenarios USING btree (discarded_at, status) WHERE ((status)::text = 'discarded'::text);
+CREATE INDEX IF NOT EXISTS idx_scenarios_status ON public.backtest_scenarios USING btree (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_backtest_tasks_version ON public.backtest_tasks USING btree (strategy_version_id) WHERE (strategy_version_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_created ON public.data_sync_tasks USING btree (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_parent ON public.data_sync_tasks USING btree (parent_task_id);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_status_end_time ON public.data_sync_tasks USING btree (status, end_time);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_user_created ON public.data_sync_tasks USING btree (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_user_status ON public.data_sync_tasks USING btree (user_id, status);
+CREATE INDEX IF NOT EXISTS idx_factor_lookup ON public.factor_data USING btree (ts_code, factor_code, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_factor_research_research_id ON public.factor_research USING btree (research_id);
+CREATE INDEX IF NOT EXISTS market_state_daily_trade_date_idx ON public.market_state_daily USING btree (trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_version ON public.signals USING btree (strategy_version_id, signal_time DESC) WHERE (strategy_version_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_adjusted_prices_date ON public.stock_adjusted_prices USING btree (trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_adjusted_prices_ts_code ON public.stock_adjusted_prices USING btree (ts_code);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_adjusted_prices_code_date ON public.stock_adjusted_prices USING btree (ts_code, trade_date);
+CREATE INDEX IF NOT EXISTS stock_minutes_trade_time_idx ON public.stock_minutes USING btree (trade_time DESC);
+CREATE INDEX IF NOT EXISTS idx_sdp_run_id ON public.strategy_daily_performance USING btree (strategy_run_id);
+CREATE INDEX IF NOT EXISTS idx_strategy_runs_version ON public.strategy_runs USING btree (strategy_version_id) WHERE (strategy_version_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_trade_calendar_cal_date ON public.trade_calendar USING btree (cal_date);
+CREATE INDEX IF NOT EXISTS idx_trade_calendar_is_open ON public.trade_calendar USING btree (is_open);
+CREATE INDEX IF NOT EXISTS idx_trade_calendar_pretrade ON public.trade_calendar USING btree (pretrade_date);
+--  （共 21 条）
+
+-- 汇总：列 24 / 表 1 / 索引 21
+
+
+
+
+-- ============================================================
+-- 第八部分：外键对齐现有库（dev）  —— 2026-09-19
+-- ============================================================
+-- 背景：本脚本与现有库（dev）在外键上曾有 14 处差异（dev 88 / 本脚本 82）。
+--       其中 5 处已就地修正（见文件内注释）：
+--         · `sys_user_roles.user_id` / `user_preferences.user_id` 去掉 `ON DELETE CASCADE`
+--         · `strategy_templates.source_template_id` 去掉自引用 FK
+--         · `strategy_versions.strategy_id` 约束名 → `strategy_versions_strategy_id_fkey`
+--         · `signals.strategy_version_id` 约束名 → `fk_signals_version`
+--       以下 **7 个外键本脚本原先完全没有**（dev 有），在此补齐。
+--       约束名一律沿用 dev，便于两库逐项对账。
+-- ============================================================
+
+ALTER TABLE backtest_scenarios
+    ADD CONSTRAINT fk_scenario_source_strategy
+    FOREIGN KEY (source_strategy_id) REFERENCES strategies(id) ON DELETE SET NULL;
+
+ALTER TABLE backtest_scenarios
+    ADD CONSTRAINT fk_scenario_template
+    FOREIGN KEY (template_id) REFERENCES strategy_templates(id) ON DELETE SET NULL;
+
+ALTER TABLE backtest_tasks
+    ADD CONSTRAINT fk_backtest_tasks_scenario
+    FOREIGN KEY (scenario_id) REFERENCES backtest_scenarios(id) ON DELETE SET NULL;
+
+ALTER TABLE backtest_tasks
+    ADD CONSTRAINT fk_backtest_tasks_version
+    FOREIGN KEY (strategy_version_id) REFERENCES strategy_versions(id) ON DELETE SET NULL;
+
+-- `etf_daily` 是超表；本外键指向 `etf_basic(ts_code)` —— 装载顺序上 `etf_basic` 必须先行。
+ALTER TABLE etf_daily
+    ADD CONSTRAINT etf_daily_ts_code_fkey
+    FOREIGN KEY (ts_code) REFERENCES etf_basic(ts_code);
+
+ALTER TABLE signals
+    ADD CONSTRAINT signals_reviewed_by_fkey
+    FOREIGN KEY (reviewed_by) REFERENCES sys_users(id);
+
+-- ⚠️ 本外键与 `backtest_scenarios.source_strategy_id` **互相引用**（循环），
+--    故必须放在两个表都建好之后（此处）。
+ALTER TABLE strategies
+    ADD CONSTRAINT fk_strategy_promoted_from
+    FOREIGN KEY (promoted_from_scenario_id) REFERENCES backtest_scenarios(id) ON DELETE SET NULL;

@@ -60,18 +60,32 @@ def sanitize_dict(d: Dict[str, Any], default: float = 0.0) -> Dict[str, Any]:
     return d
 
 
-def df_to_safe_records(df, default: float = 0.0) -> List[Dict[str, Any]]:
+def df_to_safe_records(df, default: Any = None) -> List[Dict[str, Any]]:
     """DataFrame → dict records，自动清理 NaN/Inf
 
     替换不安全的 df.to_dict('records')，确保结果可直接用于
-    JSON 序列化或 PostgreSQL JSONB 写入。
+    JSON 序列化或 PostgreSQL 写入。
 
     Args:
         df: pandas DataFrame（可为 None 或空）
-        default: NaN/Inf/None 替换值
+        default: NaN/Inf **残留**（含 pandas 把 None 又转回 NaN 的情形）的替换值。
+                 **默认 `None`** —— 见下方 ⚠️。
 
     Returns:
         安全的 dict records 列表
+
+    ⚠️ 2026-09-19 根因修复：`default` 原为 **`0.0`**，会把 **None 也替换成 `0.0`** ——
+       这对**日期列与文本列是毒的**：
+         · `stock_basic.delist_date`（上市股无退市日）→ `0.0`
+           → asyncpg 报 `invalid input for query argument: 0.0
+             (expected a datetime.date or datetime.datetime instance, got 'float')`
+         · `stock_basic.area` / `industry`（退市股缺失）→ `0.0`
+           → 写入 VARCHAR 列报 `expected str, got float`
+       而且 `0.0` **看起来像合法值**，下游会静默当数据用（比 None 危险）。
+       改为默认 `None`：asyncpg 对**任意列类型**都把 `None` 正确地映射为 SQL `NULL`，
+       JSON 也把 `None` 序列化为 `null` —— **无需替换成 0**。
+       `NaN` 亦映射为 `NULL` 而非 `0`：本项目标准明确「**严禁**用 `0` 填充价格字段，
+       参与交易决策」（`docs/06-标准规范/01_数据质量标准.md` §2.4）。
     """
     if df is None:
         return []
@@ -85,12 +99,14 @@ def df_to_safe_records(df, default: float = 0.0) -> List[Dict[str, Any]]:
 
     records: List[Dict[str, Any]] = df.to_dict('records')
 
-    # 第二轮清理：None → default
+    # 第二轮清理：残留的 NaN/Inf → default
+    # ⚠️ 不再把 `None` 替换为 default —— None 本身就是要写入的 SQL NULL。
+    #    （`df.where(...)` 对 float 列会把 None 又转回 NaN，故 NaN 分支仍需保留。）
     for r in records:
         for k, v in r.items():
             if v is None:
-                r[k] = default
-            elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                continue
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
                 r[k] = default
 
     return records
