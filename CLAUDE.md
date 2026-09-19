@@ -56,8 +56,16 @@ mypy .                                       # 类型检查（无 mypy.ini，部
 
 | 文件 | 内容 | 保留 |
 |:---|:---|:---|
-| `quant_server.log` | **全量**（DEBUG 起），排查时的"全量视图" | 天轮转，**90 天** |
+| `quant_server.log` | **全量**（DEBUG 起），排查时的"全量视图" | 天轮转；**满 10 天的 → 按月打成 `archive/system/YYYY-MM.zip`**（永久，非删除） |
 | `strategy_decision.log` | **实盘决策记录，仅此一路**：策略每日运行 / `[策略诊断]` / `[卖出]止损` / `[VETO]` / F9 守卫 / 走弱期 | 天轮转 → **按月合并 gzip**，**永久** |
+
+> ⚠️ **`main.py` 的 `backup_count` 必须是 `0`**（= 本 handler 不删任何轮转文件）。
+> 若设成非 0，handler 会在超限时**直接删除**最老文件 → **抢在归档之前毁掉它们**。
+> 保留策略（10 天 + 按月压缩）由 `scripts/ops/archive_logs.py` 统一执行，已挂日终任务
+> （`archive_logs`，`pre_gate order=1` —— 放 pre_gate 是因为 post_gate 在数据完整性门失败时会被整体跳过）。
+>
+> 归档实测（2026-09-17）：`156M → 109M`，42.2M → `2026-08.zip`（**2.5M，17×压缩**），
+> 10.7M → `2026-09.zip`（0.7M）；幂等复跑 0 待归档 ✓
 
 > ⚠️ **为什么决策日志必须独立且长期保留**：**实盘决策过程不落库** ——
 > `strategy_manager._run_live_strategies` 的「策略每日运行」「[策略诊断]」只走 `logger.info`，
@@ -69,7 +77,7 @@ mypy .                                       # 类型检查（无 mypy.ini，部
 > —— 实测 2026-09-13 单日策略层 136,786 行中 **135,501 行来自回测/对照实验**，实盘仅 1,285 行。
 >
 > 归档/清理：`cd quant_server && .venv/Scripts/python.exe scripts/ops/archive_logs.py [--apply]`
-> （默认 dry-run；已挂日终任务 `archive_logs`，`post_gate order=90`）
+> （默认 dry-run；`--system-days N` 可调保留期，默认 **10**）
 
 ### 前端（CWD: `quant_web/`）
 
@@ -246,11 +254,11 @@ cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_small_cap.
 | 后端深度审计 | `.claude/rules/audit-backend.md` | `quant_server/**/*.py` |
 | 策略深度审计 | `.claude/rules/audit-strategy.md` | `quant_server/modules/strategy/**/*.py` |
 | 策略快速质量门 | `.claude/rules/strategy-gates.md` | 策略文件变更 |
-| 回测分析标准流程 | `docs/02-功能设计/策略体系/回测分析标准流程.md` | 回测结果分析（所有策略通用） |
-| 策略运行分析标准流程 | `docs/02-功能设计/策略体系/策略运行分析标准流程.md` | 实盘/日终运行分析（所有策略通用） |
-| 策略实盘准入标准 | `docs/02-功能设计/策略体系/策略实盘准入标准.md` | 策略上线/准入判定（六道门 G0–G5 + 三级实盘） |
-| 策略过拟合检验标准 | `docs/02-功能设计/策略体系/策略过拟合检验标准.md` | 参数/机制采纳前的过拟合检验（台账/PBO/DSR） |
-| 因子研究标准流程 | `docs/02-功能设计/策略体系/因子研究标准流程.md` | 因子研究/注册/落库/消费（含 PIT 红线） |
-| 数据质量标准 | `docs/02-功能设计/数据模块/数据质量标准.md` | 数据五道门（完整性/正确性/PIT/停牌/运行期） |
+| 回测分析标准流程 | `docs/06-标准规范/04_回测分析标准流程.md` | 回测结果分析（所有策略通用） |
+| 策略运行分析标准流程 | `docs/06-标准规范/07_策略运行分析标准流程.md` | 实盘/日终运行分析（所有策略通用） |
+| 策略实盘准入标准 | `docs/06-标准规范/06_策略实盘准入标准.md` | 策略上线/准入判定（六道门 G0–G5 + 三级实盘） |
+| 策略过拟合检验标准 | `docs/06-标准规范/05_策略过拟合检验标准.md` | 参数/机制采纳前的过拟合检验（台账/PBO/DSR） |
+| 因子研究标准流程 | `docs/06-标准规范/03_因子研究标准流程.md` | 因子研究/注册/落库/消费（含 PIT 红线） |
+| 数据质量标准 | `docs/06-标准规范/01_数据质量标准.md` | 数据五道门（完整性/正确性/PIT/停牌/运行期） |
 | 交易·风控·账户专项规则 | `.claude/rules/trade-risk-account.md` | `quant_server/modules/{trade,risk,account}/**/*.py` |
 | 卫星策略分析 | `docs/00-核心策略体系/卫星策略分析.md` | 微盘/恐慌抄底卫星优化方向 |

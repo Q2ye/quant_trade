@@ -11,7 +11,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,12 +33,14 @@ class TradeRecordResult:
     """成交录入结果"""
 
     def __init__(self, order: Order, trade: Trade, fees: List[TradeFee],
-                 position: Position, account: Account):
+                 position: Position, account: Account,
+                 strategy_name: Optional[str] = None):
         self.order = order
         self.trade = trade
         self.fees = fees
         self.position = position
         self.account = account
+        self.strategy_name = strategy_name
 
     def to_dict(self) -> Dict:
         return {
@@ -53,6 +55,12 @@ class TradeRecordResult:
                 {"fee_type": f.fee_type, "fee_amount": float(f.fee_amount)}
                 for f in self.fees
             ],
+            # 记账去向（2026-09-17 新增）：录单会落到哪个账户/策略维度。
+            # 前端据此在成功提示里反显，避免"记了但不知道记到哪"。
+            "account_id": str(self.account.id),
+            "account_name": getattr(self.account, "account_name", None),
+            "strategy_id": self.order.strategy_id,
+            "strategy_name": self.strategy_name,
             "position": {
                 "ts_code": self.position.ts_code,
                 "volume": self.position.volume,
@@ -73,6 +81,23 @@ class DuplicateTradeRecordError(ValueError):
     继承 ValueError 以兼容既有 `except ValueError` 分支；
     调用方（handlers）单独捕获并映射为 HTTP 409。
     """
+
+
+class AmbiguousHoldingError(ValueError):
+    """记账去向歧义：同一标的在多个账户/策略维度下都有持仓，无法自动定位。
+
+    此时**必须拒绝**而不是任选一条 —— 手工记账场景下选错账户会造成账实不符，
+    且事后无从察觉。detail 中携带候选清单（账户名/策略名/持仓量），
+    由用户从持仓列表指定，或在弹窗中手工填 strategy_id。
+    调用方（handlers）单独捕获并映射为 HTTP 409。
+    """
+
+
+class AccountStrategyTarget(NamedTuple):
+    """一笔手动成交的记账去向：账户 + 策略维度。"""
+    account: Account
+    strategy_id: Optional[str]
+    strategy_name: Optional[str]
 
 
 class TradeRecordService:
@@ -173,26 +198,18 @@ class TradeRecordService:
                     "信号 %s 未记录计划数量，跳过录单幂等护栏", signal_id
                 )
 
-        # ---- 1. 获取账户：优先策略绑定账户（strategy_id → strategies.account_id），否则用户默认 ----
-        # 2026-08 修复：此前无条件取 accounts[0]（用户创建时间最新账户）。
-        # 卫星模拟账户（08-22 创建）成为 accounts[0] 后劫持所有手动成交录入 →
-        # 实盘策略（熊市防守等，绑定 84d81a14）的订单/持仓被写到模拟账户。
-        accounts = await self._account_repo.get_many_by_user_id(user_id)
-        if not accounts:
-            raise ValueError("用户没有可用账户，请先创建账户")
-        account = accounts[0]
-        if strategy_id:
-            try:
-                from sqlalchemy import text as _text
-                _row = (await self._session.execute(
-                    _text("SELECT account_id FROM strategies WHERE id = :sid"),
-                    {"sid": strategy_id})).fetchone()
-                if _row and _row[0]:
-                    _bound = next((a for a in accounts if str(a.id) == str(_row[0])), None)
-                    if _bound:
-                        account = _bound
-            except Exception as _e:
-                logger.warning(f"按策略绑定账户解析失败，回退用户默认账户: {_e}")
+        # ---- 1. 解析记账去向（账户 + 策略维度）----
+        # 2026-09-17 重写：仅「传了 strategy_id 才查策略绑定账户」不够 —— 手动录入
+        # 通常不传 strategy_id，此时回落到 accounts[0]，而 accounts[0] 是
+        # **created_at 最新**的账户（不是持仓所在账户）。实测事故：512400.SH 持仓在
+        # 银河实盘账户(84d81a14)/熊市防守-01-实盘(cebe247d)，但 9-12 新建的
+        # 「跨市场避险」成了 accounts[0] → 卖出报「没有 512400.SH 的持仓」。
+        # 现改为按 ts_code 定位持仓（买卖一致），歧义时拒绝而非任选。
+        target = await self._resolve_account_and_strategy(
+            user_id=user_id, ts_code=ts_code, strategy_id=strategy_id,
+        )
+        account = target.account
+        strategy_id = target.strategy_id
 
         # ---- 2. 计算费用 ----
         fees = self._calculate_fees(direction, price, quantity, ts_code, user_fees)
@@ -295,13 +312,157 @@ class TradeRecordService:
 
         logger.info(
             f"手动成交录入成功: user={user_id}, {direction} {ts_code} "
-            f"@{price} x{quantity}, order={order_id}, trade={trade_id}"
+            f"@{price} x{quantity}, order={order_id}, trade={trade_id}, "
+            f"记账去向=账户[{getattr(account, 'account_name', None)}]{account.id} "
+            f"策略[{target.strategy_name}]{strategy_id or '无(手工持仓)'}"
         )
 
         return TradeRecordResult(
             order=order, trade=trade, fees=fee_records,
             position=position, account=updated_account,
+            strategy_name=target.strategy_name,
         )
+
+    # ==================== 记账去向解析 ====================
+
+    async def _resolve_account_and_strategy (
+        self,
+        user_id: str,
+        ts_code: str,
+        strategy_id: Optional[str] = None,
+    ) -> AccountStrategyTarget:
+        """
+        解析一笔手动成交的记账去向（账户 + 策略维度）。
+
+        优先级：
+          A. 传了 strategy_id → 策略绑定账户优先，回退用户默认账户（既有语义，不变）
+          B. 未传 strategy_id → **按 ts_code 定位持仓所在账户/策略**（2026-09-17 新增）
+             B1 恰好 1 笔持仓 → 采用该持仓的 (account_id, strategy_id)
+             B2 ≥2 笔持仓    → 抛 AmbiguousHoldingError（拒绝任选，防止账实不符）
+             B3 0 笔持仓     → 回退用户默认账户 + strategy_id=None（保持既有语义）
+             B4 B1 命中但持仓账户不可用（已软删/关闭）→ 回退默认账户并告警
+
+        买入与卖出走同一套解析（买卖一致），避免同一只票在加仓与卖出时
+        被拆到不同账户/策略维度。
+
+        Raises:
+            ValueError: 用户没有可用账户
+            AmbiguousHoldingError: 多笔持仓无法自动定位
+        """
+        accounts = await self._account_repo.get_many_by_user_id(user_id)
+        if not accounts:
+            raise ValueError("用户没有可用账户，请先创建账户")
+        account_by_id = {str(a.id): a for a in accounts}
+        default_account = accounts[0]
+
+        # ---- 路径 A：显式指定策略 ----
+        if strategy_id:
+            account = default_account
+            try:
+                from sqlalchemy import text as _text
+                _row = (await self._session.execute(
+                    _text("SELECT account_id FROM strategies WHERE id = :sid"),
+                    {"sid": strategy_id})).fetchone()
+                if _row and _row[0]:
+                    _bound = account_by_id.get(str(_row[0]))
+                    if _bound:
+                        account = _bound
+                    else:
+                        logger.warning(
+                            "策略 %s 绑定的账户 %s 不在可用账户列表（已删除/关闭），"
+                            "回退默认账户 %s", strategy_id, _row[0], default_account.id,
+                        )
+            except Exception as _e:
+                logger.warning(f"按策略绑定账户解析失败，回退用户默认账户: {_e}")
+            return AccountStrategyTarget(
+                account, strategy_id, await self._strategy_name(strategy_id),
+            )
+
+        # ---- 路径 B：按 ts_code 定位持仓 ----
+        positions = await self._position_repo.get_user_positions_by_code(
+            user_id=user_id, ts_code=ts_code, min_volume=1,
+        )
+
+        if len(positions) == 1:
+            pos = positions[0]
+            account = account_by_id.get(str(pos.account_id))
+            if account is None:
+                # B4：持仓所在账户已软删/关闭。不静默改写去向，回退默认账户并告警，
+                # 让"卖出报没有持仓"这类显式失败替代"静默记到别的账户"。
+                logger.warning(
+                    "持仓 %s 所在账户 %s 不可用（已删除/关闭），回退默认账户 %s",
+                    ts_code, pos.account_id, default_account.id,
+                )
+                account = default_account
+            _st_name = await self._strategy_name(pos.strategy_id)
+            logger.info(
+                "录单定位: user=%s %s → 账户[%s]%s 策略[%s]%s（按持仓定位）",
+                user_id, ts_code,
+                getattr(account, "account_name", None), account.id,
+                _st_name, pos.strategy_id or "无(手工持仓)",
+            )
+            return AccountStrategyTarget(account, pos.strategy_id, _st_name)
+
+        if len(positions) >= 2:
+            raise AmbiguousHoldingError(
+                await self._describe_holding_candidates(ts_code, positions, account_by_id)
+            )
+
+        # B3：无持仓 → 保持既有语义
+        logger.info(
+            "录单定位: user=%s %s 无持仓记录，回落默认账户 %s",
+            user_id, ts_code, default_account.id,
+        )
+        return AccountStrategyTarget(default_account, None, None)
+
+    async def _describe_holding_candidates (
+        self,
+        ts_code: str,
+        positions: List[Position],
+        account_by_id: Dict[str, Account],
+    ) -> str:
+        """构造歧义时的候选清单文本（账户名/策略名/持仓量），供前端直接展示。"""
+        _st_names = await self._strategy_names([p.strategy_id for p in positions])
+        _parts = []
+        for p in positions:
+            _acc = account_by_id.get(str(p.account_id))
+            _acc_name = (
+                getattr(_acc, "account_name", None) or str(p.account_id)
+            ) if _acc else f"账户{str(p.account_id)[:8]}…(不可用)"
+            if p.strategy_id:
+                _st = _st_names.get(str(p.strategy_id)) or str(p.strategy_id)
+            else:
+                _st = "手工持仓(无策略)"
+            _parts.append(f"{_acc_name} / {_st}（{int(p.volume or 0)}股）")
+        return (
+            f"{ts_code} 存在 {len(positions)} 笔持仓，无法自动确定记账去向："
+            + "；".join(_parts)
+            + "。请从持仓列表点击「录入成交」指定，或在弹窗中手工填写「关联策略」ID。"
+        )
+
+    async def _strategy_names (
+        self, strategy_ids: List[Optional[str]]
+    ) -> Dict[str, str]:
+        """批量取策略名（一次查询，避免 N+1）；失败时降级为不含名称。"""
+        _ids = [str(s) for s in strategy_ids if s]
+        if not _ids:
+            return {}
+        try:
+            from sqlalchemy import text as _text
+            _rows = (await self._session.execute(
+                _text("SELECT id, name FROM strategies WHERE id = ANY(:ids)"),
+                {"ids": _ids},
+            )).fetchall()
+            return {str(r[0]): r[1] for r in _rows}
+        except Exception as _e:
+            logger.warning(f"批量查询策略名失败，反显将回退为策略ID: {_e}")
+            return {}
+
+    async def _strategy_name (self, strategy_id: Optional[str]) -> Optional[str]:
+        """取单个策略名（用于反显）。"""
+        if not strategy_id:
+            return None
+        return (await self._strategy_names([str(strategy_id)])).get(str(strategy_id))
 
     # ==================== 辅助方法 ====================
 

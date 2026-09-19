@@ -7,7 +7,7 @@ description: 量化策略开发专项。当涉及策略代码编写、因子接�
 
 > 架构约束见 `quantsys-architect`。本技能专注策略开发流程。
 > 硬性约束与审计规则见 `.claude/rules/audit-strategy.md`（六大审计维度、四大模块、边界全覆盖、交付六步）。
-> **上线准入判定见 `docs/02-功能设计/策略体系/策略实盘准入标准.md`**（六道门 G0–G5 + 分层 20 项）。
+> **上线准入判定见 `docs/06-标准规范/06_策略实盘准入标准.md`**（六道门 G0–G5 + 分层 20 项）。
 >
 > ⚠️ **本文件事实性表述一律以代码为准**：表名以 `docs/sql/create_table.sql` 为准，策略清单以 CLAUDE.md《实际策略清单》为准。
 > **2026-09-15 修正**：此前版本写入了 6 处**不存在**的名称（`technical/` `alpha/` `ai/` 目录、`ma_cross`/`macd`/`factor`/`mean_reversion`/`industry_rotation`/`dl`/`ml` 策略、`daily_quotes`、`financial_data`、`factor_metadata` 表、`DataService` 类、`generate_signals()` 方法），已全部改为真实名称。
@@ -96,7 +96,7 @@ class MyStrategy(BaseStrategy):
 
 ### 步骤 5：回测验证
 
-依据：`docs/02-功能设计/策略体系/回测分析标准流程.md`（**现行真相源**）+ 准入标准 §二「六道门」。
+依据：`docs/06-标准规范/04_回测分析标准流程.md`（**现行真相源**）+ 准入标准 §二「六道门」。
 （旧文档曾指向 `docs/04-归档/design/策略回测业务流程说明.md` —— 已归档，**勿再作依据**。）
 
 信号级冒烟（磁盘加载，不走 DB）：

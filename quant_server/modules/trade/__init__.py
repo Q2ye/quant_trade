@@ -170,12 +170,14 @@ async def initialize(
         await execution_engine.start()
         await position_engine.start()
         
-        # 绑定盯市处理器（数据同步完成后自动更新持仓浮动盈亏）
-        try:
-            from modules.trade.services.mark_to_market import bind_mark_to_market
-            bind_mark_to_market(event_engine, session_factory)
-        except Exception as _e:
-            logger.warning("盯市绑定跳过（非致命）: %s", _e)
+        # 盯市处理器：**已于 2026-09-17 废弃删除**（原 modules/trade/services/mark_to_market.py）。
+        # 废弃原因：该事件链从未真正生效 —— 全部日志（含轮转归档）中只有"盯市处理器已绑定"，
+        # 从无"盯市触发 / 盯市完成"，导致 positions.market_value/last_price/pnl 自成交后
+        # 长期陈旧（实测 159985.SZ 停在 09-14，与当日收盘差 631 元）；且它按百分数写
+        # pnl_rate，与成交录入的比率口径冲突，复活后会与本模块成交路径互相覆盖。
+        # 职责已移交**日终结算**：modules/account/tasks/settlement_tasks.py::_mark_to_market
+        # 在重估账户市值的同时回写持仓估值（同源同价）。
+        # 如需取回原实现：git show <commit>:modules/trade/services/mark_to_market.py
 
         logger.info("交易模块初始化成功")
         return True

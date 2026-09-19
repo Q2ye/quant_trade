@@ -4,7 +4,7 @@
 """
 
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
@@ -442,14 +442,51 @@ class SettlementTasks:
                 trading_day, len(missing), len(still_missing), still_missing,
             )
 
+        # [修复 2026-09-17] 顺带回写持仓估值。
+        # 此前本方法只把市值累加进「账户行 / 日终快照」，**从不回写 positions** ——
+        # positions.market_value / last_price / pnl / pnl_rate 自成交录入后再不更新
+        # （实测 159985.SZ 停在 09-14 的 17,640.70，而当日收盘应为 18,272.10；此前前端
+        # 靠 `market_value ?? volume×current_price` 的兜底绕开了这个陈旧值）。
+        # 原设计由事件驱动的盯市服务负责，但该链路**从未生效**：全部日志（含轮转归档）中
+        # 只有"盯市处理器已绑定"，从无「盯市触发 / 盯市完成」。该服务已于 2026-09-17
+        # **废弃删除**（取回：git show <commit>:modules/trade/services/mark_to_market.py）。
+        # 故改由日终结算回写 —— 结算有确定的每日执行证据，且此处已解析出 close，
+        # 与账户行天然**同源同价**（避免两个价格基准打架）。
+        #
+        # 幂等性：绝对赋值（非累加），同一交易日重复执行结果一致。
+        # pnl_rate 口径 = **比率**（如 0.027273），与成交录入 `_upsert_position` 及各
+        # 列表/详情接口一致（该列为 Numeric(10,6)，非百分数）。
+        # ⚠️ 若日后复活盯市服务，须先统一它的 `×100` 百分数写法，否则两个写者会互相覆盖。
         market_value = Decimal("0")
+        _now = datetime.now(timezone.utc)
         for p in positions:
             if not p.volume or p.volume <= 0:
                 continue
             close = close_map.get(p.ts_code)
             if close is None:
                 close = Decimal(str(p.last_price)) if p.last_price else Decimal("0")
-            market_value += Decimal(str(p.volume)) * close
+            _vol = Decimal(str(p.volume))
+            _mv = _vol * close
+            market_value += _mv
+
+            # close<=0 说明取到的是坏价（收盘 0 不应出现）→ 保留原值，不污染估值
+            if close <= 0:
+                logger.warning(
+                    "结算回写跳过(收盘价异常): ts_code=%s close=%s", p.ts_code, close,
+                )
+                continue
+            _cost = Decimal(str(p.cost_price)) if p.cost_price else Decimal("0")
+            p.last_price = close
+            p.market_value = _mv
+            if _cost > 0:
+                p.pnl = (close - _cost) * _vol
+                p.pnl_rate = (close - _cost) / _cost
+            else:
+                p.pnl = Decimal("0")
+                p.pnl_rate = Decimal("0")
+            # ⚠️ positions.last_update 只有 default、**没有 onupdate** → 必须显式写
+            p.last_update = _now
+        await self.account_repo.session.flush()
         return market_value
 
     async def _get_last_available_close(

@@ -95,11 +95,67 @@
         />
       </NFormItem>
 
+      <!-- 记账去向反显（2026-09-17）：
+           手动录单按 (account_id, ts_code, strategy_id) 三维定位，此前不反显这两维 →
+           用户看不到会记到哪个账户/策略，账户错位时只在提交后被拒（512400.SH 事故）。 -->
+      <NFormItem label="记账去向">
+        <div class="target-box">
+          <template v-if="target.accountId || target.strategyId">
+            <div class="target-row">
+              <span class="target-key">账户</span>
+              <span class="target-val">
+                {{
+                  target.accountName ||
+                  (target.accountId ? "—" : "由该策略绑定的账户决定")
+                }}
+              </span>
+            </div>
+            <div class="target-row">
+              <span class="target-key">策略</span>
+              <span class="target-val">
+                {{
+                  target.strategyName ||
+                  (target.strategyId ? "（未命名策略）" : "手工持仓（无策略）")
+                }}
+              </span>
+            </div>
+            <div class="target-ids">
+              <span v-if="target.accountId">{{ target.accountId }}</span>
+              <span v-if="target.accountId && target.strategyId"> · </span>
+              <span v-if="target.strategyId">{{ target.strategyId }}</span>
+            </div>
+          </template>
+          <span v-else class="target-hint">
+            未指定 —— 提交时按该票持仓自动定位账户与策略
+          </span>
+        </div>
+      </NFormItem>
+
       <NFormItem label="关联策略">
-        <NInput
-          v-model:value="form.strategy_id"
-          placeholder="可选，策略ID"
-        />
+        <div class="strategy-row">
+          <template v-if="resolvedStrategyId && !manualStrategy">
+            <span class="target-val">
+              {{ resolvedStrategyName || resolvedStrategyId }}
+            </span>
+            <NButton text type="primary" size="tiny" @click="manualStrategy = true">
+              改为手动指定
+            </NButton>
+          </template>
+          <template v-else>
+            <NInput
+              v-model:value="form.strategy_id"
+              placeholder="留空则按该票持仓自动定位"
+            />
+            <NButton
+              v-if="target.strategyId"
+              text
+              size="tiny"
+              @click="cancelManualStrategy"
+            >
+              取消手动指定
+            </NButton>
+          </template>
+        </div>
       </NFormItem>
 
       <!-- 预估 -->
@@ -158,6 +214,10 @@ const props = defineProps<{
     direction?: string;
     price?: number;
     quantity?: number;
+    // 2026-09-17 新增：记账去向反显（account_name/strategy_name 仅用于展示）
+    account_id?: string;
+    account_name?: string;
+    strategy_name?: string;
   } | null;
 }>();
 
@@ -189,6 +249,56 @@ const form = reactive({
     transfer_fee: null as number | null,
   },
 });
+
+// ---- 记账去向反显（2026-09-17）----
+// 仅用于"提交前告知用户会记到哪个账户/策略"：account_id 不随请求发送（后端按
+// ts_code 自行解析），strategy_id 会发送 —— 故标的被改动后必须一并清掉预填的
+// 策略，否则会把成交记到上一个标的的策略维度上。
+const target = reactive({
+  accountId: "",
+  accountName: "",
+  strategyId: "",
+  strategyName: "",
+  fromPrefill: false,
+  prefilledCode: "",
+});
+const manualStrategy = ref(false);
+
+const resolvedStrategyId = computed(
+  () => form.strategy_id || target.strategyId || "",
+);
+const resolvedStrategyName = computed(() => {
+  if (!form.strategy_id) return target.strategyName;
+  return form.strategy_id === target.strategyId ? target.strategyName : "";
+});
+
+function resetTarget() {
+  // 预填的策略随标的变更失效（手工填写的 strategy_id 不在此列）
+  if (form.strategy_id && form.strategy_id === target.strategyId) {
+    form.strategy_id = "";
+  }
+  target.accountId = "";
+  target.accountName = "";
+  target.strategyId = "";
+  target.strategyName = "";
+  target.fromPrefill = false;
+  target.prefilledCode = "";
+  manualStrategy.value = false;
+}
+
+function cancelManualStrategy() {
+  form.strategy_id = "";
+  manualStrategy.value = false;
+}
+
+watch(
+  () => form.ts_code,
+  (code) => {
+    if (target.fromPrefill && code !== target.prefilledCode) {
+      resetTarget();
+    }
+  },
+);
 
 const rules: FormRules = {
   ts_code: { required: true, message: "请输入股票代码", trigger: "blur" },
@@ -244,7 +354,7 @@ async function handleSubmit() {
       transfer_fee: form.fees.transfer_fee ?? null,
     };
 
-    await tradeAPI.recordTrade({
+    const resp: any = await tradeAPI.recordTrade({
       ts_code: form.ts_code,
       direction: form.direction,
       price: form.price,
@@ -255,7 +365,10 @@ async function handleSubmit() {
       fees: feesPayload,
     });
 
-    message.success("成交录入成功");
+    // 反显后端实际解析出的记账去向，避免"记了但不知道记到哪个账户/策略"
+    const _d = resp?.data || {};
+    const _where = [_d.account_name, _d.strategy_name].filter(Boolean).join(" / ");
+    message.success(_where ? `录入成功：记账到 ${_where}` : "成交录入成功");
     visible.value = false;
     emit("submitted");
     resetForm();
@@ -267,6 +380,7 @@ async function handleSubmit() {
 }
 
 function resetForm() {
+  resetTarget();
   form.ts_code = "";
   form.direction = "buy";
   form.price = null;
@@ -279,10 +393,11 @@ function resetForm() {
   form.fees.transfer_fee = null;
 }
 
-// 预填数据（从信号点击进入时）
+// 预填数据（从信号 / 持仓 / 订单行点击进入时）
 watch(
   () => props.prefilled,
   (val) => {
+    resetTarget();
     if (val) {
       if (val.ts_code) form.ts_code = val.ts_code;
       if (val.direction) form.direction = val.direction;
@@ -290,6 +405,15 @@ watch(
       if (val.quantity) form.quantity = val.quantity;
       if (val.signal_id) form.signal_id = val.signal_id;
       if (val.strategy_id) form.strategy_id = val.strategy_id;
+      // 记账去向反显：账户/策略名缺失时退化为展示 ID（用户至少能看到记到哪）
+      if (val.account_id || val.strategy_id) {
+        target.accountId = val.account_id || "";
+        target.accountName = val.account_name || "";
+        target.strategyId = val.strategy_id || "";
+        target.strategyName = val.strategy_name || "";
+        target.fromPrefill = true;
+        target.prefilledCode = val.ts_code || "";
+      }
     }
     // 每次打开都重置费用字段
     form.fees.commission = null;
@@ -305,6 +429,56 @@ watch(
   margin-left: 8px;
   font-size: 12px;
   color: var(--n-text-color-3);
+}
+
+// ---- 记账去向反显（2026-09-17）----
+.target-box {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--n-border-radius);
+  border: 1px solid var(--n-border-color);
+  background: var(--n-card-color);
+  line-height: 1.7;
+}
+
+.target-row {
+  display: flex;
+  gap: 8px;
+}
+
+.target-key {
+  flex: none;
+  font-size: 13px;
+  color: var(--n-text-color-3);
+}
+
+.target-val {
+  font-size: 13px;
+  color: var(--n-text-color-1);
+}
+
+.target-ids {
+  margin-top: 2px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--n-text-color-3);
+  word-break: break-all;
+}
+
+.target-hint {
+  font-size: 13px;
+  color: var(--n-text-color-3);
+}
+
+.strategy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+
+  :deep(.n-input) {
+    flex: 1;
+  }
 }
 
 .preview-box {

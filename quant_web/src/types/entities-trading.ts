@@ -68,6 +68,12 @@ export interface Position extends BaseEntity {
   pnl_rate?: number; // 盈亏比例（后端字段）
   last_update: string; // 最后更新时间
   industry?: string; // 行业
+  // 2026-09-17 新增：多维持仓的账户/策略反显。
+  // 手动录单按 (account_id, ts_code, strategy_id) 三维定位，缺后两维会导致
+  // 「列表看得到持仓、录单报没有持仓」，故列表接口一并返回用于展示与预填。
+  account_name?: string | null; // 账户名（后端字段）
+  strategy_id?: string | null; // 策略ID（后端字段）
+  strategy_name?: string | null; // 策略名（后端字段）
 }
 
 /**

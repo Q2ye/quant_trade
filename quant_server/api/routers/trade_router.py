@@ -501,13 +501,16 @@ async def record_trade_api (
 
 		return result
 
-	except HTTPException:
+	except HTTPException as e:
+		# 业务性拒绝（400/409…）此前完全不留痕，只能靠前端 toast 才能知道原因；
+		# 记下 status_code + detail，便于事后从日志定位（2026-09-17 事故教训）。
+		logger.warning(f"成交录入被拒绝({e.status_code}): {e.detail}")
 		raise
 	except Exception as e:
-		logger.error(f"成交录入失败: {'服务器内部错误'}", exc_info=True)
+		logger.error(f"成交录入失败: {e}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"成交录入失败: {'服务器内部错误'}"
+			detail="成交录入失败: 服务器内部错误"
 		)
 
 
@@ -539,13 +542,14 @@ async def record_batch_trades_api (
 
 		return result
 
-	except HTTPException:
+	except HTTPException as e:
+		logger.warning(f"批量成交录入被拒绝({e.status_code}): {e.detail}")
 		raise
 	except Exception as e:
-		logger.error(f"批量成交录入失败: {'服务器内部错误'}", exc_info=True)
+		logger.error(f"批量成交录入失败: {e}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"批量成交录入失败: {'服务器内部错误'}"
+			detail="批量成交录入失败: 服务器内部错误"
 		)
 
 

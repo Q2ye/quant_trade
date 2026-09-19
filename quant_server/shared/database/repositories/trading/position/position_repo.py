@@ -74,6 +74,48 @@ class PositionRepository(BaseRepository[Position]):
 		result = await self.session.execute(query)
 		return result.scalar_one_or_none()
 
+	async def get_user_positions_by_code (
+			self,
+			user_id: str,
+			ts_code: str,
+			min_volume: int = 1,
+	) -> List[Position]:
+		"""
+		获取用户某只标的在**全部账户/策略维度**下的持仓。
+
+		用于手动录单的「按 ts_code 定位记账账户」：
+		持仓唯一约束为 (account_id, ts_code, strategy_id)，同一只票可被多个账户的
+		多个策略分别持有，故此处返回的是候选列表而非单条，由调用方判定
+		「唯一 → 采用 / 多条 → 要求指定」。
+
+		与 `get_positions_by_ts_code` 的区别：后者是全局查询（无 user_id 过滤），
+		不能用于记账定位 —— 会把其他用户的持仓当成候选。
+
+		Args:
+			user_id: 用户ID
+			ts_code: 标的代码
+			min_volume: 最小持仓量（默认 1，即排除 volume=0 的幽灵持仓）
+
+		Returns:
+			持仓列表，按 volume 降序（候选顺序稳定）
+		"""
+		try:
+			query = (
+				self.build_query()
+				.where(
+					and_(
+						Position.user_id == user_id,
+						Position.ts_code == ts_code,
+						Position.volume >= min_volume,
+					)
+				)
+				.order_by(Position.volume.desc())
+			)
+			result = await self.session.execute(query)
+			return list(result.scalars().all())
+		except Exception as e:
+			raise RepositoryError(f"获取用户指定标的多维持仓失败: {str(e)}")
+
 	async def get_user_positions (
 			self,
 			user_id: str,

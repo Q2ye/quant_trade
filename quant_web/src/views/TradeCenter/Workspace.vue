@@ -40,6 +40,10 @@ const failedSources = ref<string[]>([]);
 // Account
 const accounts = ref<Account[]>([]);
 const selectedAccountId = ref<string | null>(null);
+// 账户概览（跨账户合计，2026-09-17）—— 顶栏的唯一数据源。
+// 修复前顶栏取「选中账户」的字段，而下方持仓 tab 是跨账户聚合 → 会出现
+// 「顶栏持仓市值 ¥0 / 下面列着 ¥18,272 持仓」的同屏矛盾。
+const summary = ref<any>(null);
 
 // Positions
 const positions = ref<Position[]>([]);
@@ -72,12 +76,14 @@ const loadAllData = async () => {
   error.value = false;
   failedSources.value = [];
   try {
-    const [acctRes, posRes, orderRes, basketRes, sigRes] = await Promise.all([
+    const [acctRes, posRes, orderRes, basketRes, sigRes, sumRes] = await Promise.all([
       request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100 } }).catch(() => { failedSources.value.push("账户"); return { data: { data: [] } }; }),
       tradeAPI.getPositions().catch(() => { failedSources.value.push("持仓"); return []; }),
       tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => { failedSources.value.push("订单"); return { items: [], total: 0 }; }),
       basketAPI.getBaskets().catch(() => { failedSources.value.push("篮子"); return { baskets: [], total: 0 }; }),
       tradeAPI.getSignals({ page_size: 50 }).catch(() => { failedSources.value.push("信号"); return { data: [] }; }),
+      // 2026-09-17：账户概览（后端已做跨账户合计）—— 顶栏唯一数据源
+      tradeAPI.getAccountInfo().catch(() => { failedSources.value.push("账户概览"); return null; }),
       request.get("/quantTrade/strategy", { params: { page: 1, page_size: 200 } }).then((r: any) => {
         // response interceptor 已提取 response.data，r = { success, data: [...], pagination }
         strategyList.value = r?.data || [];
@@ -101,6 +107,7 @@ const loadAllData = async () => {
     }
 
     positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
+    summary.value = (sumRes as any) ?? null;
     const orderData = (orderRes as any)?.data ?? (Array.isArray(orderRes) ? orderRes : []);
     orders.value = (Array.isArray(orderData) ? orderData : []) as Order[];
     baskets.value = (basketRes as any)?.baskets ?? ([] as Basket[]);
@@ -116,12 +123,15 @@ const loadAllData = async () => {
 
 // 精准刷新（成交录入后只刷新受影响的数据）
 const refreshAfterTrade = async () => {
-  const [posRes, orderRes, acctRes2] = await Promise.all([
+  const [posRes, orderRes, acctRes2, sumRes2] = await Promise.all([
     tradeAPI.getPositions().catch(() => []),
     tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => ({ data: [], total: 0 })),
     request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100 } }).catch(() => ({ data: { data: [] } })),
+    // 成交会改变现金与持仓 → 概览必须同步刷新，否则顶栏停在旧值
+    tradeAPI.getAccountInfo().catch(() => null),
   ]);
   positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
+  if (sumRes2) summary.value = sumRes2;
   const orderData2 = (orderRes as any)?.data ?? (Array.isArray(orderRes) ? orderRes : []);
   orders.value = (Array.isArray(orderData2) ? orderData2 : []) as Order[];
   const acctList2 = (acctRes2 as any)?.data?.data || (acctRes2 as any)?.data || [];
@@ -132,19 +142,33 @@ const refreshAfterTrade = async () => {
 };
 
 // ============================================================
-// Account summary (top bar)
-// 当日盈亏/收益率取日终结算快照字段（daily_pnl/daily_return），非累计 pnl
+// Account summary (top bar) —— 全部账户合计（2026-09-17 改）
+//
+// 修复前：取「选中账户」(accounts[selectedAccountId]) 的字段，与下方持仓 tab
+// （跨账户聚合，get_position_list 不按账户过滤）**口径不一致** → 会出现
+// 「顶栏持仓市值 ¥0，下面列着 ¥18,272 持仓」的同屏矛盾。而 accounts[0] 又来自
+// `BaseRepository.get_many`（无 ORDER BY），默认选中哪个账户本就不确定。
+// 现统一用 `/quantTrade/trade/account`（get_account_summary，后端已合计，
+// 且当日收益率用的是 Σ当日盈亏 / Σ(总资产−当日盈亏) 的正确聚合法）。
+// 当日盈亏/收益率仍取日终结算快照字段，非累计 pnl。
 // ============================================================
 const accountStats = computed(() => {
-  if (accounts.value.length === 0) return { totalAsset: 0, availableCash: 0, marketValue: 0, pnl: 0, pnlRate: 0, pnlDate: null };
-  const a = accounts.value.find((ac) => String(ac.id) === selectedAccountId.value) || accounts.value[0];
+  const s: any = summary.value;
+  if (!s) return { totalAsset: 0, availableCash: 0, marketValue: 0, pnl: 0, pnlRate: 0, pnlDate: null };
+  // 结算日期取各账户中最新的一天（全部账户同日结算）
+  const pnlDate =
+    accounts.value
+      .map((a: any) => a.daily_pnl_date)
+      .filter(Boolean)
+      .sort()
+      .pop() ?? null;
   return {
-    totalAsset: (a as any).total_asset ?? 0,
-    availableCash: (a as any).available_cash ?? 0,
-    marketValue: (a as any).market_value ?? 0,
-    pnl: (a as any).daily_pnl ?? 0,
-    pnlRate: (a as any).daily_return ?? 0,
-    pnlDate: (a as any).daily_pnl_date ?? null,
+    totalAsset: s.total_asset ?? 0,
+    availableCash: s.cash ?? 0,
+    marketValue: s.market_value ?? 0,
+    pnl: s.daily_pnl ?? 0,
+    pnlRate: s.daily_return ?? 0,
+    pnlDate,
   };
 });
 
@@ -224,6 +248,29 @@ const handleQuickSell = (order: any) => {
     direction: "sell",
     price: pos?.current_price ?? order.price ?? null,
     quantity: pos?.available_volume ?? pos?.volume ?? order.volume ?? null,
+    // 2026-09-17：补账户/策略维度。此前不传 strategy_id，记账账户会回落到
+    // accounts[0]（最新创建账户）→ 与持仓所在账户不一致时卖出被拒。
+    account_id: pos?.account_id,
+    account_name: pos?.account_name,
+    strategy_id: pos?.strategy_id,
+    strategy_name: pos?.strategy_name,
+  };
+  showRecordModal.value = true;
+};
+
+// 持仓行 → 录入成交（补上此前缺失的入口：用户只能手打代码，极易遗漏账户/策略维度）
+const handleRecordFromPosition = (row: any) => {
+  const available = Number(row.available_volume ?? 0);
+  recordPrefill.value = {
+    ts_code: row.ts_code || row.symbol || "",
+    // 可用数量 > 0 时按"卖出"预填（含价格与可卖数量）；否则不预设方向，由用户选择
+    direction: available > 0 ? "sell" : undefined,
+    price: row.current_price ?? null,
+    quantity: available > 0 ? available : null,
+    account_id: row.account_id,
+    account_name: row.account_name,
+    strategy_id: row.strategy_id,
+    strategy_name: row.strategy_name,
   };
   showRecordModal.value = true;
 };
@@ -445,9 +492,35 @@ const positionColumns: DataTableColumns<Position> = [
   {
     title: "盈亏比", key: "pnl_rate", width: 85,
     render: (row: any) => {
+      // 2026-09-17 修复：后端 /trade/positions 的 pnl_rate 是**比率**（0.0273），
+      // 不是百分数 —— 原来直接 toFixed(2)+'%' 会显示成 0.03%（少 100 倍）。
+      // 对照：顶栏当日收益率一直正确地做了 ×100。
       const rate = row.profit_rate ?? row.pnl_rate ?? 0;
-      return h("span", { class: rate >= 0 ? "text-up" : "text-down" }, `${rate.toFixed(2)}%`);
+      return h("span", { class: rate >= 0 ? "text-up" : "text-down" }, `${(rate * 100).toFixed(2)}%`);
     },
+  },
+  // 2026-09-17 新增：持仓的账户/策略维度反显。
+  // 手动录单按 (account_id, ts_code, strategy_id) 三维定位，此前列表不展示这两维
+  // → 用户看到"有持仓"，录单却因维度不匹配报"没有持仓"（512400.SH 事故）。
+  {
+    title: "账户 / 策略", key: "account_id", width: 150,
+    render: (row: any) => {
+      const acc = row.account_name || (row.account_id ? `${String(row.account_id).slice(0, 8)}…` : "—");
+      const st = row.strategy_name || (row.strategy_id ? "（未命名策略）" : "手工持仓");
+      return h("div", { style: "line-height: 1.45" }, [
+        h("div", { style: "color: var(--n-text-color-1)" }, acc),
+        h("div", { style: "font-size: 11px; color: var(--n-text-color-3)" }, st),
+      ]);
+    },
+  },
+  {
+    title: "操作", key: "action", width: 90,
+    render: (row: any) =>
+      h(
+        NButton,
+        { size: "tiny", type: "primary", onClick: () => handleRecordFromPosition(row) },
+        { default: () => "录入成交" },
+      ),
   },
 ];
 
@@ -660,6 +733,9 @@ onMounted(() => loadAllData());
       <!-- ========== Top Summary Bar ========== -->
       <div class="summary-bar glass-surface">
         <n-spin :show="loading" size="small">
+          <!-- 2026-09-17：顶栏为跨账户合计，必须标明口径 —— 否则会有人以为它是
+               下方账户 tab 中"选中账户"的数字（这正是本次问题的镜像）。 -->
+          <div class="summary-scope">全部账户合计</div>
           <div class="summary-grid">
             <div class="summary-item">
               <span class="summary-label">总资产</span>
@@ -809,6 +885,7 @@ onMounted(() => loadAllData());
                   :data="positions"
                   :bordered="false"
                   size="small"
+                  :scroll-x="1000"
                   :row-key="(row: Position) => String(row.id)"
                 />
                 <n-empty v-else description="暂无持仓">
@@ -1074,6 +1151,11 @@ onMounted(() => loadAllData());
   background: var(--n-card-color);
   border: 1px solid var(--n-border-color);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.summary-scope {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--n-text-color-3);
 }
 .summary-grid {
   display: flex;

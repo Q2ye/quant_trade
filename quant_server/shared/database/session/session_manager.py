@@ -57,7 +57,21 @@ class SessionManager:
 			await session.commit()
 		except Exception as e:
 			await session.rollback()
-			logger.warning(f"数据库操作失败，已回滚: {str(e)}")
+			# ⚠️ 本分支也会捕获**业务性拒绝**：FastAPI 会把端点的异常 throw 进 yield
+			# 依赖点，因此 HTTPException(400/404/409…) 同样走到这里。此时 rollback 只是
+			# 正常的事务收尾，并非数据库故障 —— 统一打「数据库操作失败」会让排查误入
+			# 歧途（2026-09-17 512400 录单 400 事故：日志只剩一句空白的"已回滚"，
+			# 真实原因被吞掉）。故按是否有 status_code 区分，并用 repr 输出 ——
+			# starlette 0.27 的 HTTPException 未定义 __str__，str(e) 恒为空字符串。
+			# 依赖方向约束：shared/ 不 import fastapi，故用 duck-typing 判定。
+			_status = getattr(e, "status_code", None)
+			if _status is not None:
+				logger.info(
+					f"事务回滚（业务拒绝 {_status}）: "
+					f"{getattr(e, 'detail', None) or e!r}"
+				)
+			else:
+				logger.warning(f"数据库操作失败，已回滚: {e!r}")
 			raise
 		finally:
 			await session.close()

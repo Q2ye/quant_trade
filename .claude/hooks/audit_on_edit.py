@@ -7,7 +7,7 @@
 
 `quant_server/scripts/audit_strategy.py`（2026-09-15 新建）能机检未来函数 / 硬编码凭证 /
 除零 / 参数越界 —— 但**它要人记得跑**。本 hook 把它变成「改了策略就自动跑」，
-对齐 `docs/02-功能设计/策略体系/策略实盘准入标准.md` 的 G1 代码门。
+对齐 `docs/06-标准规范/06_策略实盘准入标准.md` 的 G1 代码门。
 
 范围限定：只对 `quant_server/modules/strategy/strategies/**/*.py` 触发（粒度对齐
 `.claude/rules/strategy-gates.md` 的 `paths` 声明），避免无关文件改动也被审计。

@@ -16,7 +16,7 @@ from core.exceptions.security_exceptions import (
 	InvalidTokenError,
 	TokenCreationError
 )
-from ..config.config_manager import ConfigSettings as Settings
+from ..config.config_manager import get_config
 
 
 # JWT配置模型
@@ -41,7 +41,12 @@ class JWTManager:
 			config: JWT配置，如果为None则从Settings读取
 		"""
 		if config is None:
-			settings = Settings()
+			# 修复 2026-09-17（D2）：原为裸 `ConfigSettings()` —— 该构造只得到 pydantic
+			# **默认值**（config.yaml 只由 ConfigManager._load_settings 读取），导致
+			# ACCESS_TOKEN_EXPIRE_MINUTES 静默退回默认 30 分钟，而 config.yaml 配置的是
+			# 600 分钟 → 令牌比配置意图早 20 倍失效（WS 反复 403 的放大器）。
+			# 实测：裸构造 TTL=30；get_config().settings TTL=600。
+			settings = get_config().settings
 			config = JWTConfig(
 				secret_key=settings.API.SECRET_KEY,
 				algorithm=settings.API.JWT_ALGORITHM,

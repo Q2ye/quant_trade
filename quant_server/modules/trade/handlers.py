@@ -263,6 +263,32 @@ class TradeHandler:
 							_close_map[_r[0]] = float(_r[1])
 					except Exception:
 						pass
+			# 2026-09-17 新增：持仓的账户/策略反显。
+			# 手动录单按 (account_id, ts_code, strategy_id) 三维定位，此前列表不返回
+			# 后两个维度 → 用户看到"有持仓"，录单却因账户/策略不匹配报"没有持仓"
+			# （512400.SH 事故）。此处一次批量取名，不引入 N+1。
+			from sqlalchemy import text as _text
+			_acc_names: dict = {}
+			_st_names: dict = {}
+			_acc_ids = list({str(p.account_id) for p in paginated_positions if p.account_id})
+			_st_ids = list({str(p.strategy_id) for p in paginated_positions if p.strategy_id})
+			if _acc_ids:
+				try:
+					_rows = (await self.position_repo.session.execute(
+						_text("SELECT id, account_name FROM accounts WHERE id = ANY(:ids)"),
+						{"ids": _acc_ids})).fetchall()
+					_acc_names = {str(r[0]): r[1] for r in _rows}
+				except Exception as _e:
+					logger.warning(f"批量查询账户名失败，反显将回退为账户ID: {_e}")
+			if _st_ids:
+				try:
+					_rows = (await self.position_repo.session.execute(
+						_text("SELECT id, name FROM strategies WHERE id = ANY(:ids)"),
+						{"ids": _st_ids})).fetchall()
+					_st_names = {str(r[0]): r[1] for r in _rows}
+				except Exception as _e:
+					logger.warning(f"批量查询策略名失败，反显将回退为策略ID: {_e}")
+
 			position_data = []
 			for position in paginated_positions:
 				_cost = float(position.cost_price) if position.cost_price else 0.0
@@ -271,13 +297,20 @@ class TradeHandler:
 				_vol = int(position.volume or 0)
 				_pnl = (_price - _cost) * _vol
 				_pnl_rate = (_price / _cost - 1) if _cost and _cost > 0 else 0.0
+				_acc_id = str(position.account_id) if position.account_id else None
+				_st_id = str(position.strategy_id) if position.strategy_id else None
 				position_data.append({
 					"symbol": position.ts_code,
 					"volume": position.volume,
+					"available_volume": int(position.available_volume or 0),
 					"cost_price": _cost,
 					"current_price": _price,
 					"pnl": _pnl,
-					"pnl_rate": _pnl_rate
+					"pnl_rate": _pnl_rate,
+					"account_id": _acc_id,
+					"account_name": _acc_names.get(_acc_id) if _acc_id else None,
+					"strategy_id": _st_id,
+					"strategy_name": _st_names.get(_st_id) if _st_id else None,
 				})
 
 			return PositionListResponse(
@@ -612,11 +645,16 @@ class TradeHandler:
 			)
 		except ValueError as e:
 			# 修复 2026-09-12：重复录单属「资源冲突」，返回 409 而非 400
+			# 2026-09-17：记账去向歧义（同一标的多笔持仓）同属「需要人工指定」，
+			# 也返回 409 并携带候选清单，避免任选一条造成账实不符。
 			from modules.trade.services.trade_record_service import (
+				AmbiguousHoldingError,
 				DuplicateTradeRecordError,
 			)
-			if isinstance(e, DuplicateTradeRecordError):
+			if isinstance(e, (DuplicateTradeRecordError, AmbiguousHoldingError)):
+				logger.warning(f"成交录入被拒绝(409): {e}")
 				raise HTTPException(status_code=409, detail=str(e))
+			logger.warning(f"成交录入被拒绝(400): {e}")
 			raise HTTPException(status_code=400, detail=str(e))
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"成交记录录入失败: {str(e)}")

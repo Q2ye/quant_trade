@@ -334,16 +334,19 @@ class QuantServer:
 			if not _h.formatter:
 				_root.removeHandler(_h)
 
-		# 添加文件日志处理器（按天轮转，保留90天）
-		# 2026-09-15：30 → 90 天。该文件是**排查时的全量视图**；而「实盘决策」另有独立
-		# 文件（下方 decision handler）长期保留、按月归档，故此处保留期可放宽。
+		# 添加文件日志处理器（按天轮转）
+		# ⚠️ backup_count=**0 = 本 handler 不删任何轮转文件**（2026-09-17 由 90 改）。
+		#    原因：保留策略改为「**10 天前的按月打成压缩包**」（不是删除），由
+		#    `scripts/ops/archive_logs.py` 统一执行（已挂日终任务，pre_gate order=1）。
+		#    若此处仍设非 0，handler 会在超限时**直接删除**最老文件 → 抢在归档之前毁掉它们。
+		#    保留期语义见 CLAUDE.md「日志」节。
 		import os as _os
 		_log_dir = _os.path.join(_os.path.dirname(__file__), 'logs')
 		file_handler = HandlerFactory.create_timed_file_handler(
 			filename=_os.path.join(_log_dir, 'quant_server.log'),
 			level=LogLevel.DEBUG,
 			when='midnight',
-			backup_count=90
+			backup_count=0
 		)
 		# 设置与控制台一致的格式化器（复用上方已 import 的 _logging）
 		file_handler.setFormatter(_logging.Formatter(

@@ -5,7 +5,7 @@ paths: "quant_server/modules/strategy/**/*.py"
 # 策略开发质量门
 
 > 通用检查见 `audit.md`，后端深度检查见 `audit-backend.md`，**策略全流程深度审计见 `audit-strategy.md`**（六大维度 + 四大模块拆分 + 边界全覆盖 + 交付六步结构）。
-> **上线准入判定见 `docs/02-功能设计/策略体系/策略实盘准入标准.md`**（六道门 G0–G5 + 分层 20 项）。
+> **上线准入判定见 `docs/06-标准规范/06_策略实盘准入标准.md`**（六道门 G0–G5 + 分层 20 项）。
 > 本规则仅在策略文件变更时加载，作为快速检查清单。完整审计请执行 `audit-strategy.md`。
 >
 > ⚠️ **表名/类名/参数一律以代码与 DDL 为准**（`docs/sql/create_table.sql`、策略文件本身）。

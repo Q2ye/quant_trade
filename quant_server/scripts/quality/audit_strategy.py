@@ -24,7 +24,7 @@
 参见：
     .claude/skills/strategy-auditor/SKILL.md   （判据来源）
     .claude/rules/audit-strategy.md            （止损正数约定）
-    docs/02-功能设计/策略体系/策略实盘准入标准.md  （G1 代码门）
+    docs/06-标准规范/06_策略实盘准入标准.md  （G1 代码门）
 """
 
 from __future__ import annotations

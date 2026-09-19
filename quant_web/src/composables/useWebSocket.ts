@@ -52,7 +52,15 @@ export function useWebSocket() {
   // 连接WebSocket
   const connect = () => {
     try {
-      const token = store.state.user?.token;
+      // 修复 2026-09-17（D4）：每次连接都重新读取 token。
+      // 原实现只取 store 快照，而 store 是页面加载时从 localStorage 初始化的 ——
+      // 若在别的标签页重新登录，本页会一直拿着已过期的旧 token 反复重连。
+      const token =
+        store.state.user?.token || localStorage.getItem("token") || "";
+      if (!token) {
+        console.warn("[useWebSocket] 无可用认证令牌，跳过连接");
+        return;
+      }
       const wsUrl = `${import.meta.env.VITE_WS_URL}?token=${token}`;
 
       ws.value = new WebSocket(wsUrl);
@@ -70,8 +78,20 @@ export function useWebSocket() {
       };
 
       ws.value.onclose = (event) => {
-        console.log("WebSocket连接关闭", event);
+        console.log("WebSocket连接关闭", event.code, event.reason);
         isConnected.value = false;
+        // 4401 = 服务端鉴权拒绝（api/websocket/routers.py）。属于**重连无法解决**的
+        // 错误：token 未更新时重连只会再次被拒。原实现对它与网络断开一视同仁，
+        // 盲目重试 5 次后静默放弃（2026-09-17：过期 token 刷出多条 403）。
+        if (event.code === 4401) {
+          console.warn(
+            `[useWebSocket] 登录状态已失效，停止重连：${
+              event.reason || "未提供原因"
+            }。请重新登录。`,
+          );
+          stopReconnect();
+          return;
+        }
         handleReconnect();
       };
 
@@ -154,6 +174,16 @@ export function useWebSocket() {
   function handleSystemStatus(data: any) {
     safeCommit("system/UPDATE_SYSTEM_STATUS", data);
   }
+
+  // 停止重连并复位退避参数（鉴权失败等重连无法解决的错误使用）
+  const stopReconnect = () => {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    reconnectAttempts.value = 0;
+    reconnectInterval.value = 3000;
+  };
 
   // 重连逻辑
   const handleReconnect = () => {
