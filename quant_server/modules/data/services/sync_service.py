@@ -513,6 +513,104 @@ def _preprocess_records(records, date_fields=(), known_cols=None, fill_numeric=(
 	return records
 
 
+def _drop_unstorable_records(records, model, label="", all_dropped_level=logging.ERROR):
+	"""丢弃「NOT NULL 列为空」的记录，把「整批回滚」降级为「少数行丢弃 + 告警」。
+
+	⚠️ 2026-09-21 根因修复：
+	  Tushare 对**部分代码不提供某些字段**，而这些字段在表里是 NOT NULL。
+	  这些 NaN 经本模块既有的 NaN→None 清洗（`_convert_records_datetime` /
+	  `_preprocess_records`）后进入 asyncpg → `NotNullViolationError` →
+	  **该批全部回滚**（不是只丢一行）。
+	  实测：`index_daily` 的 `395xxx.SZ`（Tushare 只返回 vol/amount，close 恒为
+	  NaN）自 2026-09-19 起进入 `index_basic` → 进入 `_sync_by_date_batch` 的过滤
+	  集合 `ts_set` → 57 个交易日的批量 upsert **全部**失败（写入=0, 失败=57），
+	  index_daily 冻结在 09-18，策略 regime 判定被迫使用陈旧指数。
+	  同类缺陷：`stock_basic.market`（`_market_from_code` 即为之而写，
+	  ⚠️ 但该函数**全仓无调用点**，属死代码 → 那处 NOT NULL 故障仍潜伏）。
+	  注意：本函数是「丢弃」兜底，不替代「按代码推导出正确值」的领域兜底
+	  —— 对 `stock_basic` 这类丢一行=丢一只股票的场合，应把死代码接上而非丢弃。
+
+	与 `fill_numeric` 的分工（**调用顺序不可颠倒**）：
+	  `_preprocess_records(fill_numeric=...)` 处理**已知可安全补 0** 的字段；
+	  本函数是**兜底**——只丢弃、绝不填值（数据质量标准 §2.4 严禁用 0 填充
+	  价格字段）。故必须在 `_preprocess_records` **之后**调用，否则会抢在补值前
+	  误丢本可安全写入的记录。
+
+	Args:
+		records: 记录列表
+		model: SQLAlchemy 模型类；取不到时 **fail-open**（原样返回，行为不变）
+		label: 日志前缀；留空时用表名
+		all_dropped_level: 「整批全丢」时的日志级别。**批量按交易日路径保持默认 ERROR**
+			（该日数百行全丢确实异常）；**逐码路径应传 WARNING** —— 单个 code 的全历史
+			无价格是**已知形态**而非异常（见 `_INDEX_NO_OHLC_PREFIXES`），
+			否则每次逐码全量同步都会刷一屏 ERROR。
+
+	Returns:
+		可安全写入的记录列表；无丢弃时原样返回入参
+	"""
+	if not records or model is None:
+		return records
+	table = getattr(model, "__table__", None)
+	if table is None:
+		return records
+	required = [c.name for c in table.columns if not c.nullable]
+	if not required:
+		return records
+
+	def _is_empty(v):
+		if v is None:
+			return True
+		try:
+			return bool(pd.isna(v))
+		except (TypeError, ValueError):   # 数组等无标量真值 → 视为非空
+			return False
+
+	kept, dropped, bad_cols = [], [], set()
+	for record in records:
+		empty_cols = [c for c in required if c in record and _is_empty(record[c])]
+		if empty_cols:
+			dropped.append(record)
+			bad_cols.update(empty_cols)
+		else:
+			kept.append(record)
+
+	if not dropped:
+		return records
+
+	_table = getattr(table, "name", "")
+	_tag = label or _table
+	_keys = [k for k in ("trade_date", "ts_code") if k in dropped[0]] or list(dropped[0])[:2]
+	_samples = [tuple(str(r.get(k)) for k in _keys) for r in dropped[:3]]
+	_detail = f"（{_table} 的 NOT NULL 列为空：{sorted(bad_cols)}）样例={_samples}"
+	if kept:
+		logger.warning(f"[{_tag}] 丢弃 {len(dropped)}/{len(records)} 条不可存储记录{_detail}")
+	else:
+		# 全丢时**只发这一条**（级别由调用方决定），不再叠加上面的逐条告警 ——
+		# 否则逐码全量同步会为每个这样的 code 打两条日志（实测 18 个 395xxx → 36 行噪声）。
+		logger.log(
+			all_dropped_level,
+			f"[{_tag}] ⚠️ 本批 {len(records)} 条**全部**不可存储{_detail} → 零写入。"
+			f"若该批本就不提供这些字段（如 Tushare 对部分指数只返回 vol/amount、不返回 "
+			f"OHLC），属预期；否则请检查上游字段映射或表约束"
+		)
+	return kept
+
+
+#: `index_daily` **不接受**的指数前缀：Tushare 对它们**只返回 vol/amount**，
+#: `close/open/high/low` 恒为 NaN，而本表 `close` 是 NOT NULL → **一行都写不进去**。
+#: 实测（2026-09-21：探针 + 逐码全量同步日志）`395xxx.SZ` 全部如此（18 个）。
+#: 若不前置排除：逐码全量同步每天为它们各拉一次**全历史**（每只 4000+ 行）→ 全部丢弃
+#: → 刷一屏告警（纯浪费 HTTP 与日志）。
+#: ⚠️ 这是**数据源能力**的缺口（不是本系统的配置项）；若 Tushare 日后补齐 OHLC，
+#:    删掉本常量即可 —— `_drop_unstorable_records` 始终是最后一道兜底。
+_INDEX_NO_OHLC_PREFIXES: Tuple[str, ...] = ("395",)
+
+
+def _filter_index_codes_with_ohlc(ts_codes: List[str]) -> List[str]:
+	"""剔除 Tushare 不提供 OHLC 的指数代码（见 `_INDEX_NO_OHLC_PREFIXES`）。"""
+	return [c for c in ts_codes if not str(c).startswith(_INDEX_NO_OHLC_PREFIXES)]
+
+
 # Tushare旧数据(2011年之前)资金流向部分列可能为null，需要填充0
 _ADJ_FACTOR_NULLABLE_FIELDS = ("adj_factor",)
 _MONEYFLOW_NULLABLE_FIELDS = (
@@ -1807,8 +1905,14 @@ class DataSyncService:
 			data: List[Dict],
 			ts_code: str,
 	) -> Tuple[int, int]:
-		"""批量 upsert trade_date 数据。注意：PG ON CONFLICT DO UPDATE 将 INSERT+UPDATE 都计入 rowcount，因此返回值不分 added/updated，第二项固定为 0。"""
+		"""批量 upsert trade_date 数据。注意：PG ON CONFLICT DO UPDATE 将 INSERT+UPDATE 都计入 rowcount，因此返回值不分 added/updated，第二项固定为 0。
+
+		2026-09-21 起：upsert 前丢弃「NOT NULL 列为空」的记录（见
+		`_drop_unstorable_records`），避免一行非法把整批（含合法行）一并回滚。
+		"""
 		_preprocess_records(data, date_fields=['trade_date'])  # 批量转换，替代逐条遍历
+		data = _drop_unstorable_records(
+			data, getattr(repo, 'model', None), all_dropped_level=logging.WARNING)
 		count = await repo.bulk_upsert(data)
 		return count, 0
 
@@ -1837,18 +1941,31 @@ class DataSyncService:
 			fetch_fn: 同步函数 ``(trade_date: str) -> pd.DataFrame``，返回全市场当日数据
 			data_type_label: 日志用数据类型名
 			max_dates: 需要补的交易日上限，超过则退回逐股
+
+		Note:
+			每个交易日**整批** upsert（一行非法即整批回滚），故写入前先经
+			`_drop_unstorable_records` 剔除「NOT NULL 列为空」的记录：
+			把「该日 0 行写入」降级为「少数行丢弃 + WARNING」。
 		"""
 		# 归一化为 date（DateTime 列可能返回 datetime）
-		dated = sorted({
+		# ⚠️ 2026-09-21 修复：**分位必须按代码计，不能按去重后的日期计**。
+		#    原实现先 `set` 去重再按下标取分位 —— 分位点由「不同日期的个数」决定，
+		#    而非「已到该日的代码占比」，与下面注释声明的意图正好相反。
+		#    实测（index_daily，830 个有数据的代码）：去重后只剩 19 个不同日期，
+		#    其中 15 个是 2010–2024 的过期指数 → `int(19*0.9)=17` 取到 2026-07-02，
+		#    于是**每天都重拉 57 个交易日**并重复全量 upsert（09-16 实测 写入=28890）；
+		#    且单行非法即可把 57 天一起打成失败（09-21 实测 写入=0, 失败=57）。
+		_vals = sorted(
 			d.date() if hasattr(d, 'date') else d
 			for d in latest_dates_map.values() if d
-		})
-		if not dated:
+		)
+		if not _vals:
 			return None
-		# 用 90 分位作为"主市场最新"基准：避免个别长期停牌/滞后股票（如 000638.SZ
-		# 停在 04-13）把 min_latest 拉低，导致每天重复拉取 87 个历史交易日并全量 upsert。
-		# 落后于基准的少数股票由调用方的逐股路径补齐（逐股会跳过已最新的股票）。
-		ref_date = dated[min(len(dated) - 1, int(len(dated) * 0.9))]
+		# 用 90 分位作为"主市场最新"基准：避免个别长期停牌/滞后标的（如 000638.SZ
+		# 停在 04-13）把 min_latest 拉低，导致每天重复拉取历史交易日并全量 upsert。
+		# 落后于基准的少数标的由调用方的逐股路径补齐（逐股会跳过已最新的标的）。
+		# 取最近秩（nearest-rank）：下标 = ceil(0.9 × N) − 1。
+		ref_date = _vals[min(len(_vals) - 1, max(0, math.ceil(len(_vals) * 0.9) - 1))]
 		if end_date <= ref_date:
 			return None  # 主市场已是最新，无需同步
 
@@ -1884,6 +2001,9 @@ class DataSyncService:
 						data = _convert_records_datetime(df.to_dict("records"))
 					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, str(d)):
 						_preprocess_records(data, date_fields=["trade_date"])
+						data = _drop_unstorable_records(
+							data, getattr(repo, "model", None), data_type_label,
+						)
 						count = await repo.bulk_upsert(data)
 					total_added += int(count or 0)
 				except Exception as e:
@@ -4349,6 +4469,25 @@ class DataSyncService:
 			all_indices = await self.index_basic_repo.get_all()
 			ts_codes = [idx.ts_code for idx in all_indices] if all_indices else ['000001.SH', '399001.SZ', '000300.SH',
 			                                                                     '000905.SH', '399006.SZ']
+
+		# 步骤 1.5：**前置排除** Tushare 不提供 OHLC 的指数（见 `_INDEX_NO_OHLC_PREFIXES`）。
+		# 它们进不了本表（`close` NOT NULL），却会让逐码路径每次都拉一遍全历史再全部丢弃。
+		# 放在「取列表」之后、「批量取最新日期」之前 —— 避免把注定丢弃的代码带进后续每一步。
+		_tracked = _filter_index_codes_with_ohlc(ts_codes)
+		if len(_tracked) != len(ts_codes):
+			logger.info(
+				f"[指数日线] 跳过 {len(ts_codes) - len(_tracked)} 个无 OHLC 的指数"
+				f"（Tushare 只提供 vol/amount，本表 close 为 NOT NULL 无法入库）："
+				f"前缀 {_INDEX_NO_OHLC_PREFIXES}"
+			)
+		ts_codes = _tracked
+		if not ts_codes:
+			logger.warning("[指数日线] 跟踪集合为空（全部被无 OHLC 过滤）→ 跳过本次同步")
+			return {
+				"records_added": 0, "records_updated": 0, "records_skipped": 0,
+				"records_failed": 0, "total_items": 0,
+				"message": "指数日线：无可同步标的",
+			}
 
 		# 步骤 2：批量预加载所有指数的最新日期（一次 SQL 替代 N 次逐指数查询）
 		latest_dates_map = await self.index_daily_repo.get_latest_trade_dates_batch(ts_codes)

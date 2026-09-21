@@ -282,6 +282,16 @@ class MainEngine(EngineBase):
             from shared.database.session import get_session_manager
             from sqlalchemy import text as _text
 
+            # ⚠️ 2026-09-21 新增（缺口 20）：**除 stock_daily 外，还须校验策略真正依赖的表**。
+            #    反例（2026-09-21 实测）：stock_daily 完好（09-21 有 5553 条），而 `index_daily`
+            #    因同步 100% 失败**冻结在 09-18** —— 旧判据只查 stock_daily，**完全无感** →
+            #    策略照常驱动、regime 用陈旧指数判走弱期（缺口 18），且质量门仍给 100 分。
+            #    本策略（跨市场轮动）的输入是 `index_daily`（regime）+ `etf_daily`（候选打分），
+            #    **stock_daily 反而与它无关** —— 这就是"判据覆盖不到实际依赖"的漏洞。
+            #    判据与 stock_daily 完全一致：最新日 == 最近交易日，且当日行数 ≥ 下限。
+            #    失败即**跳过策略驱动**（保守方向，与既有设计一致），并把原因打进日志。
+            _extra_tables = (("index_daily", 300), ("etf_daily", 1000))
+
             sm = get_session_manager()
             async with sm.get_session() as _ds:
                 # 最近交易日（2026-09-19 新增）：非交易日时 today 不是交易日，须回退
@@ -295,6 +305,16 @@ class MainEngine(EngineBase):
                 _c = await _ds.execute(_text(
                     "SELECT COUNT(*) FROM stock_daily WHERE trade_date=:d"), {"d": _last_td})
                 _n = _c.scalar() or 0
+
+                # 额外关键表：最新日 + 当日行数（2026-09-21 缺口 20）
+                # 表名是**硬编码常量**、非用户输入；下限取实测常态的 ~55%
+                # （实测 index_daily 536 行/日、etf_daily 1667 行/日）。
+                _extras = {}
+                for _tbl, _min_rows in _extra_tables:
+                    _mx = await _ds.execute(_text(f"SELECT MAX(trade_date) FROM {_tbl}"))
+                    _cc = await _ds.execute(_text(
+                        f"SELECT COUNT(*) FROM {_tbl} WHERE trade_date=:d"), {"d": _last_td})
+                    _extras[_tbl] = (_mx.scalar(), _cc.scalar() or 0, _min_rows)
 
             if _last_td is None:
                 # 交易日历缺失 → 回退旧行为（与 today 比对），并告警
@@ -314,6 +334,23 @@ class MainEngine(EngineBase):
             logger.info(
                 f"数据完整性校验通过: stock_daily 最新={_max_d}（最近交易日={_last_td}）, "
                 f"当日 {_n} 条")
+
+            # ---- 额外关键表（2026-09-21 缺口 20）：陈旧即**阻断**策略驱动 ----
+            for _tbl, (_mx, _cnt, _min_rows) in _extras.items():
+                if not _mx or str(_mx) != str(_last_td):
+                    logger.warning(
+                        f"数据完整性校验失败: {_tbl} 最新交易日={_mx}, "
+                        f"最近交易日={_last_td}（today={today}）"
+                        f" → 跳过实盘策略驱动（防止旧数据假信号）")
+                    return False
+                if _cnt < _min_rows:
+                    logger.warning(
+                        f"数据完整性校验失败: {_tbl} 最近交易日 {_last_td} 仅 {_cnt} 条"
+                        f"（下限 {_min_rows}） → 跳过实盘策略驱动（数据不完整）")
+                    return False
+                logger.info(
+                    f"数据完整性校验通过: {_tbl} 最新={_mx}（最近交易日={_last_td}）, "
+                    f"当日 {_cnt} 条")
 
             # ---- 附加校验（模块注入，2026-09-19）—— 仅 critical 级应返回 False ----
             for _gname, _gfn in self._gate_checks:

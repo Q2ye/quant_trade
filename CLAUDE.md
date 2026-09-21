@@ -57,7 +57,7 @@ mypy .                                       # 类型检查（无 mypy.ini，部
 | 文件 | 内容 | 保留 |
 |:---|:---|:---|
 | `quant_server.log` | **全量**（DEBUG 起），排查时的"全量视图" | 天轮转；**满 10 天的 → 按月打成 `archive/system/YYYY-MM.zip`**（永久，非删除） |
-| `strategy_decision.log` | **实盘决策记录，仅此一路**：策略每日运行 / `[策略诊断]` / `[卖出]止损` / `[VETO]` / F9 守卫 / 走弱期 | 天轮转 → **按月合并 gzip**，**永久** |
+| `strategy_decision.log` | **实盘决策记录，仅此一路**：策略每日运行 / `[策略诊断]` / `[卖出]止损` / `[VETO]` / F9 守卫 / 走弱期 | **月轮转**（`strategy_decision.log.YYYY-MM`）→ gzip 归档，**永久** |
 
 > ⚠️ **`main.py` 的 `backup_count` 必须是 `0`**（= 本 handler 不删任何轮转文件）。
 > 若设成非 0，handler 会在超限时**直接删除**最老文件 → **抢在归档之前毁掉它们**。

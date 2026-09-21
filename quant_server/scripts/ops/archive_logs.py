@@ -24,7 +24,8 @@
 
 | 对象 | 动作 | 保留 |
 |:---|:---|:---|
-| `strategy_decision.log.YYYY-MM-DD`（**非当月**） | 按月合并 → `logs/archive/decisions/YYYY-MM.log.gz` | **永久** |
+| `strategy_decision.log.YYYY-MM`（**非当月**，2026-09-21 起月轮转） | 按月合并 → `logs/archive/decisions/YYYY-MM.log.gz` | **永久** |
+| `strategy_decision.log.YYYY-MM-DD`（**非当月**，历史日轮转件） | 同上（迁移当月两种命名并存，顺序为「日文件→月文件」） | **永久** |
 | `quant_server.log.*`（早于 `--system-days`） | **按月归入 `logs/archive/system/YYYY-MM.zip`**（含 handler 漏掉的 `.1` 变体） | 默认 **10 天**（压缩包永久） |
 | `_*.txt` / `*.pkl` / `__pycache__` | 删除 | — |
 | `server.log` / `backfill_*.log` | 移 `logs/archive/legacy/` | — |
@@ -48,8 +49,14 @@ except Exception:
 LOGS = Path(__file__).resolve().parents[2] / "logs"
 ARCHIVE = LOGS / "archive"
 
-#: 决策日志轮转文件：strategy_decision.log.YYYY-MM-DD（允许 .1 变体）
+#: 决策日志轮转文件（**月轮转**，2026-09-21 起）：strategy_decision.log.YYYY-MM
+RE_DECISION_MONTHLY = re.compile(r"^strategy_decision\.log\.(\d{4})-(\d{2})$")
+#: 决策日志轮转文件（**历史日轮转**，2026-09-21 前）：strategy_decision.log.YYYY-MM-DD（允许 .1 变体）
+#: ⚠️ 保留不放：迁移当月磁盘上会同时存在两种命名（如 2026-09 的日文件 + 月文件），
+#:    漏掉任一都会被 `RE_JUNK` 之外的路径漏掉 → 永不归档（且不匹配 RE_SYSTEM）。
 RE_DECISION = re.compile(r"^strategy_decision\.log\.(\d{4})-(\d{2})-(\d{2})(?:\.\d+)?$")
+#: 同月排序时给「月文件」的日键（月份最长 31 天 → 排在所有日文件之后）
+_MONTHLY_SORT_DAY = 32
 #: 系统日志轮转文件：quant_server.log.YYYY-MM-DD（允许 .1 变体）
 RE_SYSTEM = re.compile(r"^quant_server\.log\.(\d{4})-(\d{2})-(\d{2})(?:\.\d+)?$")
 #: 杂项：诊断产物 / 临时件（含 `_*.log` —— 一次性诊断脚本写的日志，非系统日志）
@@ -64,6 +71,22 @@ def _parse(name: str, pat: re.Pattern) -> Tuple[int, int, int] | None:
     if not m:
         return None
     return int(m.group(1)), int(m.group(2)), int(m.group(3))
+
+
+def _decision_key(name: str) -> Tuple[int, int, int] | None:
+    """决策日志轮转件 → (年, 月, 排序日键)；非决策日志返回 None。
+
+    排序日键：历史**日**文件用真实日期；**月**文件用 `_MONTHLY_SORT_DAY`（排在同月最后）。
+    顺序很重要：gzip 是多成员拼接，合并顺序即归档内的阅读顺序；月文件装的是该月后半段
+    内容，必须排在日文件（该月前半段）之后，否则归档里时间倒序。
+    """
+    m = RE_DECISION_MONTHLY.match(name)
+    if m:
+        return int(m.group(1)), int(m.group(2)), _MONTHLY_SORT_DAY
+    m = RE_DECISION.match(name)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    return None
 
 
 def _gz_append(src: Path, dst: Path) -> int:
@@ -119,7 +142,7 @@ def plan() -> Dict[str, List[Path]]:
         if RE_JUNK.match(p.name):
             out["junk"].append(p)
             continue
-        d = _parse(p.name, RE_DECISION)
+        d = _decision_key(p.name)
         if d:
             # 只归档「非当月」——当月的还会继续追加
             if (d[0], d[1]) < (today.year, today.month):
@@ -145,9 +168,11 @@ def run(apply: bool, system_days: int) -> int:
     print(f"\n① 决策日志按月归档（永久保留）：{len(todo['decisions'])} 个")
     by_month: Dict[str, List[Path]] = {}
     for p in todo["decisions"]:
-        d = _parse(p.name, RE_DECISION)
+        d = _decision_key(p.name)
         by_month.setdefault(f"{d[0]:04d}-{d[1]:02d}", []).append(p)
     for month, files in sorted(by_month.items()):
+        # 同月内按「日文件（升序）→ 月文件」排序，保证 gz 成员的时间顺序
+        files.sort(key=lambda p: _decision_key(p.name)[2])
         size = sum(f.stat().st_size for f in files)
         dst = ARCHIVE / "decisions" / f"{month}.log.gz"
         print(f"   {month}: {len(files)} 个 / {size/1e6:.2f} MB → {dst.relative_to(LOGS)}")

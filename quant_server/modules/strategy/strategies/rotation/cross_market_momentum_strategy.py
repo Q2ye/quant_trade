@@ -639,6 +639,31 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                     f" → 走弱期判定必然失效")
         return None
 
+    def _index_cache_is_fresh(self) -> bool:
+        """缓存是否已含**最近交易日**的指数数据。
+
+        ⚠️ 2026-09-21 修复（登记见 `docs/08_实盘策略报告/实盘策略验证报告-2026-09-19.md` §四 缺口 13）：
+        原短路条件**只看行数达标**（`_validate_index_cache`），于是「加载成功」被当成「永久可用」
+        → **整段进程生命周期不再刷新** → `_update_weak_period` 每天对**同一批 10 个交易日**投票，
+        regime 与 `rel_strength` 基准**静默冻结**（零 ERROR、诊断显示"健康"）。
+
+        实测命中（2026-09-21）：进程 20:22 启动，而当日指数 **20:43** 才同步完 → 20:55 驱动用
+        **09-18** 的指数判 regime（`above=3 below=1`；正确口径 `above=4 below=0`）—— 当日结论
+        恰好相同故**未致错**，但机制已确认。**触发条件：进程在该日指数同步完成之前启动。**
+
+        判据用「北京日期」而非交易日历，理由：日终驱动只在**交易日**执行
+        （`ScheduleType.TRADING_DAY`），且数据同步在**同一条流水线内先于**策略驱动
+        → 正常情况下 `max(cached) == 当天`，本判据不触发任何额外查询；
+        只有**数据未到位**（同步滞后/失败）时才多查一次 —— 而那正是应当重试的情形。
+        代价上限：每次驱动多 1 次查询。
+        """
+        if not self._index_cache:
+            return False
+        _latest = max((max(m) for m in self._index_cache.values() if m), default=None)
+        if not _latest:
+            return False
+        return str(_latest)[:10] >= beijing_now().strftime("%Y-%m-%d")
+
     async def _ensure_index_cache(self, db=None) -> bool:
         """确保 regime 指数缓存可用：**失败重试 1 次**，仍失败 → `logger.error` + 降级标记。
 
@@ -658,8 +683,12 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 f"（检查 `strategy_parameters` 是否覆盖成 []）→ **降级运行**"
             )
             return False
-        if self._index_cache_ok and self._validate_index_cache(self._index_cache) is None:
-            return True                      # 已可用（且行数达标）→ 不重复查询
+        # ⚠️ 2026-09-21：短路条件**必须同时要求新鲜**（缺口 13）—— 只看行数会让"加载成功"
+        #    变成"永久可用"，regime 在同一进程内静默冻结在旧数据上。
+        if (self._index_cache_ok
+                and self._validate_index_cache(self._index_cache) is None
+                and self._index_cache_is_fresh()):
+            return True                      # 已可用（行数达标 **且** 含最近交易日）→ 不重复查询
         sf = getattr(self, "_db_session_factory", None)
         if db is None and sf is None:
             # 无 DB 通道（回测 / 冒烟 harness）：**不改变既有行为**，交由调用方注入缓存
@@ -1922,9 +1951,30 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             new_df = pd.DataFrame(rows, columns=cols)
             df = self._data_cache.get(code)
             if df is None or len(df) == 0:
-                self._data_cache[code] = new_df
+                merged = new_df
             else:
-                self._data_cache[code] = pd.concat([df, new_df], ignore_index=True)
+                merged = pd.concat([df, new_df], ignore_index=True)
+            # ⚠️ 2026-09-21 修复：按 `trade_date` **去重**（keep="last"）。
+            #
+            # 为什么会出现重复：框架预热（`strategy_manager._warmup_strategy`）的区间是
+            #   `end_date = today`，**当日行情已入库时预热就含当日**；随后当日日常驱动
+            #   又通过 `on_bar` 推一遍当日 bar → 同一交易日在缓存里出现两次。
+            #   （实测触发：进程 20:22 启动 → 20:43 数据同步完成 → 20:55 当日驱动。）
+            #
+            # 危害（2026-09-21 实测复现）：25 日窗口多一根零收益重复点 → 加权 log 回归的
+            #   R² 被抬高 → `512660.SH` 的 R² 从 **0.356 跳到 0.526**，越过
+            #   `r2_threshold=0.47` → `_select_targets` 选出本不该选的标的（**假信号**）。
+            #   旁证（09-17 同日两次驱动）：预热 267 天（未含当日）→ score=0.93；
+            #   预热 268 天（含当日）+ 再推一次 → score=0.80。
+            #
+            # 为什么去重是安全的：日线里同一天不可能有两根合法 bar；**回测每日只推一次**
+            #   → `duplicated()` 恒 False → 行为逐位不变（不改变既有回测口径）。
+            # 先 `duplicated().any()` 再 `drop_duplicates`：实盘每日 7223 个标的绝大多数
+            #   无重复，避免每天为全部标的付 `drop_duplicates` 的开销。
+            if merged["trade_date"].duplicated().any():
+                merged = merged.drop_duplicates(subset=["trade_date"], keep="last")
+            merged = merged.reset_index(drop=True)
+            self._data_cache[code] = merged
             keep = self.lookback_days + self.mainline_days + 30
             if len(self._data_cache[code]) > keep:
                 self._data_cache[code] = self._data_cache[code].tail(keep).reset_index(drop=True)

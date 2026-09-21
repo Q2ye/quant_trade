@@ -367,14 +367,18 @@ class QuantServer:
 		# 背景：实盘决策过程（走弱期/候选/目标/止损/守卫跳过）**不落库**，日志是唯一记录。
 		# 分流靠 LiveDecisionFilter（实盘驱动期间 + 策略层命名空间），
 		# 否则会被回测日志淹没（实测 09-13 单日策略层 136k 行中 135.5k 是回测）。
+		# ⚠️ 2026-09-21：轮转改为**按月**（`strategy_decision.log.2026-09`），不再每天一个文件。
+		#    决策日志体量极小（实盘驱动一天 10 行上下）→ 天轮转只制造文件碎片；
+		#    且策略按周-月频决策，「一个文件=一个月」与查阅粒度一致。
+		#    保留策略不变：非当月文件由 `scripts/ops/archive_logs.py` 按月 gzip，永久保留。
 		# ⚠️ fail-safe：本块任何异常都不得影响主日志与启动。
 		try:
 			from utils.core_utils.logging_utils.decision_log import LiveDecisionFilter
-			decision_handler = HandlerFactory.create_timed_file_handler(
+			# backup_count=0 → 本 handler 不删任何文件（保留交给 archive_logs）
+			decision_handler = HandlerFactory.create_monthly_file_handler(
 				filename=_os.path.join(_log_dir, 'strategy_decision.log'),
 				level=LogLevel.INFO,
-				when='midnight',
-				backup_count=90
+				backup_count=0
 			)
 			decision_handler.setFormatter(_logging.Formatter(
 				'%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',

@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -979,6 +980,103 @@ class UnifiedLogFormatter(logging.Formatter):
 		return msg
 
 
+class MonthlyRotatingFileHandler(TimedRotatingFileHandler):
+    """按月轮转的日志处理器（标准库无 ``monthly``，故扩展）。
+
+    - 当前文件：``<name>.log``（**当月**持续追加，一个月内不改名）
+    - 轮转文件：``<name>.log.YYYY-MM``（跨月首次写入时产生，**按内容所属月命名**）
+
+    为什么不能"``when='midnight'`` + 只改 suffix 为 ``%Y-%m``"：
+        基类会在**每天**首次写入时轮转，而目标名 ``%Y-%m`` 当月恒定 → 第二天
+        ``doRollover`` 发现该名字已存在 → **直接 return**（CPython 3.11 原文：
+        ``if os.path.exists(dfn): # Already rolled over. return``）→ 本次轮转被跳过，
+        且 ``rolloverAt`` 不再推进 → **此后永不轮转**，单文件无限增长（不丢数据，但
+        按月分档失效）。
+
+    ⚠️ 同一条标准库行为也给本 handler 带来一个**使用约束**：
+        ``<name>.YYYY-MM`` 一旦已存在，该月的轮转会**被跳过**。故
+        **不要手工把内容搬进 ``logs/…YYYY-MM``**（会挡住月末轮转、导致两个月串档）；
+        要提前归档请走 `scripts/ops/archive_logs.py`（gzip 到 ``archive/``，handler 不碰）。
+        （进程重启可自愈：``_initial_rollover_at`` 会按当前文件 mtime 重算轮转点。）
+
+    实现只覆盖三处，其余复用标准库：
+
+    1. ``computeRollover`` → 返回**下月 1 日 00:00**。基类 ``doRollover`` 用
+       ``rolloverAt - interval``（``when='midnight'`` 时 ``interval=86400``）反推
+       命名时刻，恰好落在**上月最后一天** → 文件名天然就是上月的 ``YYYY-MM``，
+       无需复制标准库的改名逻辑。
+    2. ``__init__`` → 改 ``suffix`` / ``extMatch``，并按**当前文件 mtime 所在月**
+       定首个 ``rolloverAt``（见 ``_initial_rollover_at``）。
+    3. ``doRollover`` → 收尾时抹掉基类针对 ``MIDNIGHT`` 的 ±1h 夏令时校正。
+
+    ⚠️ 依赖「``doRollover`` 用 ``rolloverAt - interval`` 反推命名」这一标准库实现
+    细节（CPython 3.11 ``logging/handlers.py``）。`tests/core/test_utils/test_log_rotation.py`
+    把它钉住：若未来 Python 改实现，测试会红，而不是静默串月。
+    """
+
+    def __init__(self, filename, when: str = 'midnight', interval: int = 1,
+                 backupCount: int = 0, encoding: str = 'utf-8',
+                 delay: bool = False, utc: bool = False, **kwargs):
+        # ⚠️ 必须在 super().__init__ **之前**取 mtime：基类 delay=False 时会立刻以
+        #    追加模式打开文件；先取可彻底避免「打开动作是否更新 mtime」的文件系统假设。
+        prior_mtime = os.path.getmtime(filename) if os.path.exists(filename) else None
+
+        super().__init__(filename=filename, when='midnight', interval=1,
+                         backupCount=backupCount, encoding=encoding,
+                         delay=delay, utc=utc, **kwargs)
+
+        self.suffix = "%Y-%m"
+        # `match` 带 `$` 锚定 → 只匹配 `YYYY-MM`；历史日文件（`…log.2026-09-18`）
+        # **不匹配**，故本 handler 的 getFilesToDelete 永远不会碰到它们（那批由
+        # `scripts/ops/archive_logs.py` 负责归档）。
+        self.extMatch = re.compile(r"^\d{4}-\d{2}$")
+        self.rolloverAt = self._initial_rollover_at(prior_mtime)
+
+    # ---------------- 月份边界工具 ----------------
+    @staticmethod
+    def _month_start(ts: float) -> float:
+        """``ts`` 所在月的 1 日 00:00（本地时区）。"""
+        t = time.localtime(ts)
+        return time.mktime((t.tm_year, t.tm_mon, 1, 0, 0, 0, 0, 0, -1))
+
+    @classmethod
+    def _next_month_start(cls, ts: float) -> float:
+        """``ts`` 所在月的**下月** 1 日 00:00（本地时区）。"""
+        t = time.localtime(ts)
+        year, month = t.tm_year, t.tm_mon + 1
+        if month > 12:
+            year, month = year + 1, 1
+        return time.mktime((year, month, 1, 0, 0, 0, 0, 0, -1))
+
+    def computeRollover(self, currentTime: int) -> int:
+        """下月 1 日 00:00（基类 ``shouldRollover``/``doRollover`` 都经由此方法）。"""
+        return int(self._next_month_start(currentTime))
+
+    def _initial_rollover_at(self, prior_mtime: Optional[float]) -> int:
+        """首个轮转点：按**当前文件最后写入所在月**定，而非按当前时间。
+
+        为什么必须看文件（**跨月停机自愈**）：进程若在月末停机、次月初才启动，
+        只按当前时间算会得到"下月 1 日"→ 上月的日志被继续追加进当前文件、
+        **永不改名 → 两个月内容串在一个文件里**。改为「文件属于更早的月 → 轮转点
+        设为该月的下月 1 日（已过期）」→ 首次写入即轮转，并按基类规则**命名成那个月**。
+        """
+        now = time.time()
+        if prior_mtime is not None:
+            try:
+                file_month = self._month_start(prior_mtime)
+            except (OSError, ValueError, OverflowError):
+                file_month = self._month_start(now)
+            if file_month < self._month_start(now):
+                return int(self._next_month_start(file_month))
+        return int(self._next_month_start(now))
+
+    def doRollover(self) -> None:
+        super().doRollover()
+        # 基类对 when='MIDNIGHT' 会做 ±1h 夏令时校正；本 handler 按本地月边界轮转，
+        # 不需要该校正（Asia/Shanghai 无夏令时，此覆盖只是把行为钉死、不依赖时区假设）。
+        self.rolloverAt = self.computeRollover(int(time.time()))
+
+
 class HandlerFactory:
     """处理器工厂类"""
 
@@ -1038,6 +1136,32 @@ class HandlerFactory:
         handler.setLevel(level.to_int())
         handler.setFormatter(logging.Formatter('%(message)s'))
         handler.name = "timed_file"
+        return handler
+
+    @staticmethod
+    def create_monthly_file_handler(filename: str,
+                                    level: LogLevel = LogLevel.INFO,
+                                    backup_count: int = 0) -> logging.Handler:
+        """创建文件处理器（**按月**轮转：``<name>.log`` → ``<name>.log.YYYY-MM``）。
+
+        Args:
+            filename: 当前月文件路径（如 ``logs/strategy_decision.log``）
+            level: 处理器级别
+            backup_count: 保留的**月**文件数。默认为 **0 = 本 handler 不删任何文件**
+                —— 保留策略交给 `scripts/ops/archive_logs.py`（非当月文件按月 gzip 进
+                ``logs/archive/decisions/``，永久保留）。与 ``quant_server.log`` 的既定
+                约定一致：**handler 删文件会抢在归档之前毁掉它们**（见 ``main.py`` 注释）。
+        """
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        handler = MonthlyRotatingFileHandler(
+            filename=filename,
+            backupCount=backup_count,
+            encoding='utf-8'
+        )
+        handler.setLevel(level.to_int())
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        handler.name = "monthly_file"
         return handler
 
     @staticmethod
