@@ -17,6 +17,7 @@ from modules.market.handlers import (
     do_stock_signals, do_stock_factor_scores, do_limit_analysis,
     do_style_factors, do_sector_turnover,
     do_get_watchlist, do_save_watchlist,
+    do_get_chart_annotations, do_save_chart_annotations,
     do_stock_kline_range, do_market_state, do_style_rotation,
     do_dashboard_temperature, do_limit_ladder, do_breadth_leaders,
     do_dashboard_crowding, do_breadth_metrics, do_screener_industries,
@@ -357,6 +358,50 @@ async def save_watchlist_api(
         r = await do_save_watchlist(db_session, current_user.get("id", ""), codes)  # A26: user_id->id
         return {"success": True, "data": r}
     except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+# ---- 图表标注（包 B 图上作业层）----
+# ⚠️ ValueError = 业务校验失败 → 409（非 DB 故障，不打 ERROR，见 audit.md）
+
+
+@router.get("/user/chart-annotations")
+async def get_chart_annotations_api(
+    ts_code: str = Query(..., description="标的代码"),
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """读取某标的的图表标注（含各周期，前端按 period 过滤）"""
+    try:
+        r = await do_get_chart_annotations(
+            db_session, current_user.get("id", ""), ts_code
+        )
+        return {"success": True, "data": r}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error("读取图表标注失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.put("/user/chart-annotations")
+async def save_chart_annotations_api(
+    body: Dict = Body(...),
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """全量覆盖某标的的图表标注（annotations 为空列表 = 清除该标的）"""
+    try:
+        ts_code = body.get("ts_code", "")
+        annotations = body.get("annotations", [])
+        r = await do_save_chart_annotations(
+            db_session, current_user.get("id", ""), ts_code, annotations
+        )
+        return {"success": True, "data": r}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error("保存图表标注失败: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 

@@ -10,8 +10,14 @@ import {
 } from "lightweight-charts";
 import type { TrendLineData } from "@/components/charts/primitives/types";
 
-/** 绘制状态 */
-export type DrawState = "idle" | "drawing" | "preview";
+/** 绘制状态
+ *  - idle    未激活
+ *  - drawing 已激活，等待 mousedown 落起点
+ *  - preview 拖拽中（mousemove 更新终点）
+ *  - done    已落定（mouseup 成功）——**父组件的唯一完成信号**，
+ *            父组件收到后须调用 consumePreview() 消费数据（内部会 deactivate → idle）
+ */
+export type DrawState = "idle" | "drawing" | "preview" | "done";
 
 /** 趋势线绘制事件 */
 export interface TrendLineDrawEvent {
@@ -177,8 +183,10 @@ export function useTrendLineDraw(options: TrendLineDrawOptions = {}) {
         endPrice: price,
       };
 
-      // 保持 preview 数据供父组件消费
-      // 父组件应在收到数据后调用 deactivate()
+      // 标记完成：state='done' 是父组件唯一的"画完了"信号
+      // （preview 态在拖拽过程中同样是 'preview'，无法区分拖拽中与已落定）
+      // 父组件应在收到 'done' 后调用 consumePreview()
+      state.value = "done";
     };
 
     // Escape 键取消
@@ -200,11 +208,21 @@ export function useTrendLineDraw(options: TrendLineDrawOptions = {}) {
     state.value = "idle";
   }
 
-  /** 取消当前绘制 */
+  /** 取消当前绘制（回到 drawing 等待下一次 mousedown）
+   *
+   * ⚠️ 修复：此前只做 `resetInternal()` + `state='drawing'`，而 resetInternal 会
+   *    removeEventListener 掉容器的 mousedown → state 说 drawing 但监听已移除，
+   *    Esc 之后**再也画不出线**（静默失效）。此处 deactivate 后重新 activate 以重新武装。
+   */
   function cancel(): void {
     previewData.value = null;
-    resetInternal();
-    state.value = "drawing"; // 回到 drawing 状态等待下一次 mousedown
+    const chart = _chart;
+    const series = _series;
+    const container = _container;
+    deactivate();
+    if (chart && series && container) {
+      activate(chart, series, container);
+    }
   }
 
   /** 完成当前趋势线并消费预览数据 */

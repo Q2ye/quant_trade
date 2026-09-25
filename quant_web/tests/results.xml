@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="20" failures="0" errors="0" time="0.4898959">
-    <testsuite name="tests/unit/smoke.spec.ts" timestamp="2026-09-17T13:12:02.200Z" hostname="阿秦" tests="1" failures="0" errors="0" skipped="0" time="0.4713019">
-        <testcase classname="tests/unit/smoke.spec.ts" name="Smoke &gt; mounts App without crash" time="0.469741">
+<testsuites name="vitest tests" tests="31" failures="0" errors="0" time="0.4595317">
+    <testsuite name="tests/unit/smoke.spec.ts" timestamp="2026-09-23T14:23:36.422Z" hostname="阿秦" tests="1" failures="0" errors="0" skipped="0" time="0.3977341">
+        <testcase classname="tests/unit/smoke.spec.ts" name="Smoke &gt; mounts App without crash" time="0.396291">
             <system-out>
 🎯 App 组件已挂载
 🎨 首次访问，使用默认深色主题
@@ -63,46 +63,70 @@
             </system-err>
         </testcase>
     </testsuite>
-    <testsuite name="tests/unit/TrendLinePrimitive.spec.ts" timestamp="2026-09-17T13:12:02.202Z" hostname="阿秦" tests="5" failures="0" errors="0" skipped="0" time="0.0077558">
-        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; only stores time and price — no pixel coordinates" time="0.003197">
+    <testsuite name="tests/unit/TrendLinePrimitive.spec.ts" timestamp="2026-09-23T14:23:36.424Z" hostname="阿秦" tests="5" failures="0" errors="0" skipped="0" time="0.0068006">
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; only stores time and price — no pixel coordinates" time="0.0028706">
         </testcase>
-        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; supports extendRight ray mode (stored as flag, not as coordinate)" time="0.0005962">
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; supports extendRight ray mode (stored as flag, not as coordinate)" time="0.000576">
         </testcase>
-        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; updateData modifies stored properties without adding coordinates" time="0.0004697">
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; updateData modifies stored properties without adding coordinates" time="0.000384">
         </testcase>
-        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; cross-holiday gap: time span covers 8 calendar days correctly" time="0.0003828">
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; cross-holiday gap: time span covers 8 calendar days correctly" time="0.0002287">
         </testcase>
-        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; getData returns current data snapshot" time="0.0003758">
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; getData returns current data snapshot" time="0.0001975">
         </testcase>
     </testsuite>
-    <testsuite name="tests/unit/useTimeCoordinate.spec.ts" timestamp="2026-09-17T13:12:02.204Z" hostname="阿秦" tests="14" failures="0" errors="0" skipped="0" time="0.0108382">
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; converts &apos;YYYY-MM-DD&apos; string to epoch seconds" time="0.0031734">
+    <testsuite name="tests/unit/useChartDrawings.spec.ts" timestamp="2026-09-23T14:23:36.426Z" hostname="阿秦" tests="11" failures="0" errors="0" skipped="0" time="0.042534">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · setup 安全性 &gt; mount 时 setup 不抛错（TDZ 回归：_container 必须声明在 immediate watcher 之前）" time="0.0211721">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; returns number time as-is" time="0.0003681">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · setup 安全性 &gt; canEdit=false 时不抛错且不绑定监听" time="0.0032029">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; handles different dates consistently" time="0.0002883">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 工具选择（交互模型 A） &gt; selectTool 选中 / 同工具再点一次取消" time="0.0022917">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; initially needs recalc" time="0.0003532">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 工具选择（交互模型 A） &gt; 切换工具直接替换，而不是叠加" time="0.002732">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; does not need recalc for same range and width" time="0.0005253">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 工具选择（交互模型 A） &gt; selectTool 会清掉选中态" time="0.0014344">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc when width changes" time="0.0003497">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 文本标注 &gt; 无锚点时 commitText 不产生标注（不凭空落点）" time="0.0013462">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc when visible range changes" time="0.0003008">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 文本标注 &gt; cancelText 清空待输入态" time="0.001585">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc after markDirty" time="0.0002736">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 绘图目标 &gt; refreshTarget 从 chartRef.getDrawTarget() 取到目标，并完成 DOM 绑定" time="0.0032595">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc with null range" time="0.0005535">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 绘图目标 &gt; getDrawTarget 返回 null（图表未就绪）→ target 保持 null，不抛错" time="0.0017087">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toCoord / timeToX &gt; returns null when chart is null" time="0.0003871">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 删除与清空 &gt; 无选中时 removeSelected 无副作用" time="0.0009783">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toCoord / timeToX &gt; returns null when series is null for toCoord" time="0.0001434">
+        <testcase classname="tests/unit/useChartDrawings.spec.ts" name="useChartDrawings · 删除与清空 &gt; clearPeriod 在空数据上无副作用" time="0.0010859">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; time point with gaps &gt; timeToEpoch correctly computes gap between pre/post holiday dates" time="0.0001848">
+    </testsuite>
+    <testsuite name="tests/unit/useTimeCoordinate.spec.ts" timestamp="2026-09-23T14:23:36.428Z" hostname="阿秦" tests="14" failures="0" errors="0" skipped="0" time="0.012463">
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; converts &apos;YYYY-MM-DD&apos; string to epoch seconds" time="0.0036734">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; time point with gaps &gt; timeToEpoch correctly handles weekend gap" time="0.0001298">
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; returns number time as-is" time="0.0003336">
         </testcase>
-        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; reset &gt; clears cache and marks dirty" time="0.0001551">
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; handles different dates consistently" time="0.0002818">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; initially needs recalc" time="0.0003542">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; does not need recalc for same range and width" time="0.0005343">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc when width changes" time="0.0003154">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc when visible range changes" time="0.0003215">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc after markDirty" time="0.0003398">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc with null range" time="0.0006789">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toCoord / timeToX &gt; returns null when chart is null" time="0.0005881">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toCoord / timeToX &gt; returns null when series is null for toCoord" time="0.0002159">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; time point with gaps &gt; timeToEpoch correctly computes gap between pre/post holiday dates" time="0.0002297">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; time point with gaps &gt; timeToEpoch correctly handles weekend gap" time="0.0002214">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; reset &gt; clears cache and marks dirty" time="0.0002485">
         </testcase>
     </testsuite>
 </testsuites>

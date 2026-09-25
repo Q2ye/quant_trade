@@ -6,6 +6,7 @@ SignalRepository v2.0 扩展方法（实盘人工确认）
 - get_pending_signals: 列出待确认信号
 - expire_stale_signals: 过期信号标记
 - update_signal_status: 便捷状态更新
+- cancel_signals_if: 批量条件取消（实盘「当日目标池对账」用）
 """
 import logging
 from datetime import date, datetime
@@ -100,3 +101,46 @@ async def update_signal_status_if(
     result = await session.execute(stmt)
     await session.commit()
     return bool(result.rowcount)
+
+
+async def cancel_signals_if(
+    session,
+    signal_ids: Iterable[str],
+    allowed_from: Iterable[str],
+    reason: str = "",
+) -> int:
+    """批量条件取消：仅当当前状态 ∈ allowed_from 时才置为 cancelled。
+
+    与 `update_signal_status_if` 同一竞态语义（旧状态条件写进 WHERE，不「先查后写」），
+    区别只在**一次处理多条**：「当日目标池对账」会同时取消多个标的的过期买入意图，
+    逐条 UPDATE 会退化成 N 次往返（违反批量写入约定）。
+
+    ⚠️ 自动路径**不得**把 `confirmed` / `executed` 放进 allowed_from：
+    人工确认与自动取消并发时，WHERE 的旧状态条件会让 rowcount=0，
+    自动取消自然失败 —— **不会覆盖已成交事实**（人工路径 `_CANCELLABLE_FROM`
+    含 confirmed 是人工判断，两者口径不同，勿混用）。
+
+    ⚠️ 刻意**不写** `reviewed_at`：该列语义是「人工审核时间」，自动对账不是审核；
+    与同类自动路径（`signal_engine._persist_signal` 的 supersede 分支）保持一致。
+    状态变更时点由 `reason` + `strategy_decision.log` 的 `[pending对账]` 行留痕。
+
+    Args:
+        signal_ids: 目标信号 ID 集合（空集合直接返回 0，不发 SQL）
+        allowed_from: 允许流转的旧状态集合
+        reason: 取消原因（写入 signals.reason）
+
+    Returns:
+        实际流转的行数（0 = 无一条处于 allowed_from 中）
+    """
+    ids = [str(i) for i in signal_ids if i]
+    if not ids:
+        return 0
+    from sqlalchemy import update as sql_update
+    stmt = (
+        sql_update(Signal)
+        .where(Signal.id.in_(ids), Signal.signal_status.in_(list(allowed_from)))
+        .values(signal_status="cancelled", reason=reason)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return int(result.rowcount or 0)

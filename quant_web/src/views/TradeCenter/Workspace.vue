@@ -14,6 +14,7 @@ import { useWebSocket } from "@/composables/useWebSocket";
 import type { Account, Order, Position, Basket } from "@/types";
 import request from "@/utils/request";
 import tradeAPI, { SIGNAL_REJECT_REASONS, formatRejectReason } from "@/api/trade";
+import strategyAPI from "@/api/strategy";
 import basketAPI from "@/api/basket";
 
 const router = useRouter();
@@ -218,6 +219,51 @@ const pendingRejectSignalId = ref("");
 const confirmReject = async () => {
   showRejectDialog.value = false;
   await doReviewSignal(pendingRejectSignalId.value, "rejected", selectedRejectReason.value);
+};
+
+// 取消信号（2026-09-22 新增）—— 过期意图收口。
+// 走 POST /quantTrade/signals/{id}/cancel（不是 review）：只有它能带**自定义原因**，
+// review 的 cancelled 分支会写死 reason='deleted'（"已删除"），丢失取消的理由。
+// 典型场景：换标的轮动后旧买单已不在当日目标池（见清单 §四 F10）。
+const CANCEL_REASON_DEFAULT = "superseded: 已不在当日目标池（过期意图）";
+// 后端 `_CANCELLABLE_FROM`（signal_router.py:35）允许取消的**原始**状态。
+// ⚠️ 不含裸 `pending`（候选未转正）→ 那种行不给按钮，否则点了必然 409。
+const CANCELLABLE_STATUSES = [
+  "pending_manual",
+  "pending_confirm",
+  "approved",
+  "confirmed",
+];
+const showCancelDialog = ref(false);
+const cancelReason = ref("");
+const cancelSignalId = ref("");
+
+const openCancel = (row: any) => {
+  cancelSignalId.value = row.signal_id || row.id;
+  cancelReason.value = CANCEL_REASON_DEFAULT;
+  showCancelDialog.value = true;
+};
+
+const confirmCancel = async () => {
+  const sid = cancelSignalId.value;
+  const reason = cancelReason.value.trim() || "人工取消";
+  showCancelDialog.value = false;
+
+  // 乐观更新 + 失败回滚（同 doReviewSignal）
+  const found = signals.value.find((s) => s.signal_id === sid || s.id === sid);
+  const prevStatus = found?.signal_status;
+  if (found) found.signal_status = "cancelled";
+
+  signalReviewing.value.add(sid);
+  try {
+    await strategyAPI.cancelSignal(sid, reason);
+    message.success("已取消");
+  } catch (e: any) {
+    if (found) found.signal_status = prevStatus;
+    message.error(e?.response?.data?.detail || "取消失败");
+  } finally {
+    signalReviewing.value.delete(sid);
+  }
 };
 
 const handleRecordFromSignal = (signal: any) => {
@@ -857,6 +903,11 @@ onMounted(() => loadAllData());
                           size="tiny" type="error" :loading="signalReviewing.has(s.signal_id || s.id)"
                           @click.stop="handleReviewSignal(s.signal_id || s.id, 'rejected')"
                         >拒绝</n-button>
+                        <n-button
+                          v-if="CANCELLABLE_STATUSES.includes(s.signal_status ?? s.status)"
+                          size="tiny" quaternary :loading="signalReviewing.has(s.signal_id || s.id)"
+                          @click.stop="openCancel(s)"
+                        >取消</n-button>
                       </template>
                       <template v-else-if="signalStatus(s) === 'approved'">
                         <n-tag type="success" size="small" :bordered="false">已采纳 ✓</n-tag>
@@ -1134,6 +1185,29 @@ onMounted(() => loadAllData());
           </n-radio>
         </n-space>
       </n-radio-group>
+    </n-modal>
+
+    <!-- 取消信号（过期意图收口；原因会写入 signals.reason，覆盖原信号理由） -->
+    <n-modal
+      v-model:show="showCancelDialog"
+      preset="card"
+      title="取消信号"
+      style="width: 440px"
+    >
+      <n-form label-width="52px" size="small">
+        <n-form-item label="原因">
+          <n-input
+            v-model:value="cancelReason"
+            placeholder="如：superseded: 已不在当日目标池（过期意图）"
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showCancelDialog = false">返回</n-button>
+          <n-button type="warning" @click="confirmCancel">确认取消</n-button>
+        </n-space>
+      </template>
     </n-modal>
   </div>
 </template>

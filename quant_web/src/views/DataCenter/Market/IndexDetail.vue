@@ -142,7 +142,25 @@
               </div>
             </template>
             <div class="chart-body">
+              <ChartDrawingToolbar
+                :active="activeTool"
+                :count="annotationCount"
+                :has-selection="!!selectedId"
+                :loading="annotationLoading"
+                :disabled="!canEdit"
+                :saving="annotationSaving"
+                :save-error="annotationSaveError"
+                :load-error="annotationLoadError"
+                :text-pending="!!pendingText"
+                @select="selectTool"
+                @delete="removeSelected"
+                @clear="clearPeriod"
+                @text-submit="commitText"
+                @text-cancel="cancelText"
+                @retry-load="loadAnnotations"
+              />
               <LightweightKLine
+                ref="klineRef"
                 :key="`${code}-${selectedPeriod}`"
                 :data="klineData"
                 :ma-lines="[5, 10, 20]"
@@ -150,6 +168,7 @@
                 :height="420"
                 :loading="loading"
                 :error="error"
+                :drawings="drawings"
                 @retry="loadData"
               />
             </div>
@@ -346,6 +365,11 @@ import { PieChart } from "echarts/charts";
 import { TooltipComponent, LegendComponent } from "echarts/components";
 use([CanvasRenderer, PieChart, TooltipComponent, LegendComponent]);
 import { tokens } from "@/styles/design-tokens";
+import ChartDrawingToolbar from "@/components/market/ChartDrawingToolbar.vue";
+import {
+  useChartDrawings,
+  type ChartPeriod,
+} from "@/composables/useChartDrawings";
 import marketApi from "@/api/market";
 
 // 6 core indices for quick switching
@@ -378,6 +402,38 @@ const periods = [
   { label: "周K", value: "weekly" },
   { label: "月K", value: "monthly" },
 ];
+
+// ---- 图上作业（包 B）----
+const klineRef = ref<any>(null);
+// 始终可编辑：复盘标注发生在盘后 / 周末，锁只读会把工具锁在唯一用得上的时候
+const canEdit = ref(true);
+const chartPeriod = computed<ChartPeriod>(
+  () => (selectedPeriod.value as ChartPeriod) || "daily",
+);
+
+const {
+  drawings,
+  count: annotationCount,
+  loading: annotationLoading,
+  loadError: annotationLoadError,
+  saveError: annotationSaveError,
+  saving: annotationSaving,
+  activeTool,
+  selectedId,
+  pendingText,
+  load: loadAnnotations,
+  refreshTarget,
+  selectTool,
+  removeSelected,
+  clearPeriod,
+  commitText,
+  cancelText,
+} = useChartDrawings({
+  chartRef: klineRef,
+  period: chartPeriod,
+  symbol: code,
+  canEdit,
+});
 
 // ---- 指数详情数据（扩展接口，包含行情字段） ----
 interface IndexDetailData {
@@ -806,7 +862,10 @@ watch(code, () => {
 });
 
 onMounted(() => {
-  loadData();
+  void loadData();
+  // 图上作业：取绘图目标 + 拉取该指数已存标注
+  void refreshTarget();
+  void loadAnnotations();
 });
 </script>
 

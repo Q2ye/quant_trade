@@ -342,6 +342,21 @@ export default {
       .then((d: any) => d.data)
       .catch(() => false);
   },
+  // ---- 图表标注（包 B 图上作业层）----
+  // ⚠️ 与相邻 watchlist 方法不同：此处**不吞异常**，必须让调用方感知失败
+  //    （工具条需按四态纪律给出"保存失败"与"读取失败"提示）。
+  async getChartAnnotations(tsCode: string): Promise<any[]> {
+    const d: any = await request
+      .get("/quantTrade/market/user/chart-annotations", { params: { ts_code: tsCode } })
+      .then(handleResponse);
+    return d?.data?.annotations || [];
+  },
+  async saveChartAnnotations(tsCode: string, annotations: any[]): Promise<number> {
+    const d: any = await request
+      .put("/quantTrade/market/user/chart-annotations", { ts_code: tsCode, annotations })
+      .then(handleResponse);
+    return d?.data?.count ?? 0;
+  },
   async getLimitAnalysis(params?: {
     trade_date?: string;
     exchange?: string;

@@ -62,6 +62,7 @@ function doBatchCompare() {
 }
 
 const filters = reactive({
+  search: "",
   market: [] as string[],
   industry: [] as string[],
   pe_min: null as number | null,
@@ -237,6 +238,7 @@ function onFilterChange() {
 }
 
 function reset() {
+  filters.search = "";
   filters.market = [];
   filters.industry = [];
   filters.pe_min = null;
@@ -392,6 +394,14 @@ onMounted(async () => {
             v-model:value="filters.sort_by"
             :options="sortOpts"
             @update:value="onFilterChange"
+        /></n-grid-item>
+        <n-grid-item
+          ><n-input
+            v-model:value="filters.search"
+            placeholder="代码或名称"
+            clearable
+            @update:value="onFilterChange"
+            @keyup.enter="search(1)"
         /></n-grid-item>
         <n-grid-item
           ><n-button @click="reset" size="small" quaternary>重置</n-button

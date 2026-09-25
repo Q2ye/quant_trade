@@ -1765,6 +1765,19 @@ class StrategyManager(EngineBase):
             )
             all_signals.extend(signals)
 
+            # pending 意图对账（2026-09-22）：把「已不在当日目标池」的旧 pending 买单置 cancelled。
+            # ⚠️ 目标集合由**策略自己**给出（单一真相源），框架不重算 —— 当日驱动会按标的跳过
+            #    bar（见上方 filtered_bars），被跳过的标的今天不出现在信号里但它可能仍是合法目标，
+            #    用「今日信号批次」反推会误杀。
+            # ⚠️ 返回 None = 当日未重算目标（早退 / 异常 / 未运行）→ 一行都不改（fail-open）。
+            # ⚠️ 用的 pending_map 是**运行前**的快照（信号时点 < 今天），故不会碰到本次刚发的信号。
+            if strategy_obj and hasattr(strategy_obj, "get_target_pool"):
+                _targets = strategy_obj.get_target_pool(str(trade_date))
+                if _targets is not None:
+                    await self._cancel_stale_pending_buys(
+                        strategy_id, pending_map, _targets
+                    )
+
             # 更新最后运行日期
             state.last_run_date = trade_date
 
@@ -2389,33 +2402,105 @@ class StrategyManager(EngineBase):
             sm = get_session_manager()
             async with sm.get_session() as session:
                 result = await session.execute(text("""
-                    SELECT ts_code, direction, price, price_limit_low::float,
+                    SELECT id, ts_code, direction, price, price_limit_low::float,
                            price_limit_high::float, signal_time::text
                     FROM signals
                     WHERE strategy_id = :sid
                       AND signal_status = 'pending_manual'
                       AND signal_time >= :since
-                      AND signal_time <= :until
+                      AND signal_time < :until
                 """), {
                     "sid": str(strategy_id),
                     "since": since,
-                    "until": yesterday,  # 严格昨天及之前，不含今天
+                    # ⚠️ 上界取「今天 00:00」的**开区间**（2026-09-22 修正）：
+                    #    PG 把 date 当当天 00:00，故原来的 `<= 昨天` 实际只覆盖到前天 ——
+                    #    昨天 19:33 生成的信号根本不在结果里，与 docstring「trade_date 前」
+                    #    不符，也让「昨日买入信号仍 pending，跳过今日信号」这句日志名不副实。
+                    #    改为 `< 今天` 后命中 [T-10, T)：**含整个昨天、不含今天**。
+                    "until": trade_date,
                 })
 
                 pending = {}
                 for row in result.fetchall():
-                    pending[row[0]] = {
-                        "ts_code": row[0],
-                        "direction": row[1],
-                        "price": row[2],
-                        "price_limit_low": row[3],
-                        "price_limit_high": row[4],
-                        "signal_time": row[5],
+                    pending[row[1]] = {
+                        "id": row[0],
+                        "ts_code": row[1],
+                        "direction": row[2],
+                        "price": row[3],
+                        "price_limit_low": row[4],
+                        "price_limit_high": row[5],
+                        "signal_time": row[6],
                     }
                 return pending
         except Exception as e:
             logger.warning("策略 %s 昨日信号检查失败（跳过）: %s", strategy_id, e)
             return {}
+
+    @staticmethod
+    def _stale_pending_buys(
+        pending_map: Dict[str, Dict], targets: set
+    ) -> List[Dict]:
+        """挑出「已不在当日目标池」的旧 pending 买单（纯函数，便于单测）。
+
+        ⚠️ 只处理**买入**方向（`long`/`buy`，与 `_run_live_strategies` 的 bar 跳过过滤器同口径）：
+        卖出信号的重发由策略 `exit_retry_days` 负责，框架不得据目标池取消卖单。
+        """
+        stale = []
+        for code, sig in (pending_map or {}).items():
+            if str(sig.get("direction", "")).lower() not in ("long", "buy"):
+                continue
+            if code in targets:
+                continue
+            stale.append(sig)
+        return stale
+
+    async def _cancel_stale_pending_buys(
+        self, strategy_id: str, pending_map: Dict[str, Dict], targets: set
+    ) -> List[str]:
+        """把该策略**不在当日目标池**的旧 pending 买单置为 cancelled。
+
+        背景（2026-09-22 实盘）：`signal_engine._persist_signal` 的去重守卫按
+        `(strategy, ts_code, 方向)` 匹配，**换标的轮动时打不中** —— 09-21 的 `511010.SH`
+        （无候选→防御兜底）与 09-22 的 `512660.SH` 并存，人工下单时两个买入意图同时挂着。
+
+        ⚠️ `allowed_from` 只给 `pending_manual`（比人工取消路径的 `_CANCELLABLE_FROM` 更窄）：
+        人工确认与自动取消并发时由 WHERE 条件挡住 → rowcount=0 → **绝不覆盖已成交事实**。
+
+        Returns:
+            实际取消的 ts_code 列表（供日志/诊断）
+        """
+        stale = self._stale_pending_buys(pending_map, targets)
+        ids = [s.get("id") for s in stale if s.get("id")]
+        if not ids or not self.session_factory:
+            return []
+        codes = [s["ts_code"] for s in stale if s.get("id")]
+        try:
+            from shared.database.repositories.strategy.signal.signal_repo_v2 import (
+                cancel_signals_if,
+            )
+
+            async with self.session_factory() as session:
+                n = await cancel_signals_if(
+                    session,
+                    ids,
+                    allowed_from=("pending_manual",),
+                    reason="superseded: 已不在当日目标池",
+                )
+        except Exception as e:
+            logger.warning("策略 %s pending 意图对账失败（保留原状）: %s", strategy_id, e)
+            return []
+
+        logger.info(
+            "[pending对账] 策略 %s 已取消 %d 条过期买入信号（当日目标池 %s）: %s",
+            str(strategy_id)[:8], n, sorted(targets), codes,
+        )
+        if n != len(codes):
+            logger.warning(
+                "[pending对账] 预期取消 %d 条、实际流转 %d 条 —— "
+                "差额已被人工作废/确认，保持原状（不覆盖成交事实）: %s",
+                len(codes), n, codes,
+            )
+        return codes
 
     async def _warmup_strategy_data(
         self, strategy_id: str, ts_codes: List[str] = None, lookback: int = 200,

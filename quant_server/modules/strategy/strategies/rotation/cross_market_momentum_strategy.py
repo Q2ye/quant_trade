@@ -524,6 +524,10 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # {code: 上次发出退出信号时的 _rebalance_seq}，用于超期重发（F3 修复）
         self._exit_pending: Dict[str, int] = {}
         self._rebalance_seq: int = 0   # 调仓序号（每调用一次 _run_rebalance 自增）
+        # 当日已算定的目标集合（供 strategy_manager 对账旧 pending 买单，见 get_target_pool）。
+        # ⚠️ 与 `_last_target_date` 必须**成对**判读：日期 == 当日才代表「今天确实重算过目标」。
+        self._last_target_codes: set = set()
+        self._last_target_date: str = ""
         self._pending_rows: Dict[str, list] = {}  # on_bar 累积待 flush
         self._is_weak: bool = False
         self._eff: Optional[float] = None       # 最近一次算出的动量失效指标
@@ -566,6 +570,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._enter_streak = 0
         self._exit_streak = 0
         self._last_trade_date = ""
+        self._last_target_codes = set()
+        self._last_target_date = ""
         self._bar_dates.clear()
         self._held_days.clear()
         # 复用同一对象再启动时，不得带着上一次的陈旧降级标记（2026-09-19 复审建议 2）
@@ -744,6 +750,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._exit_pending.clear()
         self._pending_rows.clear()
         self._held_days.clear()
+        self._last_target_codes = set()
+        self._last_target_date = ""
 
     # =========================================================================
     # 数据流
@@ -850,6 +858,12 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             targets = self._defensive_target()
 
         target_codes = [m["etf"] for m in targets]
+        # 记录当日已算定的目标集合，供 strategy_manager 对账旧 pending 买单（get_target_pool）。
+        # ⚠️ 必须记在**所有兜底分支之后**：防御标的切换、降级姿态 A 都已并入 targets，
+        #    此处是 `_run_rebalance` 唯一的目标出口 → 后面任何早退都不影响其有效性；
+        #    而此前的早退（数据缺失 / 最小持有期）**不会**记入 → get_target_pool 返回 None。
+        self._last_target_codes = set(target_codes)
+        self._last_target_date = td
 
         # 5. 卖出：持仓不在目标池（order_mode=open，次日开盘成交，broker 会提前释放现金）
         #    F4 修复：已登记退出的标的（含刚触发的硬止损）即便今日仍在目标池也不保留，
@@ -1996,6 +2010,25 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             "normal_holdings_num": self.normal_holdings_num,
             "stop_loss_pct": self.stop_loss_pct,
         }
+
+    def get_target_pool(self, trade_date: Optional[str] = None) -> Optional[set]:
+        """当日目标集合 —— 供 `strategy_manager` 对账「已不在目标池的旧 pending 买单」。
+
+        ⚠️ **只认「当天确实算过目标」**：`_last_target_date != 当日` 一律返回 None ——
+        早退（数据缺失守卫 / 最小持有期守卫）、异常、当日未运行都会落到这一支，
+        框架据此**一行都不改**。（否则会拿昨天的目标去取消今天的有效意图。）
+
+        ⚠️ **卖出意图不在本契约内**：卖出信号的重发由 `exit_retry_days`（`_should_retry_exit`）
+        负责，框架不得据目标池取消卖单 —— V3 的「3 个调仓日重发」观察点依赖卖单持续 pending。
+        """
+        try:
+            td = str(trade_date)[:10] if trade_date else self._last_trade_date
+            if not td or td != self._last_target_date:
+                return None
+            return set(self._last_target_codes)
+        except Exception as e:
+            logger.warning(f"[{self.name}] get_target_pool 失败（按不适用处理，不取消任何信号）: {e}")
+            return None
 
     def get_daily_diagnostic(self) -> Optional[Dict[str, Any]]:
         try:

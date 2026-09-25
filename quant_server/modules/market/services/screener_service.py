@@ -71,6 +71,11 @@ async def screener(
             f" OR b.industry IN ({in_clause})"
         )
 
+    # 代码/名称搜索（对齐 ETF 分支 _screener_etf 的写法与语义：两列 ILIKE，空串不发条件）
+    if search:
+        where.append("(b.ts_code ILIKE :kw OR b.name ILIKE :kw)")
+        params["kw"] = f"%{search}%"
+
     # 数值筛选（未知值一律排除：IS NOT NULL，修复 COALESCE(-1/9999) 放行空值）
     if pe_min is not None:
         where.append("d.pe IS NOT NULL AND d.pe >= :pe_min"); params["pe_min"] = pe_min

@@ -465,6 +465,23 @@ class BaseStrategy(ABC):
 		"""
 		return None
 
+	def get_target_pool(self, trade_date: Optional[str] = None) -> Optional[set]:
+		"""返回**当日已算定的目标标的集合**；返回 None = 本策略不参与 pending 意图对账。
+
+		用途（2026-09-22）：strategy_manager 在当日驱动结束后调用，把该策略
+		**不在当日目标集合**里的旧 pending 买单置为 cancelled —— 换标的轮动时，
+		`signal_engine._persist_signal` 的「同 (strategy, ts_code, 方向) 覆盖」守卫
+		打不中跨标的的旧意图（如 09-21 的 511010.SH 挂在 09-22 的 512660.SH 旁边）。
+
+		⚠️ **契约（必须遵守，否则会误杀有效意图）**：
+		  ① 只在**当日确实重算过目标**时才返回集合；早退（数据缺失守卫、
+		     最小持有期守卫）、异常、当日未运行 → **必须返回 None**，框架一行都不动；
+		  ② 卖出意图**不在本契约范围内** —— 卖出重发由策略自身 `exit_retry_days`
+		     负责，框架不得据目标池取消卖单；
+		  ③ 默认实现返回 None（fail-open），未实现本钩子的策略行为逐位不变。
+		"""
+		return None
+
 
 class TechnicalStrategy(BaseStrategy):
 	"""

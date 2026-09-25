@@ -22,6 +22,11 @@ import marketAPI from "@/api/market";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
 import LightweightKLine from "@/components/charts/LightweightKLine.vue";
+import ChartDrawingToolbar from "@/components/market/ChartDrawingToolbar.vue";
+import {
+  useChartDrawings,
+  type ChartPeriod,
+} from "@/composables/useChartDrawings";
 import { tokens } from "@/styles/design-tokens";
 import {
   createChart,
@@ -53,6 +58,39 @@ const pageSize = ref(10);
 
 // K-line data
 const klineData = ref<any[]>([]);
+
+// ---- 图上作业（包 B）----
+const klineRef = ref<any>(null);
+// 始终可编辑：复盘标注发生在盘后 / 周末
+const canEdit = ref(true);
+// 标注按标的分仓：折叠时不加载（symbol 为空 → 空态）
+const chartSymbol = computed(() => expandedCode.value ?? "");
+// ETF 展开区固定日 K（本页无周期切换）
+const chartPeriod = computed<ChartPeriod>(() => "daily");
+
+const {
+  drawings,
+  count: annotationCount,
+  loading: annotationLoading,
+  loadError: annotationLoadError,
+  saveError: annotationSaveError,
+  saving: annotationSaving,
+  activeTool,
+  selectedId,
+  pendingText,
+  load: loadAnnotations,
+  refreshTarget,
+  selectTool,
+  removeSelected,
+  clearPeriod,
+  commitText,
+  cancelText,
+} = useChartDrawings({
+  chartRef: klineRef,
+  period: chartPeriod,
+  symbol: chartSymbol,
+  canEdit,
+});
 const klineLoading = ref(false);
 
 const typeOptions = [
@@ -247,7 +285,11 @@ function goBack() {
   if (window.history.length > 1) router.back();
   else router.push("/market/dashboard");
 }
-onMounted(() => load());
+onMounted(() => {
+  void load();
+  // 图上作业：展开行后容器才创建，refreshTarget 自带重试；标注随 expandedCode 变化加载
+  void refreshTarget();
+});
 </script>
 
 <template>
@@ -328,14 +370,33 @@ onMounted(() => load());
             <!-- K-line chart -->
             <div style="margin-bottom: 16px">
               <div style="font-size: 12px; color: var(--n-text-color-3); margin-bottom: 4px">{{ expandedCode }} 日K线图</div>
+              <ChartDrawingToolbar
+                :active="activeTool"
+                :count="annotationCount"
+                :has-selection="!!selectedId"
+                :loading="annotationLoading"
+                :disabled="!canEdit"
+                :saving="annotationSaving"
+                :save-error="annotationSaveError"
+                :load-error="annotationLoadError"
+                :text-pending="!!pendingText"
+                @select="selectTool"
+                @delete="removeSelected"
+                @clear="clearPeriod"
+                @text-submit="commitText"
+                @text-cancel="cancelText"
+                @retry-load="loadAnnotations"
+              />
               <LightweightKLine
                 v-if="klineData.length"
+                ref="klineRef"
                 :data="klineData"
                 :ma-lines="[5, 10, 20]"
                 :show-volume="true"
                 :height="320"
                 :loading="klineLoading"
                 :error="false"
+                :drawings="drawings"
               />
               <n-empty v-else-if="!klineLoading" description="暂无K线数据" style="padding: 20px" />
               <n-skeleton v-else :text="true" :repeat="3" />

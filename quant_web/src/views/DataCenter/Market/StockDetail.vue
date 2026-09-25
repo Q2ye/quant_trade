@@ -34,6 +34,8 @@ import LightweightLineChart, {
 } from "@/components/charts/LightweightLineChart.vue";
 import StockSignalPanel from "@/components/market/StockSignalPanel.vue";
 import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
+import ChartDrawingToolbar from "@/components/market/ChartDrawingToolbar.vue";
+import { useChartDrawings } from "@/composables/useChartDrawings";
 
 const route = useRoute();
 const router = useRouter();
@@ -49,6 +51,38 @@ const basketStock = ref<{ symbol: string; name: string }>({ symbol: "", name: ""
 const activeTab = ref("overview");
 const kPeriod = ref<"daily" | "weekly" | "monthly">("daily");
 const signalMarkers = ref<SignalMarker[]>([]);
+
+// ---- 图上作业（包 B）----
+const klineRef = ref<any>(null);
+// ⚠️ 偏离《包B-图上作业-开发路径说明》§六一处（已上报）：
+//    原写「非交易时段 → 只读」，实施改为**始终可编辑** —— 复盘标注恰恰发生在
+//    非交易时段（盘后 / 周末），锁只读会把工具锁在唯一用得上的时候。
+//    canEdit 保留为可插拔策略入口（未来接权限 / 只读开关）。
+const canEdit = ref(true);
+
+const {
+  drawings,
+  count: annotationCount,
+  loading: annotationLoading,
+  loadError: annotationLoadError,
+  saveError: annotationSaveError,
+  saving: annotationSaving,
+  activeTool,
+  selectedId,
+  pendingText,
+  load: loadAnnotations,
+  refreshTarget: refreshDrawTarget,
+  selectTool,
+  removeSelected,
+  clearPeriod,
+  commitText,
+  cancelText,
+} = useChartDrawings({
+  chartRef: klineRef,
+  period: kPeriod,
+  symbol: tsCode,
+  canEdit,
+});
 
 // ---- K线动态加载缓存 ----
 const klineCache = reactive<Record<string, KLineItem[]>>({
@@ -400,7 +434,12 @@ async function load() {
 }
 
 watch(tsCode, load);
-onMounted(load);
+onMounted(() => {
+  void load();
+  // 图上作业：首次取绘图目标 + 拉取该标的已存标注
+  void refreshDrawTarget();
+  void loadAnnotations();
+});
 </script>
 
 <template>
@@ -619,7 +658,25 @@ onMounted(load);
                   >
                 </n-button-group>
               </template>
+              <ChartDrawingToolbar
+                :active="activeTool"
+                :count="annotationCount"
+                :has-selection="!!selectedId"
+                :loading="annotationLoading"
+                :disabled="!canEdit"
+                :saving="annotationSaving"
+                :save-error="annotationSaveError"
+                :load-error="annotationLoadError"
+                :text-pending="!!pendingText"
+                @select="selectTool"
+                @delete="removeSelected"
+                @clear="clearPeriod"
+                @text-submit="commitText"
+                @text-cancel="cancelText"
+                @retry-load="loadAnnotations"
+              />
               <LightweightKLine
+                ref="klineRef"
                 :key="kPeriod"
                 :data="klineData"
                 :ma-lines="[5, 10, 20]"
@@ -628,6 +685,7 @@ onMounted(load);
                 :loading="loading"
                 :error="error"
                 :signal-markers="signalMarkers"
+                :drawings="drawings"
                 @retry="load"
                 @timeRangeChange="(r: any) => onTimeRangeChange(r, kPeriod)"
               />

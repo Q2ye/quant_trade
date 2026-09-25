@@ -4632,7 +4632,12 @@ class DataSyncService:
 								records_failed += 1
 
 			await self.session.commit()
-			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			# 2026-09-22：原为 `"records_updated": 0` 硬编码，掩盖了变量值。
+			# 注：走 bulk_upsert 路径时该变量恒为 0（该方法只返回「写入行数」，
+			#     不区分新增/更新），故本改动对当前实跑路径是 **no-op**；
+			#     仅在回退到逐条 create/update 分支时才真实反映更新数。
+			return {"records_added": records_added, "records_updated": records_updated,
+			        "records_failed": records_failed,
 			        "total_items": records_added + records_failed, "message": "停复牌信息同步完成"}
 		except Exception as e:
 			logger.error(f"停复牌信息同步失败: {_fmt_err(e, 150)}")

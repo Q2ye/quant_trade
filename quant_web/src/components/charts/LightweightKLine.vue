@@ -508,6 +508,16 @@ defineExpose({
   getChart() {
     return chart;
   },
+  /**
+   * 绘图目标（包 B 图上作业层）：供 useChartDrawings 武装绘图状态机。
+   * 返回 { chart, series, container }；三者任一缺失（未初始化/已销毁）→ null。
+   * ⚠️ 调用方在周期切换（本组件带 :key 会重建）后必须重新获取。
+   */
+  getDrawTarget() {
+    const container = chartContainer.value;
+    if (!chart || !candleSeries || !container) return null;
+    return { chart, series: candleSeries, container };
+  },
 });
 </script>
 
