@@ -62,6 +62,7 @@ async def get_industry_detail(session: AsyncSession, industry_code: str) -> Opti
         LEFT JOIN stock_daily q ON q.ts_code = m.ts_code
             AND q.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
         WHERE (m.l1_code = :code OR m.l2_code = :code OR m.l3_code = :code)
+          AND m.out_date IS NULL
         ORDER BY q.pct_chg DESC NULLS LAST
         LIMIT 100
     """, {"code": industry_code})

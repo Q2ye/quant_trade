@@ -5654,10 +5654,19 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步申万行业成分（index_sw_member 表，全量拉取）。
+		"""同步申万行业成分（index_sw_member 表，全量拉取 + 分页）。
 
-		调用 Tushare index_member_all 接口，拉取最新申万行业成分。
-		is_new='Y' 获取最新成分，全量 upsert。
+		⚠️ **2026-09-25 修复两处叠加缺陷**（此前该表数据不可用于回测建池）：
+
+		① **只取当前成分** —— 原实现 `is_new='Y'`，而 `is_new='N'`（已剔除成分）
+		   是**互补**关系而非替代：Y 的 `out_date` 恒为空、N 的 `out_date` 全部非空。
+		   只拉 Y → 无任何历史成分 → 按它建历史池 = **用今天的成分股回测过去**（幸存者 + 前视偏差）。
+		   现同时拉 Y 与 N。
+
+		② **静默截断** —— 原实现未传 `limit`，而该接口**服务端默认只返回 3000 行**，
+		   当前全量已 > 3000（实测 2026-09-25：不传 limit = **3000 行** /
+		   `limit=6000` = **5914 行** = 全量）。即表里只写进了约 51% 的当前成分。
+		   现改为 offset 分页，直到某页不足一页为止。
 
 		Args:
 			start_date: 未使用
@@ -5671,12 +5680,41 @@ class DataSyncService:
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_failed = 0
+		_page_size = 1000
+		_max_pages = 50   # 硬上限（5 万行），防服务端异常时死循环
 		try:
-			df = await self._cancellable_run_in_executor(
-				source.get_index_member_all, is_new='Y')
-			if df is None or df.empty:
+			frames: List[pd.DataFrame] = []
+			for is_new in ('Y', 'N'):
+				offset = 0
+				for _ in range(_max_pages):
+					df_page = await self._cancellable_run_in_executor(
+						source.get_index_member_all,
+						is_new=is_new, limit=_page_size, offset=offset)
+					if df_page is None or df_page.empty:
+						break
+					frames.append(df_page)
+					offset += _page_size
+					if len(df_page) < _page_size:
+						break   # 最后一页（不足一页）
+			if not frames:
 				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
 				        "total_items": 0, "message": "申万行业成分同步完成（无数据）"}
+
+			df = pd.concat(frames, ignore_index=True)
+			pulled = len(df)
+
+			# 去重：唯一键 (l3_code, ts_code, in_date)；Y 优先（代表"仍在该行业"的最新状态）
+			if 'is_new' in df.columns:
+				df = (df.assign(_y_pri=(df['is_new'] == 'Y').astype(int))
+				        .sort_values('_y_pri', ascending=False)
+				        .drop_duplicates(subset=['l3_code', 'ts_code', 'in_date'], keep='first')
+				        .drop(columns='_y_pri'))
+			n_cur = int((df['is_new'] == 'Y').sum()) if 'is_new' in df.columns else 0
+			n_hist = int((df['is_new'] == 'N').sum()) if 'is_new' in df.columns else 0
+			logger.info(
+				f"[sw_member] 分页拉取完成：共 {pulled} 行 → 去重后 {len(df)} 行 "
+				f"(当前成分 {n_cur} / 已剔除 {n_hist})")
+
 			data = _convert_records_datetime(df.to_dict('records'))
 			_preprocess_records(data, date_fields=('in_date', 'out_date'))
 			if hasattr(self.sw_member_repo, "bulk_upsert"):
@@ -5696,7 +5734,8 @@ class DataSyncService:
 							records_failed += 1
 			await self.session.commit()
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
-			        "total_items": records_added + records_failed, "message": "申万行业成分同步完成"}
+			        "total_items": records_added + records_failed,
+			        "message": f"申万行业成分同步完成（当前 {n_cur} / 已剔除 {n_hist}）"}
 		except Exception as e:
 			logger.error(f"申万行业成分同步失败: {_fmt_err(e, 150)}")
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,

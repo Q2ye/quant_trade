@@ -65,9 +65,10 @@ async def screener(
             params[f"ind_{i}"] = ind
         where.append(
             f"b.ts_code IN (SELECT DISTINCT m.ts_code FROM index_sw_member m "
-            f"WHERE m.l1_code IN (SELECT index_code FROM index_sw_classify WHERE industry_name IN ({in_clause}))"
+            f"WHERE (m.l1_code IN (SELECT index_code FROM index_sw_classify WHERE industry_name IN ({in_clause}))"
             f" OR m.l2_code IN (SELECT index_code FROM index_sw_classify WHERE industry_name IN ({in_clause}))"
             f" OR m.l3_code IN (SELECT index_code FROM index_sw_classify WHERE industry_name IN ({in_clause})))"
+            f" AND m.out_date IS NULL) "
             f" OR b.industry IN ({in_clause})"
         )
 

@@ -9,7 +9,7 @@ import logging
 import time
 import os
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import pandas as pd
 import tushare as ts
@@ -1221,16 +1221,31 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取申万行业分类失败: {e}")
 			return pd.DataFrame()
 
-	def get_index_member_all(self, is_new: str = 'Y') -> pd.DataFrame:
+	def get_index_member_all(self, is_new: str = 'Y',
+	                         limit: Optional[int] = None,
+	                         offset: Optional[int] = None) -> pd.DataFrame:
 		"""获取申万行业成分（Tushare index_member_all 接口）
 
 		Args:
 			is_new: 是否最新 Y/N
+				- 'Y' = 当前成分（out_date 恒为空）
+				- 'N' = 已剔除成分（out_date 非空）
+				⚠️ 两者是**互补**关系，完整成分快照须同时拉取
+			limit: 单次返回行数上限。
+				⚠️ **不传时服务端默认只返回 3000 行** —— 该接口当前全量 > 3000，
+				不显式传参会**静默截断**（2026-09-25 实测：不传=3000 / limit=6000=5914 全量）。
+				调用方必须分页，不能依赖默认值。
+			offset: 分页偏移量
 		Returns:
 			DataFrame
 		"""
 		try:
-			df = self.pro.index_member_all(is_new=is_new)
+			kwargs = {'is_new': is_new}
+			if limit is not None:
+				kwargs['limit'] = limit
+			if offset is not None:
+				kwargs['offset'] = offset
+			df = self.pro.index_member_all(**kwargs)
 			if df is not None and not df.empty:
 				for col in ('in_date', 'out_date'):
 					if col in df.columns:
