@@ -33,6 +33,8 @@ class StrategySignalEvent(BaseEvent):
         price_limit_high: Optional[float] = None,
         max_slippage_pct: float = 0.02,
         order_type: str = "limit_range",
+        risk_budget_pct: Optional[float] = None,   # 2026-10-08：单笔风险预算（占权益 %，只读展示）
+        qty_at_limit: Optional[int] = None,        # 2026-10-08：价带上限时的数量（允许下界）
         account_id: str = "",       # v2.2: 绑定的交易账户ID
         strategy_version_id: str = "",  # v3.1: 策略版本ID，用于溯源
         parent_id: Optional[str] = None,  # v3.4: 父信号ID（候选→买入信号链路关联）
@@ -73,6 +75,8 @@ class StrategySignalEvent(BaseEvent):
             "quantity": quantity,
             "reason": reason,
             "confidence": confidence,
+            "risk_budget_pct": risk_budget_pct,
+            "qty_at_limit": qty_at_limit,
             "target_price": target_price,
             "stop_loss_price": stop_loss_price,
             "account_id": account_id,

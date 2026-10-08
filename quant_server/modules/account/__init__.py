@@ -58,6 +58,19 @@ def _register_daily_settlement_schedule(settlement_engine) -> None:
                 logger.warning("结算调度跳过：db_session_factory 未配置")
                 return
 
+            # 🔴 2026-10-08 修复：补**交易日门**。此前只有 CronTrigger(day_of_week="mon-fri")
+            #    的星期门 → 工作日假日照常结算，向 accounts / account_statements /
+            #    account_daily_performance / strategy_daily_performance **4 张表**写入非交易日
+            #    数据（2026-09-25 中秋实测污染，详见 docs/08-实盘策略报告 §四 缺陷专条）。
+            #    与 19:20 流水线的交易日门**同源**（TradingCalendar），消除"同一系统两套
+            #    日终结算、一套有门一套没有"的口径分裂。
+            from utils.core_utils.time_utils.trading_calendar import TradingCalendar
+
+            _today = _date.today()
+            if not TradingCalendar().is_trading_day(_today):
+                logger.info(f"日终结算跳过: {_today} 非交易日（交易日门生效）")
+                return
+
             try:
                 async with db_factory() as session:
                     tasks = create_settlement_tasks(session, event_engine=settlement_engine.event_engine)

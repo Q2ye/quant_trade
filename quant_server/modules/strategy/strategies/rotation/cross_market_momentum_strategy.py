@@ -1703,6 +1703,24 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             stop_loss_price=round(price * (1.0 - self.stop_loss_pct), 4),
         )
         sig.weight = weight
+        # 🔬 2026-10-08：单笔风险预算 + 执行契约用只读字段（见
+        #    docs/01-业务设计/策略资金与仓位契约.md §2.5、docs/06-标准规范/07_… 步骤 5）
+        #    风险 = weight × stop_loss_pct（本例 0.9×8% = **7.2% 权益**）；价带（±2%）对风险
+        #    只贡献**二阶**修正（窗口内最坏 7.34%；把价带放宽到 ±5% 也仅 7.56%）⇒ 风险上限由
+        #    「预算」表达，数量按**实际成交价**缩放 —— 人工在 `[qty_at_limit, quantity]` 之间
+        #    按实际成交价取整，即可把风险锁在预算内（成交价越高、数量越接近下界）。
+        _band = float(getattr(sig, "max_slippage_pct", 0.02) or 0.02)
+        _limit_price = price * (1.0 + _band)
+        _amount = self.resolve_sizing_capital() * max(0.0, float(weight))
+        sig.risk_budget_pct = round(weight * self.stop_loss_pct * (1.0 + _band) * 100.0, 2)
+        sig.qty_at_limit = (
+            int(_amount / _limit_price / 100) * 100 if _limit_price > 0 else 0
+        )
+        # 内嵌进 reason（signals 表无对应列 ⇒ 这是到达告警/UI/DB 的零-DDL 通道）
+        sig.reason = (
+            f"{sig.reason} 风险≤{sig.risk_budget_pct:.2f}%"
+            f" 量{sig.qty_at_limit}~{sig.quantity}"
+        )
         return sig
 
     def _make_exit_signal(
@@ -1832,8 +1850,27 @@ class CrossMarketMomentumStrategy(BaseStrategy):
     # 持仓状态机
     # =========================================================================
     def _move_pending_to_holdings(self, td: str) -> None:
-        """昨日买入信号（order_mode=open）今日开盘已成交 → 搬进 holdings。"""
+        """昨日买入信号（order_mode=open）今日开盘已成交 → 搬进 holdings。
+
+        🔴 2026-10-08 修复（C1-② 幽灵持仓；半自动口径 = **以 DB positions 为准**）：
+        本方法原先**无条件**把内存 `_pending_buys` 搬进 `_holdings`，**不核对是否真的成交**。
+        半自动模式下人工未下单时，这就凭空虚造了一个持仓 —— 09-30 实测：策略自认持有
+        `511010.SH`（`[策略诊断] holdings=['511010.SH']`）而账户 `positions` 为空、人工未买入；
+        随后 `min_hold_days=3` 守卫在**选股之前**早退 → 当日 0 信号且**无任何日志**（假静默），
+        并把该幽灵写入 `strategy_runs.state_snapshot`（`_holdings`/`_held_days`）。
+        现在：实盘（`_live_positions_loaded=True`，即 DB 持仓真相源已加载）时，**只有该标的
+        已出现在真相源 `_active_positions` 中才算成交**；未成交则丢弃该内存 pending
+        —— 买入意图仍留在 `signals` 表（`pending_manual`），由人工执行/拒绝或 F10 对账处置。
+        回测/冒烟路径行为逐位不变（该标志恒为 False）。
+        """
         for code, pinfo in self._pending_buys.items():
+            if (getattr(self, "_live_positions_loaded", False)
+                    and code not in self._active_positions):
+                logger.warning(
+                    f"[{self.name}] 昨日买入信号 {code} 未见成交（DB 真相源无该持仓）"
+                    f" → 不搬入 holdings（避免幽灵持仓；意图仍在 signals 表待人工处置）"
+                )
+                continue
             entry = _finite_or(pinfo.get("price", 0), 0.0)
             df = self._data_cache.get(code)
             if df is not None and len(df) > 0 and "open" in df.columns:
@@ -1904,8 +1941,10 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         if not using_context:
             source = getattr(self, "_active_positions", None) or None
         if not source:
-            if getattr(self.context, "run_mode", None) is not RunMode.BACKTEST:
-                return  # 实盘/模拟盘：无真相源 → fail-open，不做任何抹除
+            if (getattr(self.context, "run_mode", None) is not RunMode.BACKTEST
+                    and not getattr(self, "_live_positions_loaded", False)):
+                return  # 实盘/模拟盘且真相源**未加载** → fail-open，不做任何抹除
+            # 回测（引擎每日注入，空即真无持仓）或 **实盘已加载且确为空** → 落到下方整体幽灵删除
             source = {}
         for code in list(self._exit_pending):
             bp = source.get(code)
@@ -1913,10 +1952,15 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 self._holdings.pop(code, None)
                 self._held_days.pop(code, None)
                 self._exit_pending.pop(code, None)
-        if not using_context and source:
-            # `_active_positions` 是 DB 真相但无成本/T+1 语义，只用于「卖出确认」，
-            # 不做整体幽灵删除，避免误删刚恢复且尚未回填的持仓。
+        if not using_context and source and not getattr(self, "_live_positions_loaded", False):
+            # 真相源**未加载**（模拟/冒烟等混合路径）→ 缺快照不携带信息，保持 fail-open，
+            # 避免误删刚恢复且尚未回填的持仓。
             return
+        # 🔴 2026-10-08 修复（C1-②）：实盘 `load_live_state` 已成功加载 DB 持仓
+        #    （`_live_positions_loaded=True`）时，`_active_positions` 即**唯一真相源**，
+        #    「已加载」状态下 `_holdings` 里不在真相源的标的一律按幽灵删除。
+        #    此前该分支无条件 return，导致 `_move_pending_to_holdings` 凭空虚造的持仓
+        #    （以及任何未登记退出的幽灵）永不被清除（2026-09-30 实测）。
         for code in list(self._holdings.keys()):
             bp = source.get(code)
             if bp is None or int(getattr(bp, "quantity", 0) or 0) <= 0:

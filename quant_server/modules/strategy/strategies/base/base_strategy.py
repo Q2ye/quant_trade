@@ -122,6 +122,13 @@ class BaseStrategy(ABC):
 
 		# v3.4: 实盘状态注入（由 load_live_state 填充，回测模式为空）
 		self._active_positions: Dict[str, 'LivePosition'] = {}
+		# 🔴 2026-10-08：区分「DB 持仓真相源**已加载且为空**」与「**从未加载**」。
+		#    load_live_state 查询成功后置 True；消费方（跨市场策略的 _reconcile_holdings /
+		#    _move_pending_to_holdings）据此判定能否以 DB 为唯一真相源做幽灵删除。
+		#    区分二者的理由：实盘"已加载且为空"是**携带信息**的（确实无持仓），
+		#    若与"无快照"混同 → fail-open → 从未成交的 pending 被搬进 _holdings 形成的
+		#    幽灵持仓永不被清除（2026-09-30 实测缺陷）。
+		self._live_positions_loaded: bool = False
 		self._pending_signals: Dict[str, 'LiveSignal'] = {}
 		self._account_snapshot: Optional['LiveAccount'] = None
 
@@ -220,6 +227,9 @@ class BaseStrategy(ABC):
 				)
 			logger.info("%s: positions=%d %s", self.name, len(rows),
 				[(r[0], r[1]) for r in rows])
+			# 🔴 2026-10-08：查询成功即视为「DB 持仓真相源已加载」——此后「空」是携带信息的
+			#    （确实无持仓），必须与"从未加载"区分，否则实盘永远无法清除幽灵持仓。
+			self._live_positions_loaded = True
 		except Exception as e:
 			logger.warning("%s: positions load failed: %s", self.name, e)
 

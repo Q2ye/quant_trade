@@ -102,6 +102,14 @@ class TradingSignal:
     # 现有 4 个策略的入场信号均显式设置 weight，不受影响。
     target_price: Optional[float] = None          # 目标价格
     stop_loss_price: Optional[float] = None       # 止损价格
+    # 🔬 2026-10-08 新增（单笔风险预算 · 执行契约用只读字段；见
+    #    docs/01-业务设计/策略资金与仓位契约.md §2.5）：
+    #    背景：`weight × stop_loss_pct` 决定单笔风险（跨市场策略 = 0.9×8% = 7.2% 权益），
+    #    而 `max_slippage_pct` 的 ±2% 价带只是**许可窗口**、对风险的贡献是二阶的
+    #    （实测：价带内最坏 7.34%，把价带放宽到 ±5% 也只到 7.56%）。
+    #    故风险上限应由「预算」表达，数量按**实际成交价**缩放（人工执行契约）。
+    risk_budget_pct: Optional[float] = None       # 该笔在许可价格窗口内的最坏单笔风险（占权益 %）
+    qty_at_limit: Optional[int] = None            # 若成交在价带上限时仍满足预算的数量（允许数量下界）
     # v6.11: 执行模式
     #   "open"    — 次日开盘价成交（默认，T+1 传统撮合）
     #   "close"   — 当日收盘价成交（收盘确认买入）
@@ -154,6 +162,8 @@ class TradingSignal:
             "stop_loss_price": self.stop_loss_price,
             "quantity": self.quantity,
             "amount": self.amount,
+            "risk_budget_pct": self.risk_budget_pct,
+            "qty_at_limit": self.qty_at_limit,
             "confidence": self.confidence,
             "reason": self.reason,
             "parent_id": self.parent_id,   # v3.4: 父信号ID

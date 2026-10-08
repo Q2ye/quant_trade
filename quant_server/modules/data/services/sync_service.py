@@ -1969,11 +1969,27 @@ class DataSyncService:
 		if end_date <= ref_date:
 			return None  # 主市场已是最新，无需同步
 
-		# 需要补的自然日（跳过周末；节假日由 API 空响应兜底）
+		# 需要补的**交易日**（跳过周末与非交易日）
+		# 🔴 2026-10-08 修复：原实现只跳周末，注释称「节假日由 API 空响应兜底」——
+		#    该假设已被 2026-09-25（中秋）**证伪**：`index_daily` 对 7 个指数代码返回了
+		#    当日数据，这 7 行非交易日数据由 09-29 的窗口写入
+		#    （日志 `写入=1,156` 与 `575(09-28)+574(09-29)+7(09-25)` 精确吻合）。
+		#    改用交易日历过滤（与 19:20 流水线的交易日门**同源**），使窗口只含真实交易日。
+		#    日历不可用时**退回「仅跳过周末」**（保持原行为，不因日历故障阻断同步）。
 		needed: List[date] = []
+		_cal = None
+		try:
+			from utils.core_utils.time_utils.trading_calendar import TradingCalendar
+
+			_cal = TradingCalendar()
+		except Exception as _cal_err:  # noqa: BLE001 - 日历不可用不得阻断同步
+			logger.warning(
+				"[%s] 交易日历不可用，补数窗口退回「仅跳过周末」: %s",
+				data_type_label, _cal_err,
+			)
 		cur = ref_date + timedelta(days=1)
 		while cur <= end_date:
-			if cur.weekday() < 5:
+			if cur.weekday() < 5 and (_cal is None or _cal.is_trading_day(cur)):
 				needed.append(cur)
 			cur += timedelta(days=1)
 		if not needed or len(needed) > max_dates:

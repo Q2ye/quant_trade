@@ -18,6 +18,7 @@ from modules.strategy.constants import (
     StrategyType,
     StrategyLifecycleStatus,
     RunMode,
+    SignalType,
 )
 from modules.strategy.events import StrategyStartedEvent, StrategyStoppedEvent, StrategyPausedEvent, \
 	StrategyResumedEvent
@@ -913,6 +914,8 @@ class StrategyManager(EngineBase):
                     price_limit_high=sig_dict.get("price_limit_high"),
                     max_slippage_pct=sig_dict.get("max_slippage_pct", 0.02),
                     order_type=sig_dict.get("order_type", "limit_range"),
+                    risk_budget_pct=sig_dict.get("risk_budget_pct"),
+                    qty_at_limit=sig_dict.get("qty_at_limit"),
                     account_id=account_id,
                     run_mode=getattr(instance, "run_mode", "live") if instance else "live",
                     execution_mode=getattr(instance, "execution_mode", "semi_auto") if instance else "semi_auto",
@@ -963,6 +966,8 @@ class StrategyManager(EngineBase):
                     price_limit_high=sig_dict.get("price_limit_high"),
                     max_slippage_pct=sig_dict.get("max_slippage_pct", 0.02),
                     order_type=sig_dict.get("order_type", "limit_range"),
+                    risk_budget_pct=sig_dict.get("risk_budget_pct"),
+                    qty_at_limit=sig_dict.get("qty_at_limit"),
                     account_id=account_id,
                     run_mode=getattr(instance, "run_mode", "live") if instance else "live",
                     execution_mode=getattr(instance, "execution_mode", "semi_auto") if instance else "semi_auto",
@@ -1743,26 +1748,38 @@ class StrategyManager(EngineBase):
                     await strategy_obj.load_live_state(_db, strategy_id=str(strategy_id))
             pending_map = await self._check_yesterday_pending(strategy_id, trade_date)
 
-            # 过滤：昨天 pending 的同方向股票跳过，避免重复发信号
-            filtered_bars = []
-            for bar in bars:
-                ts_code = getattr(bar, "ts_code", "") or getattr(bar, "symbol", "")
-                if ts_code in pending_map:
-                    prev = pending_map[ts_code]
-                    if prev.get("direction", "") in ("long", "buy"):
-                        logger.info(
-                            "策略 %s 股票 %s 昨日买入信号仍 pending，跳过今日信号",
-                            strategy_id, ts_code,
-                        )
-                        continue  # 跳过该 bar
-                filtered_bars.append(bar)
-
             # 处理当日 bar
+            # 🔴 2026-10-08 修复（C1-① 自指闭环）：原实现在此**剔除**「昨日 pending 买单」标的的 bar。
+            #    但策略的数据缓存**只由推入的 bar 构建**（`on_bar`→`_append_data`→`_flush_pending_rows`），
+            #    F6 守卫又要求「当日有行情」→ 被剔除的标的当日**必然落选**，于是候选集/目标池
+            #    被框架**自身的剔除行为**污染：
+            #      · 它可能仍是头号目标（09-29 实测：真目标 513100 被剔 → 零候选 → 兜底 511010 假信号）；
+            #      · 随后 F10 又用这个被污染的目标池把该 pending **取消**（取消正确意图，与
+            #        "目标池由策略单源给出、框架不重算" 的设计意图相反）。
+            #    修复方向：**bar 全部推入**（候选/目标池保持完整），防重复登记改由**输出层抑制**承担
+            #    —— 仅屏蔽「与既有 pending 同向的入场信号」；**卖出一律不动**（V3 依赖卖单持续 pending）。
             signals = await self.handle_bar_batch(
                 trade_date=trade_date,
-                bars=filtered_bars,
+                bars=bars,
                 run_mode=run_mode,
             )
+            _suppressed: List[str] = []
+            _kept: List[TradingSignal] = []
+            for _sig in signals:
+                _ts = getattr(_sig, "ts_code", "")
+                _prev = pending_map.get(_ts)
+                if (_prev
+                        and getattr(_sig, "signal_type", None) == SignalType.ENTRY
+                        and _prev.get("direction", "") in ("long", "buy")):
+                    _suppressed.append(_ts)
+                    continue
+                _kept.append(_sig)
+            if _suppressed:
+                logger.info(
+                    "策略 %s 股票 %s 昨日买入信号仍 pending，今日信号不重复登记（bar 已正常入池）",
+                    strategy_id, _suppressed,
+                )
+            signals = _kept
             all_signals.extend(signals)
 
             # pending 意图对账（2026-09-22）：把「已不在当日目标池」的旧 pending 买单置 cancelled。
