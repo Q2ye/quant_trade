@@ -175,19 +175,68 @@ class PerformanceService:
             mv += Decimal(str(p.volume)) * close
         return mv
 
+    @staticmethod
+    def _trade_fees_sum(trade) -> Decimal:
+        """单笔成交的费用合计（**含过户费**）。
+
+        ⚠️ 口径（2026-10-09 修复 B1）：费用口径的**唯一事实源是 `trade_fees` 明细**
+        （`commission` / `stamp_duty` / `transfer_fee` 逐项落库，`trade_record_service`
+        与 `fee_service` 同源）。
+        `trades.commission + trades.tax` 只是**历史遗留的部分汇总** —— `trades` 表
+        本身就没有过户费列（`docs/sql/create_table.sql` 只有 `commission`/`tax`），
+        故按两列相加会**漏掉过户费** ⇒ 策略虚拟现金台账系统性**高估**净值。
+        实测（2026-10-08 起跨三日核对）：差额按成交笔数**阶梯累加** ≈1.78 元/笔
+        （= 名义额 × 过户费率），三天实测 1.7774 → 3.5622 → 5.3676，
+        修本项后 `strategy_daily_performance` 与 `account_daily_performance` 应归零。
+        详见 `docs/08_实盘策略报告/实盘执行监控-2026-09-22起.md` §四 10-09 附记 B1。
+
+        兜底：明细**未预加载或为空**时回退两列相加并告警 —— 宁可少扣一项（可观测），
+        不可静默按 0 计费（不可观测）。⚠️ 兜底用 `try/except` 而非 `inspect().unloaded`：
+        正常情况下调用方已传 `with_fees=True`，此分支只在异常路径触发，兜底的目的是
+        **不让 21:00 结算任务因读取失败而整体中断**（那会产出"无绩效行"的第二类缺口）。
+        """
+        fees, reason = None, "为空"
+        try:
+            fees = getattr(trade, "fees", None)
+        except Exception as e:  # noqa: BLE001 — async 惰性加载会抛 MissingGreenlet
+            reason = f"读取失败({type(e).__name__})"
+
+        if fees:
+            return sum(
+                (Decimal(str(getattr(f, "fee_amount", 0) or 0)) for f in fees),
+                Decimal("0"),
+            )
+
+        fallback = (
+            Decimal(str(getattr(trade, "commission", 0) or 0))
+            + Decimal(str(getattr(trade, "tax", 0) or 0))
+        )
+        logger.warning(
+            "成交 %s 的 trade_fees 明细%s → 费用回退为 commission+tax=%.4f"
+            "（**不含过户费**，可能少扣）；调用方应传 with_fees=True 预加载明细",
+            getattr(trade, "trade_id", "?"),
+            reason,
+            float(fallback),
+        )
+        return fallback
+
     async def _get_strategy_trade_cash_flow(self, strategy_id: str, trade_date: date) -> Decimal:
-        """该策略当日成交净现金流（卖出净额 − 买入成本含费用）。"""
+        """该策略当日成交净现金流（卖出净额 − 买入成本含费用）。
+
+        ⚠️ 费用取 `trade_fees` 明细（含过户费），见 `_trade_fees_sum` 的口径说明。
+        """
         from shared.database.repositories.trading.order.trade_repo import TradeRepository
         trade_repo = TradeRepository(self.session)
         day_start = datetime.combine(trade_date, _time.min)
         day_end = datetime.combine(trade_date, _time.max)
         trades = await trade_repo.get_by_strategy_id(
-            strategy_id, start_time=day_start, end_time=day_end, limit=10_000, with_order=True,
+            strategy_id, start_time=day_start, end_time=day_end, limit=10_000,
+            with_order=True, with_fees=True,
         )
         cash_flow = Decimal("0")
         for t in trades:
             amount = Decimal(str(t.price)) * int(t.volume)
-            fees = Decimal(str(getattr(t, "commission", 0) or 0)) + Decimal(str(getattr(t, "tax", 0) or 0))
+            fees = self._trade_fees_sum(t)
             direction = getattr(getattr(t, "order", None), "direction", None)
             if direction == "buy":
                 cash_flow -= (amount + fees)

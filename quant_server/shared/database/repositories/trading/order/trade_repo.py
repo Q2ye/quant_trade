@@ -16,7 +16,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, desc, asc
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from shared.database.repositories.base import BaseRepository,RepositoryError
 from shared.database.models.business_models import Trade, Order
@@ -304,6 +304,7 @@ class TradeRepository(BaseRepository[Trade]):
 			skip: int = 0,
 			limit: int = 100,
 			with_order: bool = False,
+			with_fees: bool = False,
 	) -> List[Trade]:
 		"""
 		根据策略ID获取成交记录（需要关联订单表）
@@ -315,6 +316,10 @@ class TradeRepository(BaseRepository[Trade]):
 			skip: 跳过记录数
 			limit: 限制记录数
 			with_order: 是否关联加载 Order 对象
+			with_fees: 是否预加载 TradeFee 明细（`Trade.fees`）。
+				⚠️ 费用口径的**唯一事实源是 `trade_fees` 明细**：`trades.commission` / `trades.tax`
+				两列只是历史遗留的部分汇总（**不含过户费**），按两列相加会少扣 —— 2026-10-09
+				修复 B1 时统一改由本标志预加载明细。用 `selectinload`（一对多）避免行数膨胀。
 
 		Returns:
 			成交记录列表
@@ -344,6 +349,8 @@ class TradeRepository(BaseRepository[Trade]):
 
 			if with_order:
 				query = query.options(joinedload(Trade.order))
+			if with_fees:
+				query = query.options(selectinload(Trade.fees))
 
 			result = await self.session.execute(query)
 			return result.scalars().all()
