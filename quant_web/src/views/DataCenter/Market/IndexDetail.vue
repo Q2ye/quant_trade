@@ -25,12 +25,12 @@
             >
             <span class="index-update">{{ updateTime }}</span>
             <n-tag
-              :type="marketStatus === 'open' ? 'success' : 'default'"
+              :type="marketSession.isOpen ? 'success' : 'default'"
               size="small"
               :bordered="false"
               class="index-status-tag"
             >
-              {{ marketStatus === "open" ? "交易中" : "已收盘" }}
+              {{ marketSession.label }}
             </n-tag>
           </p>
         </div>
@@ -286,7 +286,7 @@
                   v-else
                   :option="valOption"
                   autoresize
-                  style="height: 300px"
+                  style="height: 300px; zoom: 1.25"
                 />
               </n-tab-pane>
 
@@ -323,7 +323,7 @@
                   v-else
                   :option="sectorExposureOption"
                   autoresize
-                  style="height: 380px"
+                  style="height: 380px; zoom: 1.25"
                 />
               </n-tab-pane>
             </n-tabs>
@@ -358,6 +358,7 @@ import {
 import type { DataTableColumns, DataTableRowKey } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import LightweightKLine from "@/components/charts/LightweightKLine.vue";
+import { useMarketSession } from "@/composables/useMarketSession";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
@@ -465,10 +466,10 @@ interface IndexDetailData {
 interface ComponentStock {
   code: string;
   name: string;
-  price: number;
-  change_pct: number;
-  weight: number;
-  market_cap: number;
+  price: number | null;
+  change_pct: number | null;
+  weight: number | null;
+  market_cap: number | null;
 }
 
 const indexInfo = ref<IndexDetailData | null>(null);
@@ -586,9 +587,20 @@ const valOption = computed(() => {
 
 const sectorExposureOption = computed(() => {
   if (!sectorExposure.value.length) return undefined;
-  const data = sectorExposure.value.map((d: any) => ({
-    name: d.name || d.sector_name || d.industry || "",
-    value: Math.abs(d.weight_pct ?? d.weight ?? d.exposure ?? 0),
+  // ⚠️ 2026-10-11 修复「圆环拥挤、标注叠在一起」：
+  //    申万 L1 有 31 个行业，**全部外置标签必然叠字** → 只给权重 Top8 外置标签，
+  //    其余全部走底部图例（可滚动）+ 悬浮提示；并开启防重叠兜底。
+  const sorted = sectorExposure.value
+    .map((d: any) => ({
+      name: d.name || d.sector_name || d.industry || "",
+      value: Math.abs(d.weight_pct ?? d.weight ?? d.exposure ?? 0),
+    }))
+    .sort((a, b) => b.value - a.value);
+  const TOP_LABELS = 8;
+  const labeled = new Set(sorted.slice(0, TOP_LABELS).map((d) => d.name));
+  const data = sorted.map((d) => ({
+    ...d,
+    label: { show: labeled.has(d.name) },
   }));
   return {
     tooltip: { trigger: "item", formatter: "{b}: {c}% ({d}%)" },
@@ -600,10 +612,14 @@ const sectorExposureOption = computed(() => {
     series: [
       {
         type: "pie",
-        radius: ["35%", "65%"],
-        center: ["50%", "45%"],
+        // 环径收窄、上移，为外置标签与底部图例留出空间
+        radius: ["30%", "52%"],
+        center: ["50%", "42%"],
         data,
-        label: { fontSize: 10, formatter: "{b}\n{d}%" },
+        avoidLabelOverlap: true,
+        labelLayout: { hideOverlap: true },
+        label: { fontSize: 10, formatter: "{b} {d}%" },
+        labelLine: { length: 8, length2: 8 },
         emphasis: {
           itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" },
         },
@@ -623,12 +639,8 @@ const updateTime = computed(() => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 });
 
-const marketStatus = computed<"open" | "closed">(() => {
-  const h = new Date().getHours();
-  const m = new Date().getMinutes();
-  const t = h * 60 + m;
-  return t >= 570 && t <= 900 ? "open" : "closed";
-});
+// 交易状态 —— 唯一判定入口（原实现在此只看时钟：不判周末、不扣午休，周末会显示"交易中"）
+const { state: marketSession } = useMarketSession();
 
 const changeClass = computed(() => {
   if (!indexInfo.value) return "";
@@ -822,10 +834,11 @@ async function loadData() {
     components.value = (wts?.items || []).map((w: any) => ({
       code: w.ts_code || "",
       name: w.name || w.ts_code || "",
-      price: w.close ?? 0,
-      change_pct: w.pct_chg ?? 0,
-      weight: w.weight ?? 0,
-      market_cap: w.total_mv ?? 0,
+      // ⚠️ 缺失一律给 null（而非 0）—— 让列渲染的 "--" 兜底生效，避免把"无数据"显示成 0.00
+      price: w.close ?? null,
+      change_pct: w.pct_chg ?? null,
+      weight: w.weight ?? null,
+      market_cap: w.total_mv ?? null,
     }));
   } catch {
     error.value = true;

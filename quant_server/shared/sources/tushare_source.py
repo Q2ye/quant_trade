@@ -47,11 +47,14 @@ _RATE_LIMITS = {
     "fund_daily": 500,
     "fund_adj": 500,
     "index_daily": 500,
+    "index_weekly": 500,   # 2026-10-17 补：此前缺键 → _get_bucket 返回 None，只能靠 0.5s 兜底
     "index_dailybasic": 500,
     "daily": 800,
     "daily_basic": 500,
     "adj_factor": 500,
-    "moneyflow": 600,
+    "moneyflow": 500,   # ⚠️ 2026-10-19 订正：原写 600，但接口实际上限是 500 次/分
+                        #    （错误信息原文），600 会把令牌桶配到 480/min（仅 4% 余量）
+                        #    且此前的取值顺序错误（令牌在请求后才取），实测直接 429。
     "etf_daily": 500,    # ETF日线（fund_daily 频率）
     "etf_share": 500,    # ETF份额（fund_share 频率）
 }
@@ -823,14 +826,34 @@ class TushareSource(BaseDataSource):
 
 	def get_moneyflow (self, symbol: str = '', trade_date: str = '',
 	                   start_date: str = '', end_date: str = '') -> pd.DataFrame:
-		"""获取资金流向"""
+		"""获取资金流向。
+
+		⚠️ 2026-10-12：**本方法刻意不遵循本文件其余 `get_*` 的「吞异常 → 返回空表」
+		约定 —— 接口报错改为向上抛**。
+
+		原因：空表与「接口报错」同形，调用方无法区分。`_sync_moneyflow._process_one`
+		因此把接口失败当成「本就没有数据」静默跳过（实测 2026-10-12：5565 只中约
+		3000 只走了该分支，DB 仅落 2378 行，而汇总行仍报 `失败=0`），
+		`stock_moneyflow` 缺口自 10-08 起逐日累加却无人察觉。
+
+		调用方均已就绪：`_sync_moneyflow._process_one` 有 `except` 分支负责计入
+		`failed`；`scripts/data/backfill_delisted_stocks.py` 已 try/except 包裹。
+
+		⚠️ 2026-10-17：参数改为 `symbol or None` 等 —— 接口支持「**只传 trade_date
+		返回全市场当日数据**」（实测 20261015：一次调用返回 5,576 行、0.53s）。
+		此前空串原样传给 `ts_code`，批量模式无法生效，只能 5,565 次逐股调用，
+		才会撞上 500 次/分 的上游限频。与 `get_adj_factor` / `get_daily_basic`
+		的批量写法保持一致。
+		"""
 		try:
-			df = self.pro.moneyflow(ts_code=symbol, trade_date=trade_date,
-			                        start_date=start_date, end_date=end_date)
+			df = self.pro.moneyflow(ts_code=symbol or None,
+			                        trade_date=trade_date or None,
+			                        start_date=start_date or None,
+			                        end_date=end_date or None)
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取资金流向失败: {e}")
-			return pd.DataFrame()
+			raise
 
 	def get_stock_company (self, exchange: str = '') -> pd.DataFrame:
 		"""获取上市公司基本信息"""
@@ -852,25 +875,42 @@ class TushareSource(BaseDataSource):
 		Returns:
 			DataFrame: columns: ts_code, trade_date, type, name, type_name
 		"""
-		try:
-			types = [hsgt_type] if hsgt_type else ['HK_SZ', 'SZ_HK', 'HK_SH', 'SH_HK']
-			frames = []
-			for t in types:
-				kwargs = {'type': t}
-				if trade_date:
-					kwargs['trade_date'] = trade_date
+		# ⚠️ 2026-10-17：**每个 type 独立 try**。
+		#    此前 4 个 type 共用一个 try —— 任一失败会把已成功的 3 个一起丢掉，
+		#    且返回空表后调用方报「同步完成、失败=0」。实测 2026-09-11：
+		#    `Expecting value: line 1 column 1` → 南下名单只剩 121/1,879（19%），
+		#    日志却写「[stock_hsgt] 同步完成，新增=0, 更新=0, 失败=0」。
+		types = [hsgt_type] if hsgt_type else ['HK_SZ', 'SZ_HK', 'HK_SH', 'SH_HK']
+		frames = []
+		failed_types = []
+		for t in types:
+			kwargs = {'type': t}
+			if trade_date:
+				kwargs['trade_date'] = trade_date
+			try:
 				df = self.pro.stock_hsgt(**kwargs)
 				if df is not None and not df.empty:
 					if 'trade_date' in df.columns:
 						df['trade_date'] = pd.to_datetime(df['trade_date'])
 					frames.append(df)
-			if frames:
-				result = pd.concat(frames, ignore_index=True)
-				return result.drop_duplicates(subset=['ts_code', 'trade_date', 'type'])
-			return pd.DataFrame()
-		except Exception as e:
-			logger.error(f"获取沪深港通股票列表失败: {e}")
-			return pd.DataFrame()
+				else:
+					failed_types.append(f"{t}(空表)")
+			except Exception as e:
+				failed_types.append(f"{t}({e})")
+				logger.error(f"获取沪深港通股票列表失败 type={t}: {e}")
+
+		if failed_types:
+			logger.warning(
+				"沪深港通股票列表部分类型未取到: %s（本次写入其余 %d 类）",
+				", ".join(failed_types), len(frames),
+			)
+		if frames:
+			result = pd.concat(frames, ignore_index=True)
+			return result.drop_duplicates(subset=['ts_code', 'trade_date', 'type'])
+		if failed_types:
+			# 全部失败 → 上抛，让同步层计入 records_failed（不再伪装成「无数据」）
+			raise RuntimeError(f"沪深港通股票列表全部类型获取失败: {failed_types}")
+		return pd.DataFrame()
 
 	def get_stk_managers (self, ts_code: str = '') -> pd.DataFrame:
 		"""获取管理层信息"""

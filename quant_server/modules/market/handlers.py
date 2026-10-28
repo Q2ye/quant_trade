@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+from datetime import date
 from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,6 +110,13 @@ async def do_macro(session: AsyncSession, indicator: str, limit: int = 24) -> li
 async def do_index_weights(session: AsyncSession, code: str, offset: int = 0, limit: int = 50):
     from modules.market.services.index_service import get_index_weights
     return await get_index_weights(session, code, offset, limit)
+
+
+async def do_trading_calendar(
+    session: AsyncSession, start_date: date, end_date: date, exchange: str = "SSE"
+) -> list:
+    from modules.market.services.index_service import get_trading_calendar
+    return await get_trading_calendar(session, start_date, end_date, exchange)
 
 
 async def do_index_valuation(session: AsyncSession, code: str, limit: int = 60) -> list:

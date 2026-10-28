@@ -292,6 +292,14 @@ export default {
       .then(handleResponse)
       .then((d: any) => d.data);
   },
+  /** 交易日历：区间内 `is_open=True` 的日期（`YYYY-MM-DD`，升序）。
+   *  后端只答「哪天是交易日」；「现在是不是交易时段」由 `useMarketSession` 叠加时钟判定。 */
+  async getTradingCalendar(start: string, end: string): Promise<string[]> {
+    return request
+      .get("/quantTrade/market/trading-calendar", { params: { start, end } })
+      .then(handleResponse)
+      .then((d: any) => d.data);
+  },
 
   // ---- Phase 5: Sector MoneyFlow ----
   async getSectorMoneyflow(): Promise<any[]> {

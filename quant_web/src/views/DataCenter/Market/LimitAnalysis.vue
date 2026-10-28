@@ -332,13 +332,16 @@ onMounted(() => {
                     @update:value="searchData"
                   />
                 </n-form-item-gi>
+                <!-- 查询按钮与筛选条件同一行（第 4 个 span=6，凑满 24 列） -->
+                <n-form-item-gi :span="6" :show-label="false">
+                  <div class="filter-actions">
+                    <n-button type="primary" @click="searchData">
+                      <template #icon><SmartIcon name="Search" /></template>
+                      查询
+                    </n-button>
+                  </div>
+                </n-form-item-gi>
               </n-grid>
-              <div class="form-actions">
-                <n-button type="primary" @click="searchData">
-                  <template #icon><SmartIcon name="Search" /></template>
-                  查询
-                </n-button>
-              </div>
             </n-form>
           </n-card>
 
@@ -467,13 +470,12 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 
-.form-actions {
+.filter-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--n-border-color);
+  align-items: center;
+  width: 100%;
+  height: 100%;
 }
 
 .stats-section {

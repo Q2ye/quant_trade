@@ -23,6 +23,14 @@
     .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py --workers 4
     .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py --limit 20 --dry-run       # 小规模预检（只检测不回填）
 
+    ⚠️ 回填「近期新出现的单日/数日缺口」（如 stock_moneyflow 2026-10-08 起的丢数）
+       必须显式调小 --min-missing —— 默认 20 是为「过滤单日噪声」设的，会让新缺口
+       藏约一个月（与覆盖度门的盲区同源）。范式：
+    .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py \
+        --table moneyflow --start 2026-10-01 --min-missing 1 --dry-run   # 先看命中
+    .venv/Scripts/python.exe scripts/data/backfill_coverage_gaps.py \
+        --table moneyflow --start 2026-10-01 --min-missing 1             # 再实跑
+
 幂等：bulk_upsert 按 (ts_code, trade_date) ON CONFLICT DO UPDATE。
 """
 import argparse
@@ -55,10 +63,15 @@ from shared.database.repositories.market.fundamental.stock_moneyflow_repo import
 )
 
 # 目标表配置：逻辑名 → (表名, ORM 模型, Repository, Tushare 接口方法名, 排除北交所?)
-# moneyflow 排除北交所：Tushare 资金流向接口不含 920xxx.BJ，属数据源覆盖限制，不可回填。
+# ⚠️ 2026-10-12 订正：原注释称「Tushare 资金流向接口**不含** 920xxx.BJ，属数据源覆盖限制，
+#    不可回填」—— **该前提已被实测证伪**：920000/920001/920002/920003/920005.BJ 对
+#    20260930 / 20261008 / 20261012 **各返回 1 行**。故 moneyflow 的 `exclude_bj` 由
+#    True 改为 False。此前它让北交所被回填**静默跳过**：实测 2026-10-09 / 10-12 北交所
+#    344 只基准里**缺 253 只（覆盖率 26.5%）**，而 09-30 / 10-08 均为 100%
+#    —— 缺口起始点与主板完全一致，属同一根因。
 TABLE_CONFIGS = {
     "daily_basic": ("stock_daily_basic", StockDailyBasic, StockDailyBasicRepository, "daily_basic", False),
-    "moneyflow": ("stock_moneyflow", StockMoneyflow, StockMoneyflowRepository, "moneyflow", True),
+    "moneyflow": ("stock_moneyflow", StockMoneyflow, StockMoneyflowRepository, "moneyflow", False),
 }
 
 # 默认参数
@@ -114,7 +127,8 @@ async def _detect_gap_stocks(session, table: str, window_start: date,
 
     两趟聚合（避免全表 JOIN），在 Python 中按 ts_code 比对覆盖：
     stock_daily 基准日期数 vs 目标表日期数。
-    exclude_bj=True：排除北交所（数据源不含 BJ 时，如 moneyflow）。
+    exclude_bj=True：排除北交所。⚠️ 2026-10-12 起**两张表都传 False** —— 原先 moneyflow
+    传 True 的理由（「数据源不含 BJ」）已实测证伪（见 `TABLE_CONFIGS` 上方注释）。
     """
     _bj = "AND ts_code NOT LIKE '%.BJ'" if exclude_bj else ""
     sd = await session.execute(text(
@@ -188,7 +202,8 @@ async def _backfill_stock(Session, tbl: str, Model, RepoCls, fetch_fn, code: str
         return False
 
 
-async def main(limit: int, table: str, start: str, dry_run: bool, workers: int) -> None:
+async def main(limit: int, table: str, start: str, dry_run: bool, workers: int,
+               min_missing: int = DEFAULT_MIN_MISSING) -> None:
     env = _load_env()
     token = env.get("PROD_TUSHARE_TOKEN", "")
     if not token:
@@ -198,14 +213,20 @@ async def main(limit: int, table: str, start: str, dry_run: bool, workers: int) 
     import tushare as ts
     pro = ts.pro_api(token)
 
-    user = env.get("DB_USER", "postgres")
-    password = env.get("DB_PASSWORD", "")
-    host = env.get("DB_HOST", "localhost")
-    port = env.get("DB_PORT", "5432")
-    dbname = env.get("DB_NAME", "quant_signals_dev")
-    url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{dbname}"
+    # ⚠️ 2026-10-12 根因修复：**必须与 app 同源解析目标库**。
+    #    原实现读 `.env` 的 `DB_NAME`（= `quant_signals_dev`），而 app 走
+    #    `config.settings.DATABASE.NAME`（= `quant_signals`）—— 两者是**不同的库**，
+    #    且前者已停摆（实测 2026-10-12：`quant_signals_dev` 的 `stock_daily`
+    #    停在 **2026-09-18**，`stock_moneyflow` 当日 0 行）。
+    #    后果：本脚本对生产缺口**完全空转** —— `--start 2026-10-01` 时窗口内
+    #    `stock_daily` 为空 → 空洞判定恒为 0。而它恰是覆盖度门告警文案里
+    #    推荐的回填工具。
+    from shared.database.session.connection_pool import ConnectionPoolManager
+
+    url = ConnectionPoolManager._build_database_url()
     engine = create_async_engine(url)
     Session = async_sessionmaker(engine, expire_on_commit=False)
+    logger.info("目标库: %s", url.rsplit("/", 1)[-1])
 
     table_names = list(TABLE_CONFIGS.keys()) if table == "all" else [table]
     total_done, total_failed = 0, 0
@@ -229,7 +250,7 @@ async def main(limit: int, table: str, start: str, dry_run: bool, workers: int) 
             logger.info("[%s] 检测窗口起点 %s", tbl, window_start)
 
             gaps = await _detect_gap_stocks(session, tbl, window_start,
-                                            DEFAULT_THRESHOLD, DEFAULT_MIN_MISSING, exclude_bj)
+                                            DEFAULT_THRESHOLD, min_missing, exclude_bj)
             codes = sorted(gaps)
             if limit and limit > 0:
                 codes = codes[:limit]
@@ -277,6 +298,11 @@ if __name__ == "__main__":
     ap.add_argument("--start", default="", help="检测窗口起点 YYYY-MM-DD（默认取表最小日期与2018取大）")
     ap.add_argument("--dry-run", action="store_true", help="只检测不回填")
     ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="并发线程数（默认4）")
+    ap.add_argument("--min-missing", type=int, default=DEFAULT_MIN_MISSING,
+                    help="缺失天数下限（默认 20，用于过滤单日噪声）。"
+                         "⚠️ 回填**近期新出现的单日/数日缺口**必须调小（如 1），"
+                         "否则与覆盖度门同样存在约一个月的盲区（2026-10-12 教训）")
     args = ap.parse_args()
     asyncio.run(main(limit=args.limit, table=args.table, start=args.start,
-                     dry_run=args.dry_run, workers=args.workers))
+                     dry_run=args.dry_run, workers=args.workers,
+                     min_missing=args.min_missing))

@@ -697,7 +697,7 @@ onUnmounted(() => timers.forEach((t) => window.clearInterval(t)));
                   >详情 →</n-button
                 >
               </template>
-              <div style="height: 320px">
+              <div style="height: 320px; zoom: 1.25">
                 <VChart
                   v-if="industryBarOption"
                   :option="industryBarOption"
@@ -791,7 +791,7 @@ onUnmounted(() => timers.forEach((t) => window.clearInterval(t)));
                   v-if="hsgtMiniOption"
                   :option="hsgtMiniOption"
                   autoresize
-                  style="height: 64px"
+                  style="height: 64px; zoom: 1.25"
                 />
                 <n-empty v-else description="暂无" size="small" style="padding: 4px" />
               </div>

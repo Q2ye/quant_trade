@@ -8,7 +8,7 @@ v1.1 重构: 移除硬编码注册，使用 StrategyRegistry；新增 handle_bar
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Any, Optional, Type
+from typing import Dict, List, Any, Optional, Tuple, Type
 
 from core.engines import BarData
 from core.engines.base.engine_base import EngineBase, EngineConfigEntity
@@ -624,20 +624,40 @@ class StrategyManager(EngineBase):
         trade_date: date,
         bars: List[Any],
         run_mode: RunMode = RunMode.BACKTEST,
+        strategy_id: Optional[str] = None,
+        pending_map: Optional[Dict[str, Dict]] = None,
     ) -> List[TradingSignal]:
         """
-        接收一批同日期的 BarData，分发给所有运行中策略
+        接收一批同日期的 BarData，分发给运行中策略
 
         此方法由 DataFeedEngine 调用：
         - 回测模式：逐日调用，按交易日顺序
         - 实盘模式：收盘后数据同步完成时调用
+
+        Args:
+            strategy_id: 只驱动指定策略（None = 全部运行中策略）。
+                ⚠️ `_run_live_strategies` 本身就在**per-strategy 循环**里调用本方法，
+                必须传 strategy_id；否则 N 个运行策略会被驱动 N 次（N²）、信号重复发布。
+            pending_map: 昨日仍 pending 的**买入**信号快照（`_check_yesterday_pending`）。
+                传入且指定了 strategy_id 时，在 `_publish_signals` **之前**抑制同向入场信号
+                （输出层抑制，2026-10-08 C1-①）。None = 不抑制（回测 / 手动重放行为不变）。
 
         Returns:
             所有策略生成的信号汇总
         """
         all_signals: List[TradingSignal] = []
 
-        for strategy_id in list(self.running_states.keys()):
+        # 只驱动指定策略（strategy_id 非空）或全部运行中策略。
+        # 注意：下方循环变量沿用 strategy_id（既有函数体大量引用），此处刻意遮蔽参数。
+        _only = str(strategy_id) if strategy_id else None
+        _target_ids = [_only] if _only else list(self.running_states.keys())
+        # pending_map 是**单策略**快照，只能配合 strategy_id 使用；未指定策略时忽略，
+        # 防止把 A 策略的 pending 套用到 B 策略的信号上。
+        if pending_map and not _only:
+            logger.warning("handle_bar_batch: 传了 pending_map 但未指定 strategy_id → 忽略抑制")
+            pending_map = None
+
+        for strategy_id in _target_ids:
             state = self.running_states.get(str(strategy_id))
             if not state or not state.is_running:
                 continue
@@ -749,6 +769,21 @@ class StrategyManager(EngineBase):
                 except Exception:
                     valid_signals.append(sig)
             strategy_signals = valid_signals
+
+            # 输出层抑制（2026-10-08 C1-① 修复的落点）：昨日仍有同向 pending 买入
+            # → 今日入场信号**不重复登记**。必须在 `state.pending_signals` / `_publish_signals`
+            # **之前**执行 —— 事件发布发生在本方法内；若像旧实现那样放到调用方
+            # （`_run_live_strategies`）返回后再过滤，信号早已落库并推送告警
+            # （2026-10-23 实测：日志说"不重复登记"，DB 却新增了买单行）。
+            if pending_map:
+                strategy_signals, _suppressed = self._filter_pending_entry_signals(
+                    strategy_signals, pending_map
+                )
+                if _suppressed:
+                    logger.info(
+                        "策略 %s 股票 %s 昨日买入信号仍 pending，今日信号不重复登记（bar 已正常入池）",
+                        strategy_id, _suppressed,
+                    )
 
             if strategy_signals:
                 logger.info(
@@ -1758,34 +1793,25 @@ class StrategyManager(EngineBase):
             #        "目标池由策略单源给出、框架不重算" 的设计意图相反）。
             #    修复方向：**bar 全部推入**（候选/目标池保持完整），防重复登记改由**输出层抑制**承担
             #    —— 仅屏蔽「与既有 pending 同向的入场信号」；**卖出一律不动**（V3 依赖卖单持续 pending）。
+            # ⚠️ 必须传 strategy_id：本方法本身就在 per-strategy 循环里，而
+            #    `handle_bar_batch` 默认驱动**全部**运行中策略 → 不传会 N² 驱动 + 重复发布
+            #    （N=1 时不可见；组合恢复 2 腿即爆发）。
+            # pending_map 一并下传：抑制必须在 `_publish_signals` **之前**生效
+            # （见 handle_bar_batch 内的输出层抑制块；旧实现放在此处已是马后炮）。
             signals = await self.handle_bar_batch(
                 trade_date=trade_date,
                 bars=bars,
                 run_mode=run_mode,
+                strategy_id=strategy_id,
+                pending_map=pending_map,
             )
-            _suppressed: List[str] = []
-            _kept: List[TradingSignal] = []
-            for _sig in signals:
-                _ts = getattr(_sig, "ts_code", "")
-                _prev = pending_map.get(_ts)
-                if (_prev
-                        and getattr(_sig, "signal_type", None) == SignalType.ENTRY
-                        and _prev.get("direction", "") in ("long", "buy")):
-                    _suppressed.append(_ts)
-                    continue
-                _kept.append(_sig)
-            if _suppressed:
-                logger.info(
-                    "策略 %s 股票 %s 昨日买入信号仍 pending，今日信号不重复登记（bar 已正常入池）",
-                    strategy_id, _suppressed,
-                )
-            signals = _kept
             all_signals.extend(signals)
 
             # pending 意图对账（2026-09-22）：把「已不在当日目标池」的旧 pending 买单置 cancelled。
-            # ⚠️ 目标集合由**策略自己**给出（单一真相源），框架不重算 —— 当日驱动会按标的跳过
-            #    bar（见上方 filtered_bars），被跳过的标的今天不出现在信号里但它可能仍是合法目标，
-            #    用「今日信号批次」反推会误杀。
+            # ⚠️ 目标集合由**策略自己**给出（单一真相源），框架不重算 —— 当日驱动
+            #    **不再跳过 bar**（2026-10-08 C1-①），但仍不能用「今日信号批次」反推目标：
+            #    输出层抑制会把与 pending 同向的入场信号从批次里拿掉。
+            #    用批次反推会误杀。
             # ⚠️ 返回 None = 当日未重算目标（早退 / 异常 / 未运行）→ 一行都不改（fail-open）。
             # ⚠️ 用的 pending_map 是**运行前**的快照（信号时点 < 今天），故不会碰到本次刚发的信号。
             if strategy_obj and hasattr(strategy_obj, "get_target_pool"):
@@ -1968,7 +1994,10 @@ class StrategyManager(EngineBase):
                 daily_results.append({"trade_date": str(cur_date), "bars": 0, "signals": 0})
                 continue
 
-            # 3. pending 过滤
+            # 3. pending 快照（输出层抑制用；**不再剔除 bar**）
+            #    ⚠️ 2026-10-08 C1-①：剔除「昨日 pending 买单」标的的 bar 会让它因
+            #    「当日无行情」落选 → 候选/目标池被框架自身污染（可复现 09-29 零候选假信号）。
+            #    主链路 `_run_live_strategies` 已改为 bar 全推入 + 输出层抑制，本路径同口径。
             pending_map: Dict[str, Dict] = {}
             if not skip_pending_check:
                 try:
@@ -1976,16 +2005,10 @@ class StrategyManager(EngineBase):
                 except Exception:
                     pass
 
-            filtered_bars = []
-            for bar in bars:
-                ts_code = getattr(bar, "ts_code", "") or getattr(bar, "symbol", "")
-                if ts_code not in pending_map:
-                    filtered_bars.append(bar)
-
-            # 4. 逐 bar 驱动策略
+            # 4. 逐 bar 驱动策略（bar 全部推入）
             day_signals: List[TradingSignal] = []
             bar_error_count = 0
-            for bar in filtered_bars:
+            for bar in bars:
                 try:
                     sigs = strategy.on_bar(bar)
                     if asyncio.iscoroutine(sigs):
@@ -2026,13 +2049,25 @@ class StrategyManager(EngineBase):
                 except Exception:
                     valid_day.append(sig)
 
-            total_bars += len(filtered_bars)
+            # 6.5 输出层抑制（与 `_run_live_strategies` 同口径）：昨日仍有同向 pending 买入
+            #     → 今日入场信号不重复登记；卖单不受影响。
+            if pending_map:
+                valid_day, _suppressed = self._filter_pending_entry_signals(
+                    valid_day, pending_map
+                )
+                if _suppressed:
+                    logger.info(
+                        "手动触发 %s @ %s 股票 %s 昨日买入信号仍 pending，今日信号不重复登记",
+                        strategy_id, cur_date, _suppressed,
+                    )
+
+            total_bars += len(bars)
             total_signals += len(valid_day)
             all_valid_signals.extend(valid_day)
 
             daily_results.append({
                 "trade_date": str(cur_date),
-                "bars": len(filtered_bars),
+                "bars": len(bars),
                 "signals": len(valid_day),
             })
 
@@ -2406,9 +2441,14 @@ class StrategyManager(EngineBase):
     async def _check_yesterday_pending(
         self, strategy_id: str, trade_date: date
     ) -> Dict[str, Dict]:
-        """返回 {ts_code: signal} — 该策略在 trade_date 前的 pending_manual 信号
+        """返回 {ts_code: signal} — 该策略在 trade_date 前的 pending_manual **买入**信号
 
         只查最近 10 天内 pending 的信号，防止无限回溯。
+
+        ⚠️ 只返回**买入**方向：两个消费方（输出层抑制、过期买单对账）都只处理买单；
+        卖出由策略 `exit_retry_days` 负责，框架不根据本快照动卖单
+        （否则同一 ts_code 的买卖两行会在 `{ts_code: row}` 里互相覆盖，
+        卖单可能顶掉买单 → 抑制静默失效）。
         """
         try:
             from sqlalchemy import text
@@ -2424,8 +2464,10 @@ class StrategyManager(EngineBase):
                     FROM signals
                     WHERE strategy_id = :sid
                       AND signal_status = 'pending_manual'
+                      AND LOWER(direction) IN ('long', 'buy')
                       AND signal_time >= :since
                       AND signal_time < :until
+                    ORDER BY signal_time ASC
                 """), {
                     "sid": str(strategy_id),
                     "since": since,
@@ -2452,6 +2494,36 @@ class StrategyManager(EngineBase):
         except Exception as e:
             logger.warning("策略 %s 昨日信号检查失败（跳过）: %s", strategy_id, e)
             return {}
+
+    @staticmethod
+    def _filter_pending_entry_signals(
+        signals: List[TradingSignal],
+        pending_map: Dict[str, Dict],
+    ) -> Tuple[List[TradingSignal], List[str]]:
+        """抑制「昨日仍有同向 pending 买入」的今日入场信号（输出层抑制）。
+
+        设计（2026-10-08 C1-①）：bar 全部推入策略以保持候选池完整，防重复登记
+        改由输出层承担 —— 只屏蔽 `SignalType.ENTRY` 且 `direction ∈ {long, buy}`；
+        **卖出一律不动**（策略的卖出重发由 `exit_retry_days` 负责）。
+
+        ⚠️ 必须在 `_publish_signals` **之前**调用：事件一旦入队，SignalEngine 就会
+        落库 + 推送告警，之后再过滤只是马后炮（2026-10-23 实测缺陷）。
+
+        Returns:
+            (保留的信号, 被抑制的 ts_code 列表)
+        """
+        kept: List[TradingSignal] = []
+        suppressed: List[str] = []
+        for sig in signals or []:
+            ts_code = getattr(sig, "ts_code", "")
+            prev = (pending_map or {}).get(ts_code)
+            if (prev
+                    and getattr(sig, "signal_type", None) == SignalType.ENTRY
+                    and str(prev.get("direction", "")).lower() in ("long", "buy")):
+                suppressed.append(ts_code)
+                continue
+            kept.append(sig)
+        return kept, suppressed
 
     @staticmethod
     def _stale_pending_buys(

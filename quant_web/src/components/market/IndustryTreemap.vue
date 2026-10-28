@@ -254,7 +254,7 @@ function toggleAreaMode(val: boolean) {
       v-else-if="treemapOption"
       :option="treemapOption"
       autoresize
-      style="height: 500px; width: 100%"
+      style="height: 500px; width: 100%; zoom: 1.25"
       @click="handleChartClick"
     />
   </div>

@@ -177,6 +177,7 @@ ENGINES:
     etf_daily: 1             # ETF日线（fund_daily，Tushare限500次/分钟，1并发≈120-300次/分）
     etf_adj: 1               # ETF复权因子（fund_adj，Tushare限500次/分钟）
     index_daily: 1           # 指数日线（index_daily，500次/分钟）
+    index_weekly: 1          # 指数周线（index_weekly，500次/分钟）。⚠️ 2026-10-17 补：此前缺键 → limiter=None，该同步完全无限速
     stk_factor: 3             # 股票技术因子（stk_factor，500次/分钟@8000积分）
     stk_factor_pro: 2         # 股票技术因子专业版（stk_factor_pro，500次/分钟@8000积分）
     idx_factor_pro: 2         # 指数技术因子专业版（idx_factor_pro，500次/分钟）

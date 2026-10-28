@@ -28,6 +28,7 @@ import { useTimeCoordinate } from "@/composables/useTimeCoordinate";
 import { usePrimitiveManager } from "@/composables/usePrimitiveManager";
 import { SignalMarkerPrimitive } from "./primitives/SignalMarker";
 import type { SignalMarkerData } from "./primitives/types";
+import { MA_COLORS, MA_FALLBACK_COLORS } from "./chart-palette";
 
 // ---- public types ----
 export interface SignalMarker {
@@ -89,7 +90,11 @@ const emit = defineEmits<{
 
 const hasData = computed(() => props.data.length > 0);
 
-const klineZoom = "1.25"; // 抵消 html { zoom: 0.8 }
+// ⚠️ 抵消全局 `html { zoom: 0.8 }`（见 styles/global.scss）。
+//    容器按 1.25 渲染后，**图表内部坐标 → 父级 CSS px 需再乘 1.25** ——
+//    浮层标签（DOM 兄弟节点，未随容器缩放）必须用 KLINE_ZOOM 换算，否则漂移。
+const KLINE_ZOOM = 1.25;
+const klineZoom = String(KLINE_ZOOM);
 
 // ---- composables ----
 const {
@@ -110,11 +115,41 @@ let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<"Candlestick", Time> | null = null;
 let volumeSeries: ISeriesApi<"Histogram", Time> | null = null;
 const maSeriesList: ISeriesApi<"Line", Time>[] = [];
+const maSeriesIdx: number[] = []; // 与 maSeriesList 平行：每个 series 对应 props.maLines 的下标
 
-const maColors = ["#ff9800", "#448AFF", "#E040FB", "#00bcd4", "#ff5722"];
+// 均线配色 —— 集中定义在 chart-palette.ts（canvas 无法解析 CSS 变量），按周期取色
+function maColor(period: number, index: number): string {
+  return MA_COLORS[period] ?? MA_FALLBACK_COLORS[index % MA_FALLBACK_COLORS.length];
+}
 
 // 十字光标浮层标签
 const tooltipData = ref<{ x: number; y: number; date: string; open: number; high: number; low: number; close: number; vol: number; visible: boolean } | null>(null);
+
+// 均线图例（同花顺式：MA5: 值 · MA10: 值 · MA20: 值，按线色）
+const maLegend = ref<{ period: number; value: number | null; color: string }[]>([]);
+let _maLastValues: (number | null)[] = [];
+
+function setMaLegendFromValues(values: (number | null)[]) {
+  maLegend.value = props.maLines.map((period, i) => ({
+    period,
+    value: values[i] ?? null,
+    color: maColor(period, i),
+  }));
+}
+
+/** 刷新均线图例：传 param（十字光标）取该时点值；传 null 取最新值 */
+function refreshMaLegend(param: { seriesData: Map<unknown, unknown> } | null) {
+  if (!param) {
+    setMaLegendFromValues(_maLastValues);
+    return;
+  }
+  const values: (number | null)[] = props.maLines.map(() => null);
+  maSeriesList.forEach((s, k) => {
+    const d = param.seriesData.get(s) as LineData | undefined;
+    if (d && typeof d.value === "number") values[maSeriesIdx[k]] = d.value;
+  });
+  setMaLegendFromValues(values);
+}
 
 // ---- helpers ----
 // ⚠️ 返回 epoch 秒（Unix 时间戳），而非字符串 BusinessDay
@@ -218,6 +253,7 @@ function initKLineChart() {
   chart.subscribeCrosshairMove((param) => {
     if (!param.time || param.point === undefined || !candleSeries) {
       tooltipData.value = null;
+      refreshMaLegend(null); // 光标离开 → 图例回到最新值
       return;
     }
     const cd = param.seriesData.get(candleSeries);
@@ -229,10 +265,12 @@ function initKLineChart() {
         (d) => (d.trade_date?.slice(0, 10) || d.trade_date) === candleDateStr,
       ) ?? props.data[0];
       // 更新浮层标签
+      // ⚠️ 缩放换算：`param.point` 是**图表内部坐标**，而浮层是 `.lw-chart`（zoom:1.25）
+      //    的**兄弟节点**（未缩放）→ 必须乘 KLINE_ZOOM 才与鼠标位置重合。
       if (_tooltipTimer) clearTimeout(_tooltipTimer);
       tooltipData.value = {
-        x: param.point.x,
-        y: param.point.y,
+        x: param.point.x * KLINE_ZOOM,
+        y: param.point.y * KLINE_ZOOM,
         date: candleDateStr,
         open: candle.open,
         high: candle.high,
@@ -242,6 +280,7 @@ function initKLineChart() {
         visible: true,
       };
       _tooltipTimer = setTimeout(() => { tooltipData.value = null; }, 3000);
+      refreshMaLegend(param);
       emit("crosshair", {
         time: String(param.time),
         open: candle.open,
@@ -253,16 +292,25 @@ function initKLineChart() {
     }
   });
 
-  // Time range change → emit + dirty check
+  // Time range change → 缩小下限守卫 + emit + dirty check
   chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-    if (range) {
-      markDirty();
-      updateCache(range, chart!.timeScale().width());
-      emit("timeRangeChange", {
-        from: typeof range.from === "number" ? range.from : 0,
-        to: typeof range.to === "number" ? range.to : 0,
+    if (!range) return;
+    const from = typeof range.from === "number" ? range.from : 0;
+    const to = typeof range.to === "number" ? range.to : 0;
+    // ⚠️ 缩小下限守卫（2026-10-11）：useChartLifecycle 的 `maxBarSpacing` 只限**放大**，
+    //    **不限缩小** ⇒ 此前滚轮/触控板可把 K 线无限缩小成一条线。
+    //    判据与复位方式复用 EquityCurveChart.setupViewportListener（`:276-301`）。
+    const dataSpan = _dataLastTime - _dataFirstTime;
+    if (dataSpan > 0 && to - from > dataSpan * 1.05) {
+      chart!.timeScale().setVisibleRange({
+        from: _dataFirstTime as unknown as Time,
+        to: _dataLastTime as unknown as Time,
       });
+      return; // 复位后跳过本次 emit/cache 更新（避免竞态）
     }
+    markDirty();
+    updateCache(range, chart!.timeScale().width());
+    emit("timeRangeChange", { from, to });
   });
 
   return chart;
@@ -271,6 +319,10 @@ function initKLineChart() {
 // ---- 跟踪数据范围，用于判断是否为追加数据 ----
 let _prevDataEnd: number | null = null; // 上一次数据的最新时间戳
 let _prevDataStart: number | null = null; // 上一次数据的最早时间戳
+
+// ---- 全量数据跨度（epoch 秒）：缩小下限守卫用 ----
+let _dataFirstTime = 0;
+let _dataLastTime = 0;
 
 // ---- 更新图表数据 ----
 function updateChartData() {
@@ -281,6 +333,8 @@ function updateChartData() {
 
   const ohlc = transformData(props.data);
   if (!ohlc.length) return;
+  _dataFirstTime = ohlc[0].time as number;
+  _dataLastTime = ohlc[ohlc.length - 1].time as number;
 
   // 根据当前数据范围动态调整价格精度（切换ETF时生效）
   const samplePrice = ohlc[0]?.close ?? 10;
@@ -301,19 +355,27 @@ function updateChartData() {
   // MA lines — 增量更新
   maSeriesList.forEach((s) => chart!.removeSeries(s));
   maSeriesList.length = 0;
+  maSeriesIdx.length = 0;
+  const maLast: (number | null)[] = [];
   props.maLines.forEach((period, i) => {
     const maData = calcMA(ohlc, period);
+    maLast.push(
+      maData.length ? Number(maData[maData.length - 1].value) : null,
+    );
     if (maData.length) {
       const s = chart!.addSeries(LineSeries, {
-        color: maColors[i % maColors.length],
+        color: maColor(period, i),
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
       }) as ISeriesApi<"Line", Time>;
       s.setData(maData);
       maSeriesList.push(s);
+      maSeriesIdx.push(i); // series → props.maLines 下标（MA 无数据时二者会错位，故显式记录）
     }
   });
+  _maLastValues = maLast;
+  refreshMaLegend(null);
 
   // Volume
   if (volumeSeries) {
@@ -539,6 +601,17 @@ defineExpose({
       class="lw-chart"
       :style="{ display: hasData && !loading && !error ? '' : 'none' }"
     />
+    <!-- 均线图例（同花顺式；随十字光标联动，光标离开回到最新值） -->
+    <div v-if="hasData && maLegend.length" class="ma-legend">
+      <span
+        v-for="m in maLegend"
+        :key="m.period"
+        class="ma-legend-item"
+        :style="{ color: m.color }"
+      >
+        MA{{ m.period }}: {{ m.value != null ? m.value.toFixed(2) : "--" }}
+      </span>
+    </div>
     <!-- 十字光标浮层标签 -->
     <div
       v-if="tooltipData?.visible"
@@ -564,6 +637,24 @@ defineExpose({
   width: 100%;
   min-height: v-bind("props.height + 'px'");
   zoom: v-bind("klineZoom"); /* 抵消 html { zoom: 0.8 }，恢复 chart 内部坐标系统与 OS 鼠标一致 */
+}
+
+/* 均线图例 —— 与同花顺一致：左上角、按线色标注周期与当前值 */
+.ma-legend {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  pointer-events: none;
+  font-size: 11px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.ma-legend-item {
+  white-space: nowrap;
 }
 
 /* 十字光标浮层标签 */

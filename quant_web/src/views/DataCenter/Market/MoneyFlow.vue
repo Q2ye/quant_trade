@@ -308,7 +308,7 @@ onMounted(load);
             v-if="hsgtData.length"
             :option="hsgtOption"
             autoresize
-            style="height: 300px"
+            style="height: 300px; zoom: 1.25"
           />
           <n-empty v-else description="暂无数据" style="padding: 60px" />
         </n-card>
@@ -397,7 +397,7 @@ onMounted(load);
             v-if="sectorOption"
             :option="sectorOption"
             autoresize
-            style="height: 500px"
+            style="height: 500px; zoom: 1.25"
             @click="onSectorClick"
           />
           <n-empty

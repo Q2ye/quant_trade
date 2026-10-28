@@ -134,6 +134,10 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         #    根因：弱态分支里的 `elif enter_cond` 每日重置计数器，只有「模糊投票区」
         #    （below<3 且 above<3）才累积，而该区间从未连续超过 4 天。
         #    保留不删（语义上仍是兜底），但**不要指望它能限制走弱期时长**。
+        #    ⚠️ 2026-10-24：**不要**在不做回测的情况下「修」这个计数器 —— 实测当前走弱期
+        #    已连续 16 个交易日（`_weak_streak`），把语义改成「连续走弱天数」会让本兜底
+        #    在约 4 个交易日后首次触发，在 BEAR 里强制退出防御（从未验证过的路径）。
+        #    监控请用 `_weak_streak`（`_compute_weak_streak`，仅诊断，不参与交易判据）。
         "max_weak_days": 20,
         # regime 连续确认天数：需连续 N 天满足投票条件才允许翻转（去抖）。
         #   取值范围 1~5；1 = 当日即翻转（原行为，与本参数引入前逐字等价）；
@@ -539,6 +543,13 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._vol_scale: float = 1.0            # 本日仓位的波动率缩放系数
         self._weak_start_date: Optional[str] = None
         self._weak_days_count: int = 0
+        # 真实连续走弱交易日数（监控口径，**不参与任何交易判据**）。
+        # `_weak_days_count` 在「持续走弱」时每日被重置为 0（见 DEFAULT_PARAMS
+        # max_weak_days 注释），不能当持续时间用；本字段由 `_compute_weak_streak`
+        # 回放指数缓存得出，与进程重启无关。2026-10-24 起用于诊断。
+        self._weak_streak: int = 0
+        # streak 已计数到的日期（None = 需要回放重建）。同日重跑不重复计数。
+        self._weak_streak_date: Optional[str] = None
         self._enter_streak: int = 0   # 连续满足进入条件的天数（weak_confirm_days 去抖用）
         self._exit_streak: int = 0    # 连续满足退出条件的天数
         self._last_trade_date: str = ""
@@ -567,6 +578,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._is_weak = False
         self._weak_start_date = None
         self._weak_days_count = 0
+        self._weak_streak = 0
+        self._weak_streak_date = None
         self._enter_streak = 0
         self._exit_streak = 0
         self._last_trade_date = ""
@@ -918,6 +931,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
           与引入该参数前逐字等价）。震荡市中 MA10 被反复击穿会导致 regime 高频翻转，
           资金被在「全球池 / 中国池」之间来回甩，每次踩在错误一边。
         - `max_weak_days`：走弱期最长持续交易日，超时强制退出。
+          ⚠️ 该守卫**当前不会触发**：`_weak_days_count` 在 `enter_cond` 成立时每日被重置为 0
+          （见下方 elif enter_cond 分支），只有「模糊投票区」才累积。持续走弱时它恒为 0，
+          **不要把它当持续时间用** —— 持续时间看 `_weak_streak`（`_compute_weak_streak`）。
         """
         if not self._index_cache:
             return
@@ -955,7 +971,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 self._weak_start_date = None
                 self._weak_days_count = 0
             elif enter_cond:
-                self._weak_start_date = td
+                # ⚠️ 2026-10-24：原实现在此**每日**把 start_date 改成当天（导致它永远
+                # 等于“今天”，失去起点语义）。起点只应在进入走弱时确定；持续走弱期间
+                # 由下方 `_weak_streak` 监控块维护（含重启后的回放重建）。
                 self._weak_days_count = 0
         else:
             if enter_ready:
@@ -963,11 +981,100 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 self._weak_start_date = td
                 self._weak_days_count = 0
 
+        # 监控口径（2026-10-24）：上面的 `_weak_days_count` 在持续走弱时每日归零，
+        # `days=0/20` 不代表没走弱。这里维护**真实连续走弱天数与起点**，
+        # 与进程重启无关。**不参与任何交易判据** —— 覆盖状态机里每日重写的 start_date。
+        # 性能：只在「进入走弱」或重启后首次判定为走弱时回放一次（O(历史)），
+        # 之后每日 O(1) 递增 —— 否则 7.6 年回测会多出数分钟。同日重跑不重复计数。
+        if self._is_weak:
+            if self._weak_streak_date is None:
+                self._weak_streak, _since = self._compute_weak_streak(td)
+                self._weak_streak_date = td
+                if _since:
+                    self._weak_start_date = _since
+            elif td != self._weak_streak_date:
+                self._weak_streak += 1
+                self._weak_streak_date = td
+        else:
+            self._weak_streak = 0
+            self._weak_streak_date = None
+
         if self.verbose_logging:
             logger.info(
                 f"[{self.name}] 走弱期={self._is_weak} above={above} below={below} "
-                f"days={self._weak_days_count}/{self.max_weak_days}"
+                f"days={self._weak_days_count}/{self.max_weak_days} "
+                f"(streak={self._weak_streak}, since={self._weak_start_date or '-'})"
             )
+
+    def _compute_weak_streak(self, td: str) -> Tuple[int, Optional[str]]:
+        """回放 MA10 投票状态机，返回截至 `td` 的 (连续走弱交易日数, 走弱起点)。
+
+        为什么需要：`_weak_days_count` 在 `enter_cond` 成立时每日重置为 0，
+        持续走弱时诊断恒显示 `0/20`（2026-10-23 实测：真实已连续走弱 16 个交易日）。
+        本方法只回放 `_is_weak` 的翻转逻辑（enter/exit 投票 + `weak_confirm_days`），
+        输入全部来自 `_index_cache` → **与进程重启无关**。
+
+        ⚠️ 有意**不复现** `max_weak_days`：该守卫当前不会触发（计数器被每日重置），
+        复现它会让诊断与实际交易状态分叉。
+
+        Returns:
+            (streak, since)；未处于走弱期时返回 (0, None)。
+        """
+        if not self._index_cache:
+            return 0, None
+
+        lookback = self.weak_period_ma_lookback
+        # date -> [above, below]：与 `_update_weak_period` 逐日投票口径一致。
+        votes: Dict[str, List[int]] = {}
+        all_dates: set = set()
+        for code in self.weak_indices:
+            closes_map = self._index_cache.get(code) or {}
+            dates = sorted(d for d in closes_map if d <= td)
+            all_dates.update(dates)
+            n = len(dates)
+            if n < lookback:
+                continue
+            closes = np.asarray([closes_map[d] for d in dates], dtype=np.float64)
+            csum = np.cumsum(np.insert(closes, 0, 0.0))
+            for i in range(lookback - 1, n):
+                start = i - lookback + 1
+                window = closes[start:i + 1]
+                if not bool(np.all(np.isfinite(window))) or bool(np.any(window <= 0)):
+                    continue  # 与打分口径一致：非法值不投票，不猜
+                ma = float((csum[i + 1] - csum[start]) / lookback)
+                cur = float(closes[i])
+                bucket = votes.setdefault(dates[i], [0, 0])
+                if cur > ma:
+                    bucket[0] += 1
+                elif cur < ma:
+                    bucket[1] += 1
+
+        is_weak = False
+        streak = 0
+        since: Optional[str] = None
+        enter_streak = 0
+        exit_streak = 0
+        for d in sorted(all_dates):
+            above, below = votes.get(d, (0, 0))
+            enter_cond = below >= self.weak_enter_votes
+            exit_cond = above >= self.weak_exit_votes
+            enter_streak = enter_streak + 1 if enter_cond else 0
+            exit_streak = exit_streak + 1 if exit_cond else 0
+            enter_ready = enter_cond and enter_streak >= self.weak_confirm_days
+            exit_ready = exit_cond and exit_streak >= self.weak_confirm_days
+            if is_weak:
+                if exit_ready:
+                    is_weak = False
+                    streak = 0
+                    since = None
+                else:
+                    streak += 1
+            elif enter_ready:
+                is_weak = True
+                streak = 1
+                since = d
+
+        return (streak, since) if is_weak else (0, None)
 
     def _has_fresh_data(self, td: str) -> bool:
         """池内是否至少有一个标的带**当日** bar（F9 数据完整性守卫）。
@@ -2081,7 +2188,11 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 "holdings": list(self._holdings.keys()),
                 "pending_buys": list(self._pending_buys.keys()),
                 "is_weak": self._is_weak,
+                # ⚠️ weak_days 是 `max_weak_days` 守卫的计数器，持续走弱时每日归零，
+                #    不代表持续时间；持续时间看 weak_streak（2026-10-24 新增）。
                 "weak_days": self._weak_days_count,
+                "weak_streak": self._weak_streak,
+                "weak_start_date": self._weak_start_date,
                 # 2026-09-19：降级状态必须可见。
                 # ⚠️ 报**行数**而非键数 —— 键数在「查询成功但 0 行」时会显示"4 个指数齐"（假绿，
                 #    独立复审阻断项 2），行数才能暴露真相。

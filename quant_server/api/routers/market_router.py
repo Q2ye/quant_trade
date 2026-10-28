@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Market 模块 API 路由 — Phase 1/2/3"""
+from datetime import date
 from typing import Optional, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from modules.market.handlers import (
     do_financial_compare, do_financial_statements, do_financial_events,
     do_top_moneyflow, do_hsgt_history, do_stock_moneyflow_detail,
     do_macro, do_index_weights, do_index_valuation, do_etf_shares, do_etf_benchmark,
+    do_trading_calendar,
     do_index_history, do_index_sector_exposure, do_sector_moneyflow,
     do_stock_signals, do_stock_factor_scores, do_limit_analysis,
     do_style_factors, do_sector_turnover,
@@ -201,6 +203,29 @@ async def index_weights_api(code: str, offset: int = Query(0, ge=0), limit: int 
         r = await do_index_weights(db_session, code, offset, limit)
         return {"success": True, "data": r}
     except Exception as e:
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+@router.get("/trading-calendar")
+async def trading_calendar_api(start: date = Query(..., description="起始日 YYYY-MM-DD"),
+                               end: date = Query(..., description="结束日 YYYY-MM-DD"),
+                               exchange: str = Query("SSE"),
+                               current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
+    """区间内的交易日列表（仅 `is_open=True`）。
+
+    供前端页头「交易时段」判定 —— 后端只答「**哪天**是交易日」，
+    「**现在**是不是交易时段」由前端 `useMarketSession` 叠加时钟判定。
+    非交易日（周末 + 法定节假日）不在返回列表内。
+    """
+    if end < start:
+        raise HTTPException(status_code=400, detail="end 必须不早于 start")
+    if (end - start).days > 400:
+        raise HTTPException(status_code=400, detail="查询区间不得超过 400 天")
+    try:
+        r = await do_trading_calendar(db_session, start, end, exchange)
+        return {"success": True, "data": r}
+    except Exception as e:
+        logger.warning("交易日历查询失败 %s~%s: %s", start, end, e)
         raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 @router.get("/indexes/{code}/valuation")

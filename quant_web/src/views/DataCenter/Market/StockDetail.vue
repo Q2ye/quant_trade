@@ -18,7 +18,6 @@ import {
   NDataTable,
   NDescriptions,
   NDescriptionsItem,
-  useMessage,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import marketAPI from "@/api/market";
@@ -39,7 +38,6 @@ import { useChartDrawings } from "@/composables/useChartDrawings";
 
 const route = useRoute();
 const router = useRouter();
-const message = useMessage();
 const tsCode = computed(() =>
   ((route.params.code as string) || "").toUpperCase(),
 );
@@ -163,27 +161,6 @@ function onTimeRangeChange(range: { from: number; to: number }, period?: string)
 
   if (range.from - threshold <= oldestTime) {
     loadMoreKline(p);
-  }
-}
-
-async function addToWatchlist() {
-  const basic = data.value?.basic;
-  if (!basic) return;
-  try {
-    // fetch current list, toggle this code
-    const current = await marketAPI.getWatchlist();
-    const codes = current.map((w: any) => w.ts_code);
-    const idx = codes.indexOf(basic.ts_code);
-    if (idx >= 0) {
-      codes.splice(idx, 1);
-      message.success("已从自选移除");
-    } else {
-      codes.push(basic.ts_code);
-      message.success("已加入自选股");
-    }
-    await marketAPI.saveWatchlist(codes);
-  } catch {
-    message.warning("操作失败");
   }
 }
 
@@ -484,9 +461,6 @@ onMounted(() => {
             quaternary
             @click="basketStock = { symbol: tsCode, name: data?.basic?.name || tsCode }; basketDialogShow = true"
             >加入篮子</n-button
-          >
-          <n-button size="tiny" quaternary @click="addToWatchlist"
-            >⭐ 自选</n-button
           >
           <n-button
             size="tiny"

@@ -218,7 +218,7 @@ watch(
         v-if="trendOption"
         :option="trendOption"
         autoresize
-        style="height: 280px"
+        style="height: 280px; zoom: 1.25"
       />
       <n-empty v-else description="暂无趋势数据" style="padding: 20px" />
 

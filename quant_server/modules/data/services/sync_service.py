@@ -1094,15 +1094,19 @@ class DataSyncService:
 			added = sync_result.get("records_added", 0)
 			updated = sync_result.get("records_updated", 0)
 			failed = sync_result.get("records_failed", 0)
-			total = added + updated + failed
+			# 2026-10-17：空表也算「零写入」——此前 all-empty 跑（added=updated=failed=0,
+			# empty=N）会落入 else 被判 completed/success=True，等于把「接口全空」
+			# 报成成功（2026-10-12 缺口即为此形态）。
+			empty = sync_result.get("records_empty", 0)
+			total = added + updated + failed + empty
 			if sync_result.get("cancelled"):
 				final_status = "cancelled"
 				err_msg = "用户手动取消"
 
 			elif total > 0 and added + updated == 0:
-				# 所有记录都失败了（如字段名不匹配、接口报错等）
+				# 所有记录都失败 / 全部返回空表（如字段名不匹配、接口报错等）
 				final_status = "failed"
-				err_msg = f"全部 {failed} 条记录同步失败，无成功记录"
+				err_msg = f"全部 {failed + empty} 条记录同步失败，无成功记录"
 				sync_result["message"] = err_msg
 			else:
 				final_status = "completed"
@@ -1798,7 +1802,7 @@ class DataSyncService:
 
 		Returns:
 			{records_added, records_updated, records_skipped, records_failed,
-			 total_items, mode_summary, message}
+			 records_empty, total_items, mode_summary, message}
 		"""
 		# 读取per-type限流配置（Tushare VIP接口有限频，未配置则不限）
 
@@ -1815,23 +1819,52 @@ class DataSyncService:
 		records_updated = 0;
 		records_skipped = 0;
 		records_failed = 0
+		# 空表计数（2026-10-12 新增）：process_one 返回 {"empty": 1} 时累加。
+		# 与 skipped/failed 并列的**第三类零写入**——调用方取到空响应（既非异常、
+		# 也非「已是最新」）时必须落在这里，否则「处理了 N 只却只写入 M 行」在
+		# 计数上完全自洽，缺口不可见（stock_moneyflow 2026-10-12 即栽在此）。
+		records_empty = 0
+		# 分段耗时累加器（2026-10-15 新增，**只加日志、不改行为**）。
+		# 背景：stock_moneyflow 实测吞吐 74 次/分，而隔离复现同代码同库同接口为 503 次/分
+		#       —— 单次 HTTP 91ms、DB 3ms 均正常，故「慢」只可能在**等待**里。
+		# 本累加器把每次调用拆成四段，用于把「等什么」定位出来。
+		_seg = {"n": 0, "limiter": 0.0, "session": 0.0, "work": 0.0, "token": 0.0, "total": 0.0}
 		mode_summary = {"full": 0, "incremental": 0, "overlap": 0, "up_to_date": 0}
 
 		async def _worker(ts_code):
 			"""单个 worker：获取独立 session，调用 process_one，commit 后累加统计。"""
 			nonlocal records_added, records_updated, records_skipped, records_failed
+			nonlocal records_empty
 			nonlocal mode_summary, done
+			_t_enter = time.monotonic()
+			_seg_lim = _seg_sess = _seg_work = _seg_tok = 0.0
 			if await self._is_cancelled():
 				return
 
 			if limiter:
+				# 2026-10-19 修复（请求节流）：令牌必须在**发请求之前**获取。
+				# 原实现把 acquire 放在 process_one 之后，只限制了 worker 的返回速度，
+				# 并没有限制 HTTP 的发出速度 —— 请求由并发槽直接放行（moneyflow 实测
+				# 可打到 600~1000 次/分）→ 撞 Tushare 500 次/分上限，19:34 大面积 429。
+				# 令牌桶必须前置为真正的请求节流器。
+				_bucket = _get_bucket(rate_key)
+				if _bucket:
+					await _bucket.acquire()
+				else:
+					await asyncio.sleep(0.5)
+				_t_tok = time.monotonic()
+				_seg_tok = _t_tok - _t_enter
+
 				async with limiter:
+					_t_lim = time.monotonic()
+					_seg_lim = _t_lim - _t_tok
 					async with sem:
 						if await self._is_cancelled():
 							return
 						from shared.database.session import get_session_manager
 						sm = get_session_manager()
 						async with sm.get_session() as s:
+							_t_sess = time.monotonic()
 							try:
 								result = await process_one(s, ts_code)
 								await s.commit()
@@ -1839,12 +1872,9 @@ class DataSyncService:
 								await s.rollback()
 								logger.error(f"[{label}] {ts_code} worker error: {_fmt_err(_we, 200)}")
 								result = {"added": 0, "updated": 0, "failed": True}
-				# 限流节流：按接口频率令牌桶限流（替代固定 0.5s，避免打爆 Tushare 限频）
-				_bucket = _get_bucket(rate_key)
-				if _bucket:
-					await _bucket.acquire()
-				else:
-					await asyncio.sleep(0.5)
+					_t_work = time.monotonic()
+					_seg_sess = _t_sess - _t_lim
+					_seg_work = _t_work - _t_sess
 			else:
 				async with sem:
 					if await self._is_cancelled():
@@ -1860,22 +1890,50 @@ class DataSyncService:
 							logger.error(f"[{label}] {ts_code} worker error: {_fmt_err(_we, 200)}")
 							result = {"added": 0, "updated": 0, "failed": True}
 			async with lock:
-				records_added += result.get("added", 0)
-				records_updated += result.get("updated", 0)
-				records_skipped += result.get("skipped", 0)
+				_added = result.get("added", 0)
+				_updated = result.get("updated", 0)
+				_skipped = result.get("skipped", 0)
+				records_added += _added
+				records_updated += _updated
+				records_skipped += _skipped
+				_e = result.get("empty", 0)
+				if _e:
+					records_empty += _e
+				elif (_added == 0 and _updated == 0 and _skipped == 0
+				      and not result.get("failed")):
+					# 2026-10-17：process_one 返回「零写入 / 零跳过 / 未失败」
+					# ⇒ 接口返回的是空表。此前这类结果不落入任何计数桶，
+					# 「处理了 N 只却只写入 0 行」在汇总上完全自洽
+					# （2026-10-12 moneyflow 缺口即为此形态）。
+					# 一次覆盖全部逐股同步，避免 20 处逐一补 "empty": 1。
+					records_empty += 1
 				if result.get("failed"): records_failed += 1
 				if mode_stats and "mode" in result:
 					m = result["mode"]
 					mode_summary[m] = mode_summary.get(m, 0) + 1
 				done += 1;
 				cur = done
+				if limiter:
+					_seg["n"] += 1
+					_seg["limiter"] += _seg_lim
+					_seg["session"] += _seg_sess
+					_seg["work"] += _seg_work
+					_seg["token"] += _seg_tok
+					_seg["total"] += _seg_lim + _seg_sess + _seg_work + _seg_tok
 			if cur % 500 == 0 and not await self._is_cancelled():
 				pct = cur / total * 100
 				await self._update_progress(task_id, progress=min(100, int(pct)),
 				                            current_item=f"{label}: {cur}/{total}", user_id=user_id)
+				_sn = _seg["n"] or 1
+				_avg = (f"排队等许可={_seg['limiter']/_sn*1000:.0f}ms "
+				        f"取会话={_seg['session']/_sn*1000:.0f}ms "
+				        f"取数+写库={_seg['work']/_sn*1000:.0f}ms "
+				        f"等令牌={_seg['token']/_sn*1000:.0f}ms "
+				        f"单次合计={_seg['total']/_sn*1000:.0f}ms")
 				logger.info(f"[{label}] {cur}/{total} ({pct:.0f}%) "
 				            f"新增={records_added} 更新={records_updated} "
-				            f"跳过={records_skipped} 失败={records_failed}")
+				            f"跳过={records_skipped} 空表={records_empty} 失败={records_failed} "
+				            f"| 分段均值 [{_avg}]")
 
 		coros = [_worker(c) for c in ts_codes]
 		await asyncio.gather(*coros)
@@ -1884,15 +1942,24 @@ class DataSyncService:
 		_cancel_word = "已取消" if cancelled else "完成"
 		if cancelled:
 			logger.info(f"[{label}] 取消成功: 已处理={done}/{total} "
-			            f"新增={records_added} 失败={records_failed}")
+			            f"新增={records_added} 空表={records_empty} 失败={records_failed}")
 		else:
 			await self._update_progress(task_id, progress=100,
 			                            current_item=f"{label}: {total}/{total}", user_id=user_id)
+			_fin = ""
+			if _seg["n"]:
+				_fsn = _seg["n"]
+				_fin = (f" | 分段均值(全量 {_fsn} 次) [排队等许可={_seg['limiter']/_fsn*1000:.0f}ms "
+				        f"取会话={_seg['session']/_fsn*1000:.0f}ms "
+				        f"取数+写库={_seg['work']/_fsn*1000:.0f}ms "
+				        f"等令牌={_seg['token']/_fsn*1000:.0f}ms "
+				        f"单次合计={_seg['total']/_fsn*1000:.0f}ms]")
 			logger.info(f"[{label}] 完成: 新增={records_added} 跳过={records_skipped} "
-			            f"失败={records_failed} 模式={mode_summary}")
+			            f"空表={records_empty} 失败={records_failed} 模式={mode_summary}{_fin}")
 		return {
 			"records_added": records_added, "records_updated": records_updated,
 			"records_skipped": records_skipped, "records_failed": records_failed,
+			"records_empty": records_empty,
 			"total_items": records_added + records_updated + records_skipped + records_failed,
 			"mode_summary": mode_summary if mode_stats else {},
 			"cancelled": cancelled,
@@ -1969,6 +2036,19 @@ class DataSyncService:
 		if end_date <= ref_date:
 			return None  # 主市场已是最新，无需同步
 
+		# 2026-10-17：落后标的（latest=None 或 < ref_date）。
+		# 批量只覆盖 ref_date+1..end，这些标的更早的历史缺口不会被补到
+		# （停牌复牌日、新纳入跟踪、上一次部分失败遗留）。
+		# 结果里返回该名单，由调用方按各自 pre-batch latest 继续走逐股路径补齐。
+		def _as_date(v):
+			return v.date() if hasattr(v, "date") else v
+
+		laggards = [
+			c for c in ts_codes
+			if latest_dates_map.get(c) is None
+			or _as_date(latest_dates_map[c]) < ref_date
+		]
+
 		# 需要补的**交易日**（跳过周末与非交易日）
 		# 🔴 2026-10-08 修复：原实现只跳周末，注释称「节假日由 API 空响应兜底」——
 		#    该假设已被 2026-09-25（中秋）**证伪**：`index_daily` 对 7 个指数代码返回了
@@ -1998,33 +2078,163 @@ class DataSyncService:
 		mode_summary = {"full": 0, "incremental": len(needed), "overlap": 0, "up_to_date": 0}
 		total_added = 0
 		failed_dates = 0
+		# 2026-10-17 新增：空响应计数。
+		# `needed` 已按交易日历过滤 ⇒ 真实交易日返回空表属于异常，不能静默 `continue`；
+		# 否则「部分日期成功 + 部分日期空」时汇总仍报「失败=0」，缺口不可见。
+		empty_dates = 0
+		# 2026-10-17：取消支持。批量回填最多 250 个日期，此前全程不检查取消令牌，
+		# 用户点「取消」后仍会把剩余日期全部拉完并写库，且返回体无 cancelled 字段
+		# → 任务最终被判 completed。
+		cancelled = False
 		ts_set = set(ts_codes)
+		# 2026-10-19：落后标的改按交易日批量补齐（不再逐股）。
+		# 背景：10-16 部分失败留下 3,284 只落后标的，逐股补齐 = 3,284 次 HTTP，
+		# 直接撞 Tushare moneyflow 500 次/分上限（19:34 大面积 429）。
+		# 落后标的的缺口区间是 (latest_i, ref_date]，并集为 (min_latest, ref_date]；
+		# 每个交易日 1 次全市场请求 + 按 latest_i 过滤，请求数 = 交易日数。
+		# 仅当「日期数 < 逐股数」且总日期数不超上限时启用（否则逐股更省）。
+		_lag_codes = [c for c in laggards if latest_dates_map.get(c) is not None]
+		_lag_dates: List[date] = []
+		if _lag_codes:
+			_min_latest = min(_as_date(latest_dates_map[c]) for c in _lag_codes)
+			_d = _min_latest + timedelta(days=1)
+			while _d <= ref_date:
+				if _d.weekday() < 5 and (_cal is None or _cal.is_trading_day(_d)):
+					_lag_dates.append(_d)
+				_d += timedelta(days=1)
+		_bulk_laggards = (
+			bool(_lag_dates)
+			and len(_lag_dates) < len(laggards)
+			and len(needed) + len(_lag_dates) <= max_dates
+		)
+		_lag_failed: set = set()
+
 		async with SyncTimingLogger(logger, data_type_label, slow_threshold=10.0) as timer:
-			for d in needed:
+			async def _fetch_upsert_one_date(d: date, need_codes=None) -> int:
+				"""拉取单个交易日全市场并 upsert，返回写入行数。
+
+				need_codes=None → 写入全部跟踪标的（主窗口）；
+				否则只写入集合内的标的（落后标的按 latest<d 过滤）。
+				返回 -1 表示接口返回空表（真实交易日 ⇒ 异常，由调用方计入 empty_dates）。
+				"""
+				async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH, str(d)):
+					df = await self._cancellable_run_in_executor(
+						fetch_fn, trade_date=d.strftime("%Y%m%d"),
+					)
+				if df is None or df.empty:
+					return -1
+				# 只保留本系统跟踪的股票，与逐股路径口径一致
+				_codes = ts_set if need_codes is None else need_codes
+				if _codes:
+					df = df[df["ts_code"].isin(_codes)]
+				if df.empty:
+					return 0
+				async with timer.node(SyncTimingLogger.NODE_CONVERT, str(d)):
+					data = _convert_records_datetime(df.to_dict("records"))
+				async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, str(d)):
+					_preprocess_records(data, date_fields=["trade_date"])
+					data = _drop_unstorable_records(
+						data, getattr(repo, "model", None), data_type_label,
+					)
+					count = await repo.bulk_upsert(data)
+				return int(count or 0)
+
+			for _idx, d in enumerate(needed):
+				if await self._is_cancelled():
+					cancelled = True
+					logger.info(
+						f"[{data_type_label}] 批量同步已取消（已处理 {_idx}/{len(needed)} 个日期）"
+					)
+					break
 				try:
-					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH, str(d)):
-						df = await self._cancellable_run_in_executor(
-							fetch_fn, trade_date=d.strftime("%Y%m%d"),
+					_count = await _fetch_upsert_one_date(d)
+					if _count < 0:
+						# 2026-10-17：真实交易日返回空表按异常留痕（见 empty_dates 注释）
+						logger.warning(
+							"[%s] 批量同步 %s 返回空表（应为交易日）",
+							data_type_label, d,
 						)
-					if df is None or df.empty:
-						continue  # 非交易日或停市
-					# 只保留本系统跟踪的股票，与逐股路径口径一致
-					if ts_set:
-						df = df[df["ts_code"].isin(ts_set)]
-					if df.empty:
+						empty_dates += 1
 						continue
-					async with timer.node(SyncTimingLogger.NODE_CONVERT, str(d)):
-						data = _convert_records_datetime(df.to_dict("records"))
-					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, str(d)):
-						_preprocess_records(data, date_fields=["trade_date"])
-						data = _drop_unstorable_records(
-							data, getattr(repo, "model", None), data_type_label,
-						)
-						count = await repo.bulk_upsert(data)
-					total_added += int(count or 0)
+					total_added += _count
 				except Exception as e:
 					logger.error(f"[{data_type_label}] 批量同步 {d} 失败: {_fmt_err(e, 150)}")
 					failed_dates += 1
+
+			# ---- 落后标的：按交易日批量补齐（2026-10-19 新增）----
+			if _bulk_laggards:
+				logger.info(
+					f"[{data_type_label}] 落后标的 {len(laggards)} 只 → 按交易日批量补齐 "
+					f"{len(_lag_dates)} 个日期（替代 {len(laggards)} 次逐股请求）"
+				)
+				for _idx, _d in enumerate(_lag_dates):
+					if await self._is_cancelled():
+						cancelled = True
+						logger.info(
+							f"[{data_type_label}] 落后标的批量补齐已取消"
+							f"（已处理 {_idx}/{len(_lag_dates)} 个日期）"
+						)
+						break
+					_need = {
+						c for c in _lag_codes
+						if _as_date(latest_dates_map[c]) < _d
+					}
+					if not _need:
+						continue
+					try:
+						_count = await _fetch_upsert_one_date(_d, _need)
+					except Exception as e:
+						logger.error(
+							f"[{data_type_label}] 落后标的批量补齐 {_d} 失败: "
+							f"{_fmt_err(e, 150)}"
+						)
+						failed_dates += 1
+						_lag_failed.update(_need)
+						continue
+					if _count < 0:
+						logger.warning(
+							"[%s] 落后标的批量补齐 %s 返回空表（应为交易日）",
+							data_type_label, _d,
+						)
+						empty_dates += 1
+						_lag_failed.update(_need)
+						continue
+					total_added += _count
+
+			# 仍走逐股兜底：无任何历史（latest=None，需全量）+ 批量补齐失败的标的
+			if _bulk_laggards and not cancelled:
+				laggards = [
+					c for c in laggards
+					if latest_dates_map.get(c) is None or c in _lag_failed
+				]
+			if _bulk_laggards:
+				mode_summary["incremental"] += len(_lag_dates)
+
+		# 2026-10-19 修复（自死锁）：批量写入必须在返回前提交。
+		# `bulk_upsert` 只 execute 不 commit（RepositoryBase.bulk_upsert），而调用方
+		# 在本方法返回后会带着「落后标的」进入逐股补齐 —— 逐股 worker 用**独立
+		# session** 回写同一 (ts_code, trade_date)（含批量刚写入的当日行），
+		# ON CONFLICT DO UPDATE 会等待本 session 未提交事务持有的行锁；而本 session
+		# 要等逐股 gather 结束后才 commit（sync_market_data 末尾）→ 循环等待、永不
+		# 返回，且 lock_timeout=0 不会报错。
+		# 实测 2026-10-19：moneyflow 批量写入 5,563 行后 2 个 worker 等锁 35 分钟无
+		# 进展；stock_daily / stock_daily_basic 同形态，整条日终流水线停摆。
+		await self.session.commit()
+
+		if cancelled:
+			# 取消时直接返回（不得落到下面的「零写入 → 退回逐股」分支，
+			# 否则用户取消后还会继续跑逐股路径）
+			return {
+				"records_added": total_added,
+				"records_updated": 0,
+				"records_skipped": 0,
+				"records_failed": failed_dates + empty_dates,
+				"total_items": len(ts_codes) * len(needed),
+				"mode_summary": mode_summary,
+				"cancelled": True,
+				"laggards": laggards,
+				"message": f"{data_type_label} 按交易日批量同步已取消",
+			}
 
 		if total_added == 0 and failed_dates == 0:
 			# 零写入且零失败：可能是批量接口不可用（空响应）或全部为非交易日。
@@ -2035,17 +2245,39 @@ class DataSyncService:
 			return None
 
 		logger.info(
-			f"[{data_type_label}] 按交易日批量同步完成: 日期={len(needed)}, 写入={total_added}, 失败={failed_dates}"
+			f"[{data_type_label}] 按交易日批量同步完成: 日期={len(needed)}"
+			f"{f' + 落后补齐 {len(_lag_dates)} 天' if _bulk_laggards else ''}, "
+			f"写入={total_added}, 失败={failed_dates}, 空表={empty_dates}, "
+			f"剩余逐股={len(laggards)}"
 		)
 		return {
 			"records_added": total_added,
 			"records_updated": 0,
 			"records_skipped": 0,
-			"records_failed": failed_dates,
+			# 空日也计入失败 ⇒ 汇总行「失败=N」可用于判断是否需要手动重同步
+			"records_failed": failed_dates + empty_dates,
 			"total_items": len(ts_codes) * len(needed),
 			"mode_summary": mode_summary,
+			"cancelled": False,
+			"laggards": laggards,
 			"message": f"{data_type_label} 按交易日批量同步完成",
 		}
+
+	@staticmethod
+	def _merge_batch_result(result: Dict[str, Any],
+	                        batch_extra: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+		"""把批量路径的计数并入「落后标的逐股补齐」的结果。
+
+		2026-10-17：`_sync_by_date_batch` 只覆盖 ref_date+1..end，落后标的
+		（停牌/新纳入/上次部分失败）需继续走逐股路径；两条路径都写了库，
+		计数必须相加，否则汇总行会漏报批量部分的写入量。
+		"""
+		if not batch_extra:
+			return result
+		for k in ("records_added", "records_updated", "records_skipped",
+		          "records_failed", "records_empty"):
+			result[k] = (result.get(k, 0) or 0) + (batch_extra.get(k, 0) or 0)
+		return result
 
 	async def _create_sync_task(
 			self,
@@ -2381,17 +2613,29 @@ class DataSyncService:
 
 		# ===== 步骤 2.5：按交易日批量拉取全市场（首选路径） =====
 		# 日常增量只需补 1 天时，一次 trade_date 调用返回全市场，避免 5531 次逐股 HTTP
-		_source = self.source_factory.get_source(DataSource.TUSHARE)
-		_batch_result = await self._sync_by_date_batch(
-			ts_codes=ts_codes,
-			end_date=end_date or datetime.now().date(),
-			latest_dates_map=latest_dates_map,
-			repo=self.stock_daily_repo,
-			fetch_fn=_source.get_daily,
-			data_type_label="日行情(daily_quotes)",
-		)
-		if _batch_result is not None:
-			return _batch_result
+		_batch_extra = None
+		# 2026-10-17：显式 start_date = 手动回填/重同步 → 不得截断用户区间，
+		# 保持原逐股 overlap 语义（批量路径只补 ref_date+1..end）。
+		if start_date is None:
+			_source = self.source_factory.get_source(DataSource.TUSHARE)
+			_batch_result = await self._sync_by_date_batch(
+				ts_codes=ts_codes,
+				end_date=end_date or datetime.now().date(),
+				latest_dates_map=latest_dates_map,
+				repo=self.stock_daily_repo,
+				fetch_fn=_source.get_daily,
+				data_type_label="日行情(daily_quotes)",
+			)
+			if _batch_result is not None:
+				if _batch_result.get("cancelled"):
+					# 已取消 → 不得再进入逐股补齐（#1 与 #7 的交互点）
+					return _batch_result
+				_laggards = _batch_result.pop("laggards", None) or []
+				if not _laggards:
+					return _batch_result
+				# 落后标的（停牌/新纳入/上次部分失败）→ 继续逐股补齐，计数在尾部合并
+				_batch_extra = _batch_result
+				ts_codes = _laggards
 
 		# ===== 步骤 3：配置并发参数 =====
 		# 默认 8 并发，可通过配置文件 settings.ENGINES.sync_concurrency 调整
@@ -2416,6 +2660,9 @@ class DataSyncService:
 		records_updated = 0
 		records_skipped = 0
 		records_failed = 0
+		# 2026-10-17 新增：空表计数。兜底路径此前把空响应当「正常跳过」，
+		# 与「已是最新」不可区分；接口全空时汇总行仍是「失败=0」。
+		records_empty = 0
 		mode_summary = {"full": 0, "incremental": 0, "overlap": 0, "up_to_date": 0}
 
 		total = len(ts_codes)
@@ -2438,6 +2685,7 @@ class DataSyncService:
 				**取消支持**：处理前检查 cancel_token，已取消时立即返回。
 				"""
 				nonlocal records_added, records_updated, records_skipped, records_failed
+				nonlocal records_empty
 				nonlocal mode_summary, done_count
 
 				# --- 取消检查 ---
@@ -2486,7 +2734,10 @@ class DataSyncService:
 						)
 
 						if daily_df is None or daily_df.empty:
-							return  # 无数据，正常跳过
+							# 2026-10-17：计 empty，避免「接口全空」被当成「已是最新」
+							async with stats_lock:
+								records_empty += 1
+							return
 
 						# --- 步骤 4c：数据转换 + DB 写入 ---
 						daily_data = _convert_records_datetime(
@@ -2552,15 +2803,16 @@ class DataSyncService:
 
 			logger.info(
 				f"[日行情] 完成: 新增={records_added} 跳过={records_skipped} "
-				f"失败={records_failed} 模式={mode_summary}"
+				f"空表={records_empty} 失败={records_failed} 模式={mode_summary}"
 			)
-			return {
+			return self._merge_batch_result({
 				"records_added": records_added, "records_updated": records_updated,
 				"records_skipped": records_skipped, "records_failed": records_failed,
+				"records_empty": records_empty,
 				"total_items": records_added + records_updated + records_skipped + records_failed,
 				"mode_summary": mode_summary,
 				"message": f"日行情数据同步完成（并行{max_concurrency}并发）"
-			}
+			}, _batch_extra)
 
 	async def _sync_minute_quotes(
 			self,
@@ -2686,6 +2938,34 @@ class DataSyncService:
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_moneyflow_repo.get_latest_trade_dates_batch(ts_codes)
 
+		# 步骤 2.5：按交易日批量拉取全市场（首选路径，避免 5,565 次逐股 HTTP）
+		# 2026-10-17 新增：与 adj_factor / daily_basic / etf_daily 同范式。
+		# 实测 20261015：`pro.moneyflow(trade_date=...)` 一次返回 5,576 行/0.53s。
+		# 逐股路径曾撞上 500 次/分 的上游限频（10-13/10-16 各丢约 3,000 只）。
+		_batch_extra = None
+		# ⚠️ 仅「日常增量」（未显式指定 start_date）走批量；手动重同步传了
+		#    start_date 时保持原逐股 overlap 语义，行为不变。
+		if start_date is None:
+			_source = self.source_factory.get_source(DataSource.TUSHARE)
+			_batch_result = await self._sync_by_date_batch(
+				ts_codes=ts_codes,
+				end_date=end_date or datetime.now().date(),
+				latest_dates_map=latest_dates_map,
+				repo=self.stock_moneyflow_repo,
+				fetch_fn=_source.get_moneyflow,
+				data_type_label="资金流向(moneyflow)",
+			)
+			if _batch_result is not None:
+				if _batch_result.get("cancelled"):
+					# 已取消 → 不得再进入逐股补齐（#1 与 #7 的交互点）
+					return _batch_result
+				_laggards = _batch_result.pop("laggards", None) or []
+				if not _laggards:
+					return _batch_result
+				# 落后标的（停牌/新纳入/上次部分失败）→ 继续逐股补齐，计数在尾部合并
+				_batch_extra = _batch_result
+				ts_codes = _laggards
+
 		logger.info(f"[资金流向] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		async with SyncTimingLogger(logger, "资金流向(moneyflow)", slow_threshold=10.0) as timer:
 
@@ -2702,12 +2982,23 @@ class DataSyncService:
 						return {"added": 0, "updated": 0, "skipped": 1, "mode": mode}
 					s_str = "" if mode == "full" else (s_date.strftime("%Y%m%d") if s_date else "")
 					e_str = "" if mode == "full" else (e_date.strftime("%Y%m%d") if e_date else "")
-					df = await self._cancellable_run_in_executor(source.get_moneyflow, symbol=ts_code, start_date=s_str,
-					                                             end_date=e_str)
+					async with timer.node("http_fetch"):
+						df = await self._cancellable_run_in_executor(source.get_moneyflow, symbol=ts_code, start_date=s_str,
+						                                             end_date=e_str)
 					if df is None or df.empty:
-						return {"added": 0, "updated": 0, "mode": mode}
+						# ⚠️ 2026-10-12：空响应**必须留痕**。
+						#    此前这里直接 `return {"added": 0, "updated": 0}`，而
+						#    `_parallel_for_each` 只累加 added/updated/skipped/failed
+						#    → 汇总行「新增=2556 跳过=0 失败=0」在计数上完全自洽，
+						#    掩盖了 5565 只中约 3000 只零写入（DB 实落 2378 行）。
+						#    现单列 `empty` 计数并打点，缺口当天可见、可归因。
+						logger.warning(
+							"[资金流向] %s 区间 %s~%s 返回空表（0 行）→ 计入「空表」",
+							ts_code, s_str or "(full)", e_str or "(full)")
+						return {"added": 0, "updated": 0, "empty": 1, "mode": mode}
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, _ = await self._process_trade_date_data(repo, data, ts_code)
+					async with timer.node("db_upsert"):
+						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
 					logger.error(f"[资金流向] {ts_code} 同步失败: {_fmt_err(e, 150)}")
@@ -2717,7 +3008,7 @@ class DataSyncService:
 			result = await self._parallel_for_each(ts_codes, "资金流向", task_id, user_id, _process_one, rate_key="moneyflow")
 			if not result.get("cancelled"):
 				result["message"] = "资金流向数据同步完成"
-			return result
+			return self._merge_batch_result(result, _batch_extra)
 
 	async def _sync_adj_factor(
 			self,
@@ -2755,17 +3046,28 @@ class DataSyncService:
 		latest_dates_map = await self.stock_adj_factor_repo.get_latest_trade_dates_batch(ts_codes)
 
 		# 步骤 2.5：按交易日批量拉取全市场（首选路径，避免 5531 次逐股 HTTP）
-		_source = self.source_factory.get_source(DataSource.TUSHARE)
-		_batch_result = await self._sync_by_date_batch(
-			ts_codes=ts_codes,
-			end_date=end_date or datetime.now().date(),
-			latest_dates_map=latest_dates_map,
-			repo=self.stock_adj_factor_repo,
-			fetch_fn=_source.get_adj_factor,
-			data_type_label="复权因子(adj_factor)",
-		)
-		if _batch_result is not None:
-			return _batch_result
+		_batch_extra = None
+		# 2026-10-17：显式 start_date = 手动回填 → 保持原逐股 overlap 语义
+		if start_date is None:
+			_source = self.source_factory.get_source(DataSource.TUSHARE)
+			_batch_result = await self._sync_by_date_batch(
+				ts_codes=ts_codes,
+				end_date=end_date or datetime.now().date(),
+				latest_dates_map=latest_dates_map,
+				repo=self.stock_adj_factor_repo,
+				fetch_fn=_source.get_adj_factor,
+				data_type_label="复权因子(adj_factor)",
+			)
+			if _batch_result is not None:
+				if _batch_result.get("cancelled"):
+					# 已取消 → 不得再进入逐股补齐（#1 与 #7 的交互点）
+					return _batch_result
+				_laggards = _batch_result.pop("laggards", None) or []
+				if not _laggards:
+					return _batch_result
+				# 落后标的（停牌/新纳入/上次部分失败）→ 继续逐股补齐，计数在尾部合并
+				_batch_extra = _batch_result
+				ts_codes = _laggards
 
 		async with SyncTimingLogger(logger, "复权因子(adj_factor)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
@@ -2788,7 +3090,8 @@ class DataSyncService:
 							start_date=s_str, end_date=e_str,
 						)
 					if df is None or df.empty:
-						return {"added": 0, "updated": 0, "mode": mode}
+						# 2026-10-17：计 empty，避免「接口全空」被当成「已是最新」
+						return {"added": 0, "updated": 0, "empty": 1, "mode": mode}
 					async with timer.node(SyncTimingLogger.NODE_CONVERT, ts_code):
 						data = _convert_records_datetime(df.to_dict("records"))
 					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, ts_code):
@@ -2802,7 +3105,7 @@ class DataSyncService:
 			result = await self._parallel_for_each(ts_codes, "复权因子", task_id, user_id, _process_one, rate_key="adj_factor")
 			if not result.get("cancelled"):
 				result["message"] = "复权因子数据同步完成"
-			return result
+			return self._merge_batch_result(result, _batch_extra)
 
 	async def _sync_daily_basic(
 			self,
@@ -2839,17 +3142,28 @@ class DataSyncService:
 		latest_dates_map = await self.stock_daily_basic_repo.get_latest_trade_dates_batch(ts_codes)
 
 		# 步骤 2.5：按交易日批量拉取全市场（首选路径，避免 5531 次逐股 HTTP）
-		_source = self.source_factory.get_source(DataSource.TUSHARE)
-		_batch_result = await self._sync_by_date_batch(
-			ts_codes=ts_codes,
-			end_date=end_date or datetime.now().date(),
-			latest_dates_map=latest_dates_map,
-			repo=self.stock_daily_basic_repo,
-			fetch_fn=_source.get_daily_basic,
-			data_type_label="每日指标(daily_basic)",
-		)
-		if _batch_result is not None:
-			return _batch_result
+		_batch_extra = None
+		# 2026-10-17：显式 start_date = 手动回填 → 保持原逐股 overlap 语义
+		if start_date is None:
+			_source = self.source_factory.get_source(DataSource.TUSHARE)
+			_batch_result = await self._sync_by_date_batch(
+				ts_codes=ts_codes,
+				end_date=end_date or datetime.now().date(),
+				latest_dates_map=latest_dates_map,
+				repo=self.stock_daily_basic_repo,
+				fetch_fn=_source.get_daily_basic,
+				data_type_label="每日指标(daily_basic)",
+			)
+			if _batch_result is not None:
+				if _batch_result.get("cancelled"):
+					# 已取消 → 不得再进入逐股补齐（#1 与 #7 的交互点）
+					return _batch_result
+				_laggards = _batch_result.pop("laggards", None) or []
+				if not _laggards:
+					return _batch_result
+				# 落后标的（停牌/新纳入/上次部分失败）→ 继续逐股补齐，计数在尾部合并
+				_batch_extra = _batch_result
+				ts_codes = _laggards
 
 		async with SyncTimingLogger(logger, "每日指标(daily_basic)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
@@ -2872,7 +3186,8 @@ class DataSyncService:
 							start_date=s_str, end_date=e_str,
 						)
 					if df is None or df.empty:
-						return {"added": 0, "updated": 0, "mode": mode}
+						# 2026-10-17：计 empty，避免「接口全空」被当成「已是最新」
+						return {"added": 0, "updated": 0, "empty": 1, "mode": mode}
 					async with timer.node(SyncTimingLogger.NODE_CONVERT, ts_code):
 						data = _convert_records_datetime(df.to_dict("records"))
 					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, ts_code):
@@ -2886,7 +3201,7 @@ class DataSyncService:
 			result = await self._parallel_for_each(ts_codes, "每日指标", task_id, user_id, _process_one, rate_key="daily_basic")
 			if not result.get("cancelled"):
 				result["message"] = "每日指标数据同步完成"
-			return result
+			return self._merge_batch_result(result, _batch_extra)
 
 	async def _sync_etf_basic(
 			self,
@@ -3043,17 +3358,28 @@ class DataSyncService:
 		latest_dates_map = await self.etf_daily_repo.get_latest_trade_dates_batch(ts_codes)
 
 		# 步骤 2.5：按交易日批量拉取全市场 ETF（首选路径，避免逐 ETF HTTP）
-		_source = self.source_factory.get_source(DataSource.TUSHARE)
-		_batch_result = await self._sync_by_date_batch(
-			ts_codes=ts_codes,
-			end_date=end_date or datetime.now().date(),
-			latest_dates_map=latest_dates_map,
-			repo=self.etf_daily_repo,
-			fetch_fn=_source.get_etf_daily,
-			data_type_label="ETF日线(etf_daily)",
-		)
-		if _batch_result is not None:
-			return _batch_result
+		_batch_extra = None
+		# 2026-10-17：显式 start_date = 手动回填 → 保持原逐股 overlap 语义
+		if start_date is None:
+			_source = self.source_factory.get_source(DataSource.TUSHARE)
+			_batch_result = await self._sync_by_date_batch(
+				ts_codes=ts_codes,
+				end_date=end_date or datetime.now().date(),
+				latest_dates_map=latest_dates_map,
+				repo=self.etf_daily_repo,
+				fetch_fn=_source.get_etf_daily,
+				data_type_label="ETF日线(etf_daily)",
+			)
+			if _batch_result is not None:
+				if _batch_result.get("cancelled"):
+					# 已取消 → 不得再进入逐股补齐（#1 与 #7 的交互点）
+					return _batch_result
+				_laggards = _batch_result.pop("laggards", None) or []
+				if not _laggards:
+					return _batch_result
+				# 落后标的（停牌/新纳入/上次部分失败）→ 继续逐股补齐，计数在尾部合并
+				_batch_extra = _batch_result
+				ts_codes = _laggards
 
 		async with SyncTimingLogger(logger, "ETF日线(etf_daily)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
@@ -3076,7 +3402,8 @@ class DataSyncService:
 							start_date=s_str, end_date=e_str,
 						)
 					if df is None or df.empty:
-						return {"added": 0, "updated": 0, "mode": mode}
+						# 2026-10-17：计 empty，避免「接口全空」被当成「已是最新」
+						return {"added": 0, "updated": 0, "empty": 1, "mode": mode}
 					async with timer.node(SyncTimingLogger.NODE_CONVERT, ts_code):
 						data = _convert_records_datetime(df.to_dict("records"))
 					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, ts_code):
@@ -3091,7 +3418,7 @@ class DataSyncService:
 			                                       rate_key="etf_daily")
 			if not result.get("cancelled"):
 				result["message"] = "ETF日线数据同步完成"
-			return result
+			return self._merge_batch_result(result, _batch_extra)
 
 # [DEPRECATED] INDEX_DATA is removed; use INDEX_DAILY + INDEX_WEIGHT separately instead.
 #	async def _sync_index_data_with_weight(
@@ -3833,17 +4160,28 @@ class DataSyncService:
 		latest_dates_map = await self.fund_adj_factor_repo.get_latest_trade_dates_batch(ts_codes)
 
 		# 步骤 2.5：按交易日批量拉取全市场 ETF 复权（首选路径，避免逐 ETF HTTP）
-		_source = self.source_factory.get_source(DataSource.TUSHARE)
-		_batch_result = await self._sync_by_date_batch(
-			ts_codes=ts_codes,
-			end_date=end_date or datetime.now().date(),
-			latest_dates_map=latest_dates_map,
-			repo=self.fund_adj_factor_repo,
-			fetch_fn=_source.get_etf_adj_factor,
-			data_type_label="基金复权(fund_adj_factor)",
-		)
-		if _batch_result is not None:
-			return _batch_result
+		_batch_extra = None
+		# 2026-10-17：显式 start_date = 手动回填 → 保持原逐股 overlap 语义
+		if start_date is None:
+			_source = self.source_factory.get_source(DataSource.TUSHARE)
+			_batch_result = await self._sync_by_date_batch(
+				ts_codes=ts_codes,
+				end_date=end_date or datetime.now().date(),
+				latest_dates_map=latest_dates_map,
+				repo=self.fund_adj_factor_repo,
+				fetch_fn=_source.get_etf_adj_factor,
+				data_type_label="基金复权(fund_adj_factor)",
+			)
+			if _batch_result is not None:
+				if _batch_result.get("cancelled"):
+					# 已取消 → 不得再进入逐股补齐（#1 与 #7 的交互点）
+					return _batch_result
+				_laggards = _batch_result.pop("laggards", None) or []
+				if not _laggards:
+					return _batch_result
+				# 落后标的（停牌/新纳入/上次部分失败）→ 继续逐股补齐，计数在尾部合并
+				_batch_extra = _batch_result
+				ts_codes = _laggards
 
 		async with SyncTimingLogger(logger, "基金复权(fund_adj_factor)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
@@ -3882,7 +4220,7 @@ class DataSyncService:
 			                                       rate_key="etf_adj")
 			if not result.get("cancelled"):
 				result["message"] = "基金复权因子数据同步完成"
-			return result
+			return self._merge_batch_result(result, _batch_extra)
 
 	async def _sync_financial_data(
 			self,
@@ -4509,17 +4847,28 @@ class DataSyncService:
 		latest_dates_map = await self.index_daily_repo.get_latest_trade_dates_batch(ts_codes)
 
 		# 步骤 2.5：按交易日批量拉取全市场指数（首选路径，避免逐指数 HTTP）
-		_source = self.source_factory.get_source(DataSource.TUSHARE)
-		_batch_result = await self._sync_by_date_batch(
-			ts_codes=ts_codes,
-			end_date=end_date or datetime.now().date(),
-			latest_dates_map=latest_dates_map,
-			repo=self.index_daily_repo,
-			fetch_fn=_source.get_index_daily,
-			data_type_label="指数日线(index_daily)",
-		)
-		if _batch_result is not None:
-			return _batch_result
+		_batch_extra = None
+		# 2026-10-17：显式 start_date = 手动回填 → 保持原逐股 overlap 语义
+		if start_date is None:
+			_source = self.source_factory.get_source(DataSource.TUSHARE)
+			_batch_result = await self._sync_by_date_batch(
+				ts_codes=ts_codes,
+				end_date=end_date or datetime.now().date(),
+				latest_dates_map=latest_dates_map,
+				repo=self.index_daily_repo,
+				fetch_fn=_source.get_index_daily,
+				data_type_label="指数日线(index_daily)",
+			)
+			if _batch_result is not None:
+				if _batch_result.get("cancelled"):
+					# 已取消 → 不得再进入逐股补齐（#1 与 #7 的交互点）
+					return _batch_result
+				_laggards = _batch_result.pop("laggards", None) or []
+				if not _laggards:
+					return _batch_result
+				# 落后标的（停牌/新纳入/上次部分失败）→ 继续逐股补齐，计数在尾部合并
+				_batch_extra = _batch_result
+				ts_codes = _laggards
 
 		async with SyncTimingLogger(logger, "指数日线(index_daily)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
@@ -4542,7 +4891,8 @@ class DataSyncService:
 							start_date=s_str, end_date=e_str,
 						)
 					if df is None or df.empty:
-						return {"added": 0, "updated": 0, "mode": mode}
+						# 2026-10-17：计 empty，避免「接口全空」被当成「已是最新」
+						return {"added": 0, "updated": 0, "empty": 1, "mode": mode}
 					async with timer.node(SyncTimingLogger.NODE_CONVERT, ts_code):
 						data = _convert_records_datetime(df.to_dict("records"))
 					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, ts_code):
@@ -4558,7 +4908,7 @@ class DataSyncService:
 			                                       rate_key="index_daily")
 			if not result.get("cancelled"):
 				result["message"] = "指数日线数据同步完成"
-			return result
+			return self._merge_batch_result(result, _batch_extra)
 
 	async def _sync_tick_quotes(
 			self,
@@ -5131,6 +5481,18 @@ class DataSyncService:
 			if df.empty:
 				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
 				        "total_items": 0, "message": "沪深港通股票列表同步完成（无数据）"}
+			# 2026-10-17：部分类型失败可见。
+			# `get_stock_hsgt` 现在按 type 独立 try，部分成功会照写；此处把「缺类型」
+			# 计入 records_failed，避免像 09-03/09-11 那样只丢南下名单却报「失败=0」。
+			_expected = {"HK_SZ", "SZ_HK", "HK_SH", "SH_HK"}
+			_have = set(df["type"].dropna().unique()) if "type" in df.columns else set()
+			_missing = _expected - _have
+			if _missing:
+				logger.warning(
+					"沪深港通股票列表缺少类型 %s（本次仅写入 %d 类）",
+					sorted(_missing), len(_have),
+				)
+				records_failed += 1
 			data = _convert_records_datetime(df.to_dict('records'))
 			_preprocess_records(data, date_fields=('trade_date',))
 			if hasattr(self.hsgt_repo, "bulk_upsert"):
@@ -6027,7 +6389,8 @@ class DataSyncService:
 							start_date=s_str, end_date=e_str,
 						)
 					if df is None or df.empty:
-						return {"added": 0, "updated": 0, "mode": mode}
+						# 2026-10-17：计 empty，避免「接口全空」被当成「已是最新」
+						return {"added": 0, "updated": 0, "empty": 1, "mode": mode}
 					async with timer.node(SyncTimingLogger.NODE_CONVERT, ts_code):
 						data = _convert_records_datetime(df.to_dict("records"))
 					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, ts_code):

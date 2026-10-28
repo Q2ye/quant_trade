@@ -3153,6 +3153,53 @@ COMMENT ON COLUMN stock_daily_limit.up_percent IS '涨停幅度（%）';
 COMMENT ON COLUMN stock_daily_limit.down_percent IS '跌停幅度（%）';
 COMMENT ON COLUMN stock_daily_limit.price_range IS '价格区间（涨停价-跌停价）';
 
+-- 涨跌停板每日统计表（Tushare limit_list_d；TimescaleDB 超表）
+-- 用途：行业热度 / 连板 / 封板结构；数据起点约 2020-01（Tushare 接口限制）
+CREATE TABLE stock_limit_list (
+    trade_date DATE NOT NULL,
+    ts_code VARCHAR(12) NOT NULL,
+    industry VARCHAR(100),
+    name VARCHAR(100),
+    close NUMERIC(12,4),
+    pct_chg NUMERIC(10,4),
+    amount NUMERIC(20,4),
+    limit_amount NUMERIC(20,4),
+    float_mv NUMERIC(20,4),
+    total_mv NUMERIC(20,4),
+    turnover_ratio NUMERIC(10,4),
+    fd_amount NUMERIC(20,4),
+    first_time VARCHAR(10),
+    last_time VARCHAR(10),
+    open_times INT,
+    up_stat VARCHAR(50),
+    limit_times INT,
+    limit_type VARCHAR(2),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_limit_list_code_date ON stock_limit_list(ts_code, trade_date);
+CREATE INDEX IF NOT EXISTS idx_stock_limit_list_date ON stock_limit_list(trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_limit_list_code ON stock_limit_list(ts_code);
+
+COMMENT ON TABLE stock_limit_list IS '涨跌停板每日统计表（Tushare limit_list_d，2020-01 起；TimescaleDB超表）';
+COMMENT ON COLUMN stock_limit_list.trade_date IS '交易日期';
+COMMENT ON COLUMN stock_limit_list.ts_code IS '股票TS代码（含交易所后缀）';
+COMMENT ON COLUMN stock_limit_list.industry IS 'Tushare 行业（非申万；申万映射需 index_member_all PIT）';
+COMMENT ON COLUMN stock_limit_list.limit_type IS 'U=涨停 D=跌停 Z=炸板';
+COMMENT ON COLUMN stock_limit_list.limit_times IS '连板数（U 行有效；Z/D 可能为空）';
+COMMENT ON COLUMN stock_limit_list.fd_amount IS '封单金额（Tushare 原字段；⚠️与 float_mv 比率中位数约 8x，单位待核，暂不作封单/流通特征）';
+COMMENT ON COLUMN stock_limit_list.limit_amount IS '板上成交额（Tushare 原字段；当前样本多为空）';
+COMMENT ON COLUMN stock_limit_list.amount IS '成交额（元）';
+COMMENT ON COLUMN stock_limit_list.float_mv IS '流通市值（元）';
+COMMENT ON COLUMN stock_limit_list.total_mv IS '总市值（元）';
+COMMENT ON COLUMN stock_limit_list.turnover_ratio IS '换手率（%）';
+COMMENT ON COLUMN stock_limit_list.first_time IS '首次封板时间 HHMMSS';
+COMMENT ON COLUMN stock_limit_list.last_time IS '最后封板时间 HHMMSS';
+COMMENT ON COLUMN stock_limit_list.open_times IS '开板次数';
+COMMENT ON COLUMN stock_limit_list.up_stat IS '涨停统计（Tushare 原字段）';
+
 -- 个股资金流向表（TimescaleDB超表）
 CREATE TABLE stock_moneyflow (
     -- ⚠️ 2026-09-19 修复：原为 `id VARCHAR(36) PRIMARY KEY` —— 主键落在 `id` 单列上、
@@ -3668,6 +3715,14 @@ SELECT create_hypertable(
 -- 涨跌停价格转换为超表
 SELECT create_hypertable(
     'stock_daily_limit',
+    'trade_date',
+    chunk_time_interval => INTERVAL '30 days',
+    if_not_exists => TRUE
+);
+
+-- 涨跌停板每日统计转换为超表
+SELECT create_hypertable(
+    'stock_limit_list',
     'trade_date',
     chunk_time_interval => INTERVAL '30 days',
     if_not_exists => TRUE

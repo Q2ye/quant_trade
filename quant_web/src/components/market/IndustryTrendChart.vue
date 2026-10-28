@@ -193,7 +193,7 @@ function handleClick(params: any) {
       v-else
       :option="chartOption"
       autoresize
-      style="height: 420px"
+      style="height: 420px; zoom: 1.25"
       @click="handleClick"
     />
   </div>

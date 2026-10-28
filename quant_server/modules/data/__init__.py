@@ -128,6 +128,44 @@ def cleanup_cancel_token(task_id: str):
 	_cancel_tokens.pop(task_id, None)
 
 
+async def _single_day_coverage(
+		session, table: str, day, bj_exclude: str = "",
+		min_base: int = 1000, max_missing_ratio: float = 0.10,
+):
+	"""当日单日覆盖检查：返回 ``(缺失数, 基准数, 是否告警)``。
+
+	基准 = **当日 `stock_daily` 行数**（非交易日 / 日线未同步时为 0）。
+	告警条件：``基准 >= min_base`` **且** ``缺失占比 > max_missing_ratio``
+	—— 基准过小（空跑/非交易日/日线没同步）时**不告警**，避免误报。
+
+	`table` / `bj_exclude` 均为本模块内部常量（非用户输入），与同文件既有
+	60 日门的 `.format()` 拼法一致。
+
+	⚠️ 2026-10-12：`bj_exclude` 调用方现**两张表都传空串**。此前 moneyflow 传
+	`NOT LIKE '%.BJ'`，依据是「Tushare 不含 920xxx.BJ」—— 该前提已实测证伪
+	（`920000/920001/920002.BJ` 等对 20260930/20261008/20261012 各返回 1 行），
+	而排除的后果是**掩盖真实的北交所缺口**（10-09/10-12 覆盖 26.5%）。
+
+	⛔ 2026-10-12（`stock_moneyflow` 缺口）：本判据的存在理由是——原 60 日聚合门要求
+	「缺失 ≥20 天」才告警，而当日实测只落 2378/5553（42.8%）却报「覆盖正常」，
+	**单日大面积丢数要丢满约一个月才会被门发现**。单日门把它压到当天。
+	"""
+	from sqlalchemy import text as _text
+
+	_r = await session.execute(
+		_text(
+			"SELECT count(*) FILTER (WHERE x.ts_code IS NULL), count(*) "
+			"FROM stock_daily s "
+			"LEFT JOIN {t} x ON x.ts_code = s.ts_code AND x.trade_date = s.trade_date "
+			"WHERE s.trade_date = :d {bj}".format(t=table, bj=bj_exclude)
+		),
+		{"d": day},
+	)
+	missing, base = _r.fetchone() or (0, 0)
+	alert = bool(base) and base >= min_base and missing > base * max_missing_ratio
+	return missing, base, alert
+
+
 # 模块初始化函数 - 符合主启动文件期望的接口
 async def initialize (
 		main_engine=None,
@@ -259,8 +297,15 @@ async def initialize (
 					logger.warning("日终数据同步部分失败，仍尝试驱动策略")
 
 			async def _task_coverage_validate(today):
-				"""覆盖度校验（2026-08 Fix7）：以 stock_daily 为日期基准，检查关键日频表
-				近 60 日的股票覆盖；发现覆盖不足股票则 WARNING（纯可观测，不阻断策略驱动）。
+				"""覆盖度校验（2026-08 Fix7 / 2026-10-12 加固）：以 stock_daily 为日期基准，
+				对关键日频表做**两道**覆盖检查（均为纯可观测，**不阻断策略驱动**）：
+
+				① **近 60 日聚合门**（原判据）：抓「慢性缺失」。逐股比对 60 日内
+				   `stock_daily` 与目标表的天数，缺失 ≥20 天且覆盖率 <90% 才告警。
+				② **当日单日门**（新增）：抓「单日大面积丢数」。原判据要求「缺失
+				   ≥20 天」才响 —— 实测 `stock_moneyflow` 2026-10-12 只落
+				   **2378/5553（42.8%）**，门仍报「覆盖正常」，缺口要丢满约一个月
+				   才会触发。单日门按当日缺失占比 >10% 即告警。
 
 				背景：max(trade_date) 无法发现内部空洞（两端有数据、中间缺失），
 				唯有与完整日线基准对比覆盖度才能发现。此前 stock_daily_basic 4 年
@@ -272,8 +317,14 @@ async def initialize (
 					from datetime import timedelta as _td
 					sm = get_session_manager()
 					_ws = today - _td(days=60)
-					# moneyflow 排除北交所：Tushare 资金流向接口不含 920xxx.BJ（数据源限制）
-					_bj_exclude = {"stock_daily_basic": "", "stock_moneyflow": " AND s.ts_code NOT LIKE '%.BJ'"}
+					# ⚠️ 2026-10-12 订正：原注释称「Tushare 资金流向接口**不含** 920xxx.BJ
+					#    （数据源限制）」→ 故 moneyflow 曾排除北交所。**该前提已被实测证伪**：
+					#    920000/920001/920002/920003/920005.BJ 对 20260930 / 20261008 /
+					#    20261012 **各返回 1 行**。排除的后果是**掩盖真实的北交所缺口**：
+					#    实测 2026-10-09 / 10-12 北交所 344 只基准里缺 253 只（覆盖率 26.5%），
+					#    而 09-30 / 10-08 均为 100% —— 缺口起始点与主板一致，同一根因。
+					#    ⇒ 两张表都不再排除。
+					_bj_exclude = {"stock_daily_basic": "", "stock_moneyflow": ""}
 					async with sm.get_session() as _s:
 						for _tbl in ("stock_daily_basic", "stock_moneyflow"):
 							_r = await _s.execute(_text(
@@ -291,6 +342,29 @@ async def initialize (
 									"（建议 scripts/data/backfill_coverage_gaps.py 回填）", _tbl, _n)
 							else:
 								logger.info("覆盖度校验: %s 近60日覆盖正常", _tbl)
+
+							# ② 当日单日门（2026-10-12 新增）：抓「单日大面积丢数」。
+							#    原 60 日聚合门要求「缺失 >= 20 天」才告警 —— 实测
+							#    stock_moneyflow 2026-10-12 只落 2378/5553（42.8%），
+							#    门仍报「覆盖正常」，缺口要丢满约一个月才会响。
+							_missing, _base, _alert = await _single_day_coverage(
+								_s, _tbl, today, _bj_exclude[_tbl])
+							if _alert:
+								logger.warning(
+									"覆盖度校验: %s 当日(%s)覆盖不足 —— %d/%d 只缺失"
+									"（当日覆盖率 %.1f%%）；该表当日数据应视为不完整，"
+									"需当日回填后再复盘/消费。回填（⚠️ 必须带 --min-missing 1，"
+									"否则默认阈值 20 天会让新缺口再藏一个月）："
+									"scripts/data/backfill_coverage_gaps.py --table %s "
+									"--start <近端交易日> --min-missing 1",
+									_tbl, today, _missing, _base,
+									(_base - _missing) / _base * 100,
+									{"stock_daily_basic": "daily_basic",
+									 "stock_moneyflow": "moneyflow"}.get(_tbl, _tbl))
+							else:
+								logger.info(
+									"覆盖度校验: %s 当日(%s)覆盖正常（缺失 %d/%d）",
+									_tbl, today, _missing, _base)
 				except Exception as _ce:
 					logger.warning("覆盖度校验异常（非致命）: %s", _ce)
 

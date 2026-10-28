@@ -149,7 +149,7 @@ const dimValueText = (it: { unit: string; dim: TemperatureDimension }) => {
     <n-tabs v-else type="segment" size="small" default-value="gauge">
       <n-tab-pane name="gauge" tab="温度计">
         <div class="gauge-wrap">
-          <VChart :option="gaugeOption" autoresize style="height: 190px" />
+          <VChart :option="gaugeOption" autoresize style="height: 190px; zoom: 1.25" />
         </div>
         <div class="dim-grid">
           <div v-for="it in dimItems" :key="it.label" class="dim-item">

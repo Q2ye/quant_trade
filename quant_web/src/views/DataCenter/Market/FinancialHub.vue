@@ -361,7 +361,7 @@ onMounted(() => {
             v-if="radarOption"
             :option="radarOption"
             autoresize
-            style="height: 350px"
+            style="height: 350px; zoom: 1.25"
           />
           <n-skeleton v-else :text="true" height="350px" />
         </n-card>

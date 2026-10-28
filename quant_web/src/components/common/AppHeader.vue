@@ -158,6 +158,7 @@ import { useRouter } from "vue-router";
 import { NIcon, NTooltip, NTag, NDropdown, NAvatar } from "naive-ui";
 // 导入 SmartIcon 组件
 import SmartIcon from "../common/SmartIcon.vue";
+import { useMarketSession } from "@/composables/useMarketSession";
 // 真实数据源 API
 import strategyAPI from "@/api/strategy";
 import { monitorAPI } from "@/api/monitor";
@@ -194,9 +195,11 @@ export default defineComponent({
       { name: "创业", code: "399006.SZ", value: "--", change: null },
     ]);
 
-    // 交易时段
-    const isMarketOpen = ref(false);
-    const sessionText = ref("交易时段: --");
+    // 交易时段 —— 唯一判定入口，见 composables/useMarketSession.ts
+    //   （含"周末 + 法定节假日 + 午休"三重判定；此前此处与 IndexDetail 各写一份且不一致）
+    const { state: marketSession } = useMarketSession();
+    const isMarketOpen = computed(() => marketSession.value.isOpen);
+    const sessionText = computed(() => marketSession.value.sessionText);
 
     // 策略状态
     const strategyStatus = ref({
@@ -325,35 +328,6 @@ export default defineComponent({
       currentTime.value = new Date();
       formattedTime.value = formatTime(currentTime.value);
       formattedDate.value = formatDate(currentTime.value);
-    };
-
-    // 更新交易时段（A 股：09:30-11:30 / 13:00-15:00）
-    const updateSession = () => {
-      const now = new Date();
-      const minutes = now.getHours() * 60 + now.getMinutes();
-      const day = now.getDay();
-      const isWeekend = day === 0 || day === 6;
-      if (isWeekend) {
-        isMarketOpen.value = false;
-        sessionText.value = "休市（周末）";
-        return;
-      }
-      if (minutes >= 570 && minutes < 690) {
-        isMarketOpen.value = true;
-        sessionText.value = "交易时段: 09:30-11:30";
-      } else if (minutes >= 780 && minutes < 900) {
-        isMarketOpen.value = true;
-        sessionText.value = "交易时段: 13:00-15:00";
-      } else if (minutes < 570) {
-        isMarketOpen.value = false;
-        sessionText.value = "未开盘";
-      } else if (minutes < 780) {
-        isMarketOpen.value = false;
-        sessionText.value = "午间休市";
-      } else {
-        isMarketOpen.value = false;
-        sessionText.value = "已收盘";
-      }
     };
 
     // ---- 真实数据加载（失败时保留占位，不抛错） ----
@@ -486,10 +460,8 @@ export default defineComponent({
 
     onMounted(() => {
       updateTime();
-      updateSession();
       timeInterval = setInterval(() => {
         updateTime();
-        updateSession();
       }, 1000);
       refreshAll();
       dataInterval = setInterval(refreshAll, 30000); // 每 30 秒刷新真实数据
