@@ -232,6 +232,13 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # —— 风控（本项目补充，原版无止损）——
         "stop_loss_pct": 0.08,            # 硬止损：现价 <= 入场价×(1-此值) → 卖出
         "min_hold_days": 3,               # 最小持有交易日数：未满且未止损不换仓（降换手，~28% 成本损耗）
+        # 走弱期「翻入当日」是否豁免 min_hold_days（与降级姿态 A 同权：走弱期翻入是更高优先级的
+        # 换仓信号，不应被「持仓未满 3 日」拦下）。
+        #   ⚠️ 默认 False = 与引入前**逐位等价**。打开它会改变换仓时点（属「择时/离场」维度），
+        #      本项目该维度 10 次尝试全部失败（见下方各参数注释），故必须先过 A/B：
+        #      全窗口 + 两段样本外 + 12 滚动起始日，通过后再在 DB 参数里打开。
+        #      取值范围 True / False；仅在 min_hold_days > 0 时有意义。
+        "weak_flip_exempt_min_hold": False,
         # 退出信号重发间隔（调仓日）。原实现 `_exit_pending` 是单向阀：登记后卖出/买入/止损
         # 三处全部跳过，唯一出口是 broker 持仓归零 → 一旦退出信号丢失（价格缺失/订单被拒/
         # 长期不可成交），持仓被永久冻结且硬止损同时失效。
@@ -512,6 +519,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self.stop_loss_pct = float(merged["stop_loss_pct"])
         self.min_hold_days = int(merged.get("min_hold_days", 3))
         self.exit_retry_days = max(1, int(merged.get("exit_retry_days", 3)))
+        # H4（2026-10-28 复审）：走弱期翻入当日豁免 min_hold_days。默认 False（行为不变）。
+        self.weak_flip_exempt_min_hold = bool(
+            merged.get("weak_flip_exempt_min_hold", False))
         self.entry_confidence = float(merged.get("entry_confidence", 0.7))
         self.exit_confidence = float(merged.get("exit_confidence", 0.8))
         self.verbose_logging = bool(merged.get("verbose_logging", True))
@@ -555,6 +565,12 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._last_trade_date: str = ""
         self._bar_dates: Dict[str, str] = {}
         self._held_days: Dict[str, int] = {}  # {code: 持有交易日数}，最小持有期守卫用
+        # H4（2026-10-28）：本日是否「由非走弱翻入走弱」。只由 `_update_weak_period`
+        # 在**连续运行中的真实 False→True** 当日置 True；重启首日/同日重跑不算翻入。
+        # 仅当 `weak_flip_exempt_min_hold=True` 时参与 min_hold_days 豁免，默认不参与判据。
+        self._weak_flipped_today: bool = False
+        # 上一次成功执行 `_update_weak_period` 的交易日（用于区分「真实翻入」与「重启/重跑」）。
+        self._weak_evaluated_date: Optional[str] = None
 
     # =========================================================================
     # 生命周期
@@ -587,6 +603,8 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         self._last_target_date = ""
         self._bar_dates.clear()
         self._held_days.clear()
+        self._weak_flipped_today = False
+        self._weak_evaluated_date = None
         # 复用同一对象再启动时，不得带着上一次的陈旧降级标记（2026-09-19 复审建议 2）
         self._index_cache_ok = True
 
@@ -841,10 +859,21 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         # ⚠️ **降级日不得早退**（2026-09-19 复审指出）：降级时姿态 A 要求**当天**就切防御标的，
         #     若被本守卫拦下（持仓未满 min_hold_days），则注释宣称的「禁止持有进攻标的」不成立，
         #     且**全程无任何日志**。故降级时跳过本守卫（`_index_cache_ok is False`）。
-        if (self.min_hold_days > 0 and self._holdings and not signals
-                and self._index_cache_ok):
-            if all(self._held_days.get(_c, 0) < self.min_hold_days for _c in self._holdings):
-                return signals
+        # ⚠️ 2026-10-28 复审 H4：原实现直接 `return`、**零日志**（假静默）。现改为
+        #     「判据在 `_min_hold_guard`，拦下/豁免都必须留痕」。走弱期翻入豁免默认关闭。
+        _blocked, _would_block, _exempt = self._min_hold_guard(signals)
+        if _exempt:
+            logger.info(
+                f"[{self.name}] 走弱期翻入 → 豁免 min_hold_days="
+                f"{self.min_hold_days}（本应拦下 {_would_block}），允许当日换仓"
+            )
+        elif _blocked and len(_blocked) == len(self._holdings):
+            logger.info(
+                f"[{self.name}] 最小持有期守卫拦下换仓: {_blocked} "
+                f"< min_hold_days={self.min_hold_days}"
+                f"{'（走弱期）' if self._is_weak else ''} → 本日不选股、不换仓"
+            )
+            return signals
 
         # 3. 选股
         metrics = [self._score_candidate(c) for c in self._candidate_pool()]
@@ -893,7 +922,11 @@ class CrossMarketMomentumStrategy(BaseStrategy):
             if not self._should_retry_exit(code):
                 continue
             self._exit_pending[code] = self._rebalance_seq
-            sig = self._make_exit_signal(code, self._degraded_prefix() + "轮动换仓: 不在目标池")
+            # H2（2026-10-28 复审）：已登记退出的标的若已重回目标池，F4 仍会强制卖出；
+            # 此时不能写「不在目标池」（事实错误，会误导人工核单）→ 两种情形分开写。
+            sig = self._make_exit_signal(
+                code, self._degraded_prefix() + self._exit_reason(code, target_codes)
+            )
             if sig:
                 signals.append(sig)
 
@@ -922,6 +955,51 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         return signals
 
     # =========================================================================
+    # 退出信号原因（H2，2026-10-28 复审）
+    # =========================================================================
+    @staticmethod
+    def _exit_reason(code: str, target_codes) -> str:
+        """退出信号的原因必须与事实一致（H2）。
+
+        F4 的设计允许「已登记退出的标的即便重回目标池也强制卖出」；此时若仍写
+        「不在目标池」会误导人工核单。两种情形分开写：
+          - 不在目标池 → 轮动换仓
+          - 仍在目标池但已登记退出（F4 强制退出）→ 单独文案
+        """
+        if code in target_codes:
+            return "轮动换仓: 已登记退出（标的仍在目标池，按 F4 强制退出）"
+        return "轮动换仓: 不在目标池"
+
+    # =========================================================================
+    # 最小持有期守卫（H4，2026-10-28 复审）
+    # =========================================================================
+    def _min_hold_guard(
+        self, signals: List[TradingSignal]
+    ) -> Tuple[List[Tuple[str, int]], List[Tuple[str, int]], bool]:
+        """最小持有期守卫的纯判据（便于单测，不含 I/O）。
+
+        拦下条件（与旧实现逐字等价）：
+          `min_hold_days > 0` × 有持仓 × 本次无止损信号 × 非降级日（`_index_cache_ok`）。
+
+        Returns:
+            `(blocked, would_block, exempt)`
+            - blocked: 实际拦下的 `[(code, held_days)]`；空列表 = 放行。
+            - would_block: 若不豁免本应拦下的集合（仅用于日志，便于审计）。
+            - exempt: 是否因「走弱期翻入」而放行（仅当 `weak_flip_exempt_min_hold=True`）。
+        """
+        if not (self.min_hold_days > 0 and self._holdings and not signals
+                and self._index_cache_ok):
+            return [], [], False
+        would_block = [
+            (c, self._held_days.get(c, 0)) for c in self._holdings
+            if self._held_days.get(c, 0) < self.min_hold_days
+        ]
+        if not would_block:
+            return [], [], False
+        exempt = bool(self.weak_flip_exempt_min_hold and self._weak_flipped_today)
+        return ([] if exempt else would_block), would_block, exempt
+
+    # =========================================================================
     # 走弱期 regime（L2）
     # =========================================================================
     def _update_weak_period(self, td: str) -> None:
@@ -935,6 +1013,11 @@ class CrossMarketMomentumStrategy(BaseStrategy):
           （见下方 elif enter_cond 分支），只有「模糊投票区」才累积。持续走弱时它恒为 0，
           **不要把它当持续时间用** —— 持续时间看 `_weak_streak`（`_compute_weak_streak`）。
         """
+        # H4（2026-10-28）：每日先清「翻入」标记。只有连续运行中的真实 False→True 才置位；
+        # 重启首日（`_weak_evaluated_date is None`）与同日重跑（== td）都不算翻入 ——
+        # 否则重启当天会被误判为「刚翻弱」而豁免 min_hold_days。
+        _prev_eval = self._weak_evaluated_date
+        self._weak_flipped_today = False
         if not self._index_cache:
             return
         above, below = 0, 0
@@ -980,6 +1063,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
                 self._is_weak = True
                 self._weak_start_date = td
                 self._weak_days_count = 0
+                # 仅「连续运行中的真实翻入」置位（重启首日 / 同日重跑不算）。
+                if _prev_eval and _prev_eval != td:
+                    self._weak_flipped_today = True
 
         # 监控口径（2026-10-24）：上面的 `_weak_days_count` 在持续走弱时每日归零，
         # `days=0/20` 不代表没走弱。这里维护**真实连续走弱天数与起点**，
@@ -998,6 +1084,9 @@ class CrossMarketMomentumStrategy(BaseStrategy):
         else:
             self._weak_streak = 0
             self._weak_streak_date = None
+
+        # 记录本次成功评估的日期（供下次区分「真实翻入」与「重启/同日重跑」）。
+        self._weak_evaluated_date = td
 
         if self.verbose_logging:
             logger.info(
