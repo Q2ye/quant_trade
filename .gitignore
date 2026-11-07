@@ -73,3 +73,6 @@ quant_web/node_modules/.modules.yaml
 quant_web/stats.html
 .gitignore
 .vscode/private-folder-alias.json
+
+# sync_release.ps1 写入的变更清单（部署脚本消费后删除）
+.release-sync-changes

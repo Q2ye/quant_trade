@@ -1,21 +1,23 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    release 环境一键部署：拉取最新 release 分支 → 依赖检查 → 前端打包 → 重启后端 → 健康校验。
+    release 环境部署：依赖检查 → 前端打包 → 重启后端 → 健康校验（不拉取代码）。
 
 .DESCRIPTION
     默认在 release 工作树（E:\QuantitativeTrading\quant_trade_release）上执行：
-      1) git fetch + merge --ff-only origin/<Branch>（拉不到远程时降级为只用本地分支）
-      2) lockfile / pyproject.toml 有变动时自动安装依赖
-      3) pnpm run build:release 生成压缩后的前端 dist
-      4) 停止并重新拉起后端（优先计划任务 QuantTradeRelease，其次直接调用 start_release.ps1）
-      5) 轮询 /health/live 并打印首页加载的 JS 产物
+      0) 读取 sync_release.ps1 留下的 .release-sync-changes，判断本次同步改了什么
+      1) lockfile / pyproject.toml 有变动时自动安装依赖
+      2) pnpm run build:release 生成压缩后的前端 dist
+      3) 停止并重新拉起后端（优先计划任务 QuantTradeRelease，其次直接调用 start_release.ps1）
+      4) 轮询 /health/live 并打印首页加载的 JS 产物
+
+    更新代码请单独运行 sync_release.ps1，本脚本不执行任何 git 命令。
 
 .PARAMETER RepoRoot
-    release 工作树根目录，默认按脚本位置向上三级推导。
+    release 工作树根目录，默认脚本所在目录。
 
 .PARAMETER Branch
-    要拉取的分支名，默认 release_v1.0.0。
+    期望所在分支（仅校验用），默认 release_v1.0.0。
 
 .PARAMETER Port
     后端端口，默认 8888。
@@ -24,16 +26,14 @@
     powershell -NoProfile -ExecutionPolicy Bypass -File deploy_release.ps1
 
 .EXAMPLE
-    # 不拉代码、只重打包并重启
-    powershell -NoProfile -ExecutionPolicy Bypass -File deploy_release.ps1 -SkipPull
+    # 只重打包并重启（代码已由 sync_release.ps1 同步）
+    powershell -NoProfile -ExecutionPolicy Bypass -File deploy_release.ps1
 #>
 [CmdletBinding()]
 param(
     [string]$RepoRoot = "",
     [string]$Branch = "release_v1.0.0",
-    [string]$Remote = "origin",
     [int]$Port = 8888,
-    [switch]$SkipPull,
     [switch]$SkipInstall,
     [switch]$SkipBuild,
     [switch]$NoStart
@@ -79,53 +79,19 @@ if ($branchNow -ne $Branch) {
     Write-Warn "当前分支为 $branchNow（期望 $Branch），继续执行，请自行确认"
 }
 
-$oldHead = (& git -C $RepoRoot rev-parse HEAD).Trim()
-
-# ---------------------------------------------------------------- 1. 拉取
-if (-not $SkipPull) {
-    $dirty = & git -C $RepoRoot status --porcelain --untracked-files=no
-    if ($dirty) {
-        Write-Warn "工作树有未提交改动，跳过拉取（先提交或清理后再运行）"
-    }
-    else {
-        Write-Step "拉取 $Remote/$Branch"
-        $fetchOk = $true
-        try {
-            & git -C $RepoRoot fetch $Remote --prune 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) { $fetchOk = $false }
-        }
-        catch { $fetchOk = $false }
-
-        if (-not $fetchOk) {
-            Write-Warn "无法连接远程 $Remote，跳过拉取，使用当前本地分支"
-        }
-        else {
-            $remoteRef = "$Remote/$Branch"
-            & git -C $RepoRoot rev-parse --verify --quiet "refs/remotes/$remoteRef" | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warn "远程不存在 $remoteRef，使用当前本地分支"
-            }
-            else {
-                & git -C $RepoRoot merge --ff-only $remoteRef
-                if ($LASTEXITCODE -ne 0) { Fail "合并 $remoteRef 失败（本地与远程已分叉），请手动处理" }
-            }
-        }
-    }
-}
-else {
-    Write-Step "已指定 -SkipPull，跳过拉取"
-}
-
 $newHead = (& git -C $RepoRoot rev-parse HEAD).Trim()
-Write-Step ("当前提交: " + $newHead.Substring(0, 8))
+Write-Step ("当前提交: " + $newHead.Substring(0, 8) + "（代码同步请用 sync_release.ps1）")
 
+# 变更清单由 sync_release.ps1 写入，部署脚本只消费不写 git
+$marker = Join-Path $RepoRoot ".release-sync-changes"
 $changed = @()
-if ($oldHead -ne $newHead) {
-    $changed = & git -C $RepoRoot diff --name-only $oldHead $newHead
-    Write-Step ("本次更新 {0} 个文件" -f $changed.Count)
+if (Test-Path $marker) {
+    $changed = @(Get-Content $marker -Encoding utf8 | Where-Object { $_ -ne "" })
+    Remove-Item $marker -Force
+    Write-Step ("上次同步更新 {0} 个文件" -f $changed.Count)
 }
 
-# ---------------------------------------------------------------- 2. 依赖
+# ---------------------------------------------------------------- 1. 依赖
 if (-not $SkipInstall) {
     if ($changed -match "^quant_web/(pnpm-lock\.yaml|package\.json)$") {
         Write-Step "前端依赖有变动，执行 pnpm install --frozen-lockfile"
@@ -142,7 +108,7 @@ if (-not $SkipInstall) {
     }
 }
 
-# ---------------------------------------------------------------- 3. 打包
+# ---------------------------------------------------------------- 2. 打包
 if (-not $SkipBuild) {
     Write-Step "打包前端（vite build --target esnext --minify terser）"
     Push-Location $WebDir
@@ -161,7 +127,7 @@ if ($NoStart) {
     exit 0
 }
 
-# ---------------------------------------------------------------- 4. 重启
+# ---------------------------------------------------------------- 3. 重启
 $stopScript = Join-Path $RepoRoot "stop_release.ps1"
 $startScript = Join-Path $ServerDir "scripts\ops\start_release.ps1"
 if (Test-Path $stopScript) {
@@ -207,7 +173,7 @@ else {
     Fail "既没有计划任务 $taskName，也没有 start_release.ps1"
 }
 
-# ---------------------------------------------------------------- 5. 校验
+# ---------------------------------------------------------------- 4. 校验
 Write-Step "等待健康检查"
 $healthy = $false
 for ($i = 0; $i -lt 45; $i++) {
