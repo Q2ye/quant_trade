@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     release 生产服务启动脚本（单端口：前端静态资源 + API + WebSocket）
 
@@ -44,6 +44,10 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 # 关键：--mode 决定日志/docs/前端托管；ENVIRONMENT 决定数据库（PROD_DB_* → quant_signals）
 $env:ENVIRONMENT = "production"
+
+# editable 安装只映射 api/core/modules/shared 等子包，不含 quant_server 包本身；
+# 工作目录是 $Root（quant_server），需把项目根加入 PYTHONPATH 才能 `-m quant_server.main`
+$env:PYTHONPATH = $ProjectRoot
 
 $StdOut = Join-Path $LogDir "release_stdout.log"
 $StdErr = Join-Path $LogDir "release_stderr.log"
