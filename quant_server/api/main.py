@@ -48,8 +48,13 @@ def _mount_frontend(app: FastAPI, frontend_dir: Optional[str] = None) -> None:
             raise HTTPException(status_code=404, detail="Not Found")
         candidate = (root / full_path).resolve()
         if root in candidate.parents and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(index_file)
+            # 构建产物文件名带 hash，可长缓存；index.html 必须每次重验证，
+            # 否则旧 index 会继续引用已不存在的旧 asset，页面卡在加载态
+            headers = None
+            if full_path.startswith("assets/"):
+                headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+            return FileResponse(candidate, headers=headers)
+        return FileResponse(index_file, headers={"Cache-Control": "no-cache"})
 
 
 def create_app(
