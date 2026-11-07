@@ -174,7 +174,31 @@ Write-Step "启动后端（端口 $Port）"
 $taskName = "QuantTradeRelease"
 schtasks /Query /TN $taskName 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) {
+    # 上一实例若仍处于 Running，/Run 会被静默忽略；先 End 再等状态回落
+    schtasks /End /TN $taskName 2>$null | Out-Null
+    for ($i = 0; $i -lt 20; $i++) {
+        $state = (schtasks /Query /TN $taskName /FO CSV /NH 2>$null) -join " "
+        if ($state -notmatch "Running|正在运行") { break }
+        Start-Sleep -Milliseconds 500
+    }
     schtasks /Run /TN $taskName | Out-Null
+
+    # 确认进程真的起来了（venv 启动器与子进程都会命中），否则回退为直接启动
+    $started = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 500
+        $proc = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.CommandLine -match 'quant_server\.main' -and
+                $_.CommandLine -match ("--port\s+" + $Port + "(\s|$)")
+            } |
+            Select-Object -First 1
+        if ($proc) { $started = $true; break }
+    }
+    if (-not $started) {
+        Write-Warning "计划任务未拉起进程，回退为直接启动"
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript -Root $ServerDir -NoWait | Out-Null
+    }
 }
 elseif (Test-Path $startScript) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript -Root $ServerDir -NoWait | Out-Null
