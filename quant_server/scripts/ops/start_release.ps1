@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     release 生产服务启动脚本（单端口：前端静态资源 + API + WebSocket）
 
