@@ -6,16 +6,16 @@
     - 强制 ENVIRONMENT=production：数据库连接由进程环境变量决定（PROD_DB_* → quant_signals），
       仅传 --mode production 不会切换数据库，两者必须同时设置。
     - --mode production：关闭 /docs，并按 config.yaml 的 system.serve_frontend=null 自动托管 quant_web/dist。
-    - 默认端口 8082，避免与 dev（后端 8080 / 前端 8081）冲突。
+    - 默认端口 8888，避免与 dev（后端 8080 / 前端 8081）冲突。
 
 .EXAMPLE
     .\start_release.ps1
-    .\start_release.ps1 -Port 8082 -Root E:\QuantitativeTrading\quant_trade_release\quant_server
+    .\start_release.ps1 -Port 8888 -Root E:\QuantitativeTrading\quant_trade_release\quant_server
 #>
 [CmdletBinding()]
 param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
-    [int]$Port = 8082,
+    [int]$Port = 8888,
     [switch]$NoWait
 )
 

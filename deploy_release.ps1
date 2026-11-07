@@ -18,7 +18,7 @@
     要拉取的分支名，默认 release_v1.0.0。
 
 .PARAMETER Port
-    后端端口，默认 8082。
+    后端端口，默认 8888。
 
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File deploy_release.ps1
@@ -32,7 +32,7 @@ param(
     [string]$RepoRoot = "",
     [string]$Branch = "release_v1.0.0",
     [string]$Remote = "origin",
-    [int]$Port = 8082,
+    [int]$Port = 8888,
     [switch]$SkipPull,
     [switch]$SkipInstall,
     [switch]$SkipBuild,
@@ -44,8 +44,7 @@ $env:GIT_TERMINAL_PROMPT = "0"
 $scriptPath = $MyInvocation.MyCommand.Path
 
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
-    $here = Split-Path -Parent $scriptPath
-    $RepoRoot = (Resolve-Path (Join-Path $here "..\..\..")).Path
+    $RepoRoot = (Resolve-Path (Split-Path -Parent $scriptPath)).Path
 }
 $RepoRoot = (Resolve-Path $RepoRoot).Path
 $ServerDir = Join-Path $RepoRoot "quant_server"

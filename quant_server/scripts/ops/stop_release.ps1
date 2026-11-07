@@ -8,12 +8,12 @@
 
 .EXAMPLE
     .\stop_release.ps1
-    .\stop_release.ps1 -Port 8082 -Root E:\QuantitativeTrading\quant_trade_release\quant_server
+    .\stop_release.ps1 -Port 8888 -Root E:\QuantitativeTrading\quant_trade_release\quant_server
 #>
 [CmdletBinding()]
 param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
-    [int]$Port = 8082
+    [int]$Port = 8888
 )
 
 $ErrorActionPreference = "Stop"
