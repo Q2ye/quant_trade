@@ -206,3 +206,4 @@ if (Test-Path $LogFile) {
     if ($dbLine) { Write-Step ("数据库: " + $dbLine.Line.Trim()) }
 }
 Write-Step "部署完成。访问 http://127.0.0.1:$Port"
+exit 0
