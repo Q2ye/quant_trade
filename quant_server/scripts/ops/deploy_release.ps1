@@ -40,6 +40,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:GIT_TERMINAL_PROMPT = "0"
 $scriptPath = $MyInvocation.MyCommand.Path
 
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
