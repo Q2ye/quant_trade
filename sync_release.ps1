@@ -6,7 +6,7 @@
 .DESCRIPTION
     与 deploy_release.ps1 职责分离：部署脚本不再碰 git，避免每次部署都把 dev 的提交带进 release。
     需要更新生产代码时单独运行本脚本：
-      1) 校验 release 工作树干净、且位于目标分支
+      1) 校验 release 工作树位于目标分支；有改动先自动提交（-NoAutoCommit 可关闭）
       2) git fetch（可用 -NoFetch 跳过）
       3) git merge --ff-only <SourceBranch>（只允许快进，分叉直接报错）
       4) 把本次变更文件写入 .release-sync-changes，供 deploy_release.ps1 判断是否需要安装依赖
@@ -39,7 +39,8 @@ param(
     [string]$SourceBranch = "dev",
     [string]$TargetBranch = "release_v1.0.0",
     [string]$Remote = "origin",
-    [switch]$NoFetch
+    [switch]$NoFetch,
+    [switch]$NoAutoCommit
 )
 
 $ErrorActionPreference = "Stop"
@@ -72,11 +73,21 @@ if ($branchNow -ne $TargetBranch) {
     Fail "当前分支为 $branchNow，期望 $TargetBranch；请确认 RepoRoot 指向 release 工作树"
 }
 
-# 工作树必须干净，否则快进合并可能覆盖本地改动
+# 工作树有改动时先自动提交，再合并；-NoAutoCommit 则保持旧的“直接失败”行为
 $dirty = @(& git -C $RepoRoot status --porcelain --untracked-files=no)
 if ($dirty.Count -gt 0) {
+    if ($NoAutoCommit) {
+        $dirty | ForEach-Object { Write-Host "    $_" }
+        Fail "工作树有未提交改动（已指定 -NoAutoCommit），请先提交或清理后再同步"
+    }
+    Write-Step ("工作树有 {0} 处改动，先自动提交" -f $dirty.Count)
     $dirty | ForEach-Object { Write-Host "    $_" }
-    Fail "工作树有未提交改动，请先提交或清理后再同步"
+    & git -C $RepoRoot add -u
+    if ($LASTEXITCODE -ne 0) { Fail "git add 失败，请手动检查工作树" }
+    $autoMsg = "chore(release): 同步前自动提交本机改动 " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    & git -C $RepoRoot commit -m $autoMsg | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "自动提交失败，请手动检查工作树" }
+    Write-Step ("已提交: " + $autoMsg)
 }
 
 Write-Step "工作树: $RepoRoot（$TargetBranch）"
@@ -120,7 +131,13 @@ if ($LASTEXITCODE -eq 0) {
 Write-Step "快进合并 $sourceRef"
 & git -C $RepoRoot merge --ff-only $sourceRef
 if ($LASTEXITCODE -ne 0) {
-    Fail "快进合并失败（$TargetBranch 与 $SourceBranch 已分叉），请手动处理"
+    # 有本地提交时无法快进，退回普通合并（产生一个 merge commit）
+    Write-Warn "无法快进（release 有本地提交），改用普通合并"
+    & git -C $RepoRoot merge --no-edit $sourceRef
+    if ($LASTEXITCODE -ne 0) {
+        & git -C $RepoRoot merge --abort 2>&1 | Out-Null
+        Fail "合并 $sourceRef 失败（存在冲突），已回滚本次合并"
+    }
 }
 
 $newHead = (& git -C $RepoRoot rev-parse HEAD).Trim()
