@@ -131,6 +131,10 @@ class StartupConfig:
 		self.shutdown_timeout = config_data.get('features.shutdown_timeout', 30.0)
 		self.log_level = config_data.get('log.level', self.settings.LOG.LEVEL)
 
+		# 前端托管配置（None = 自动：生产模式托管 quant_web/dist，开发模式不托管）
+		self.serve_frontend = config_data.get('system', {}).get('serve_frontend')
+		self.frontend_dir = config_data.get('system', {}).get('frontend_dir')
+
 		# 模块配置
 		self.enabled_modules: List[str] = []
 		self.module_configs: Dict[str, ModuleConfig] = {}
@@ -182,6 +186,10 @@ class StartupConfig:
 		self.enable_health_check = True
 		self.shutdown_timeout = 30.0
 		self.log_level = self.settings.LOG.LEVEL
+
+		# 前端托管配置
+		self.serve_frontend = None
+		self.frontend_dir = None
 
 		# 模块配置 - 默认启用所有模块
 		default_modules = [
@@ -502,6 +510,11 @@ class QuantServer:
 		):
 			logger.info("初始化FastAPI应用...")
 
+			# 前端托管：显式配置优先；未配置时按模式自动判定（生产托管、开发不托管）
+			serve_frontend = self.config.serve_frontend
+			if serve_frontend is None:
+				serve_frontend = self.config.mode == "production"
+
 			# 使用配置创建FastAPI应用
 			self.app = create_app(
 				title=self.config.system_name,
@@ -510,13 +523,16 @@ class QuantServer:
 				docs_url="/docs" if self.config.mode != "production" else None,
 				enabled_modules=self.config.enabled_modules,
 				cors_origins=self.config.settings.API.CORS_ORIGINS,
+				serve_frontend=serve_frontend,
+				frontend_dir=self.config.frontend_dir,
 			)
 
 			logger.info("FastAPI应用初始化完成", extra={
 				"title": self.config.system_name,
 				"version": self.config.version,
 				"docs_url": "/docs" if self.config.mode != "production" else None,
-				"cors_origins_count": len(self.config.settings.API.CORS_ORIGINS)
+				"cors_origins_count": len(self.config.settings.API.CORS_ORIGINS),
+				"serve_frontend": serve_frontend
 			})
 
 	@log_performance(operation="initialize_api_database", level=LogLevel.DEBUG)

@@ -8,6 +8,9 @@ defaults: &defaults
     enable_health_check: true
     shutdown_timeout: 30.0
     log_level: "INFO"
+    # 前端托管：null=自动（生产模式托管 quant_web/dist，开发模式不托管），true/false 强制
+    serve_frontend: null
+    # frontend_dir: "quant_web/dist"   # 留空则用 <repo>/quant_web/dist
 
   # API 安全配置（JWT 令牌等）
   api:

@@ -353,6 +353,10 @@ class SystemSettings(BaseSettings):
 	enable_health_check: bool = True
 	shutdown_timeout: float = 30.0
 	log_level: str = "INFO"
+	# 前端托管：None=自动（生产模式托管 quant_web/dist，开发模式不托管），True/False 强制
+	serve_frontend: Optional[bool] = None
+	# 前端构建目录，留空则使用 <repo>/quant_web/dist
+	frontend_dir: Optional[str] = None
 
 
 class ServerSettings(BaseSettings):
@@ -785,6 +789,10 @@ class ConfigManager:
 				},
 				'log': {
 					'level': self.get('LOG.LEVEL')
+				},
+				'system': {
+					'serve_frontend': self.get('SYSTEM.serve_frontend'),
+					'frontend_dir': self.get('SYSTEM.frontend_dir')
 				},
 				'modules': {
 					k: v for k, v in self.get('MODULES').model_dump().items()

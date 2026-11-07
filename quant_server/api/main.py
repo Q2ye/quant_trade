@@ -5,12 +5,14 @@ API网关主入口
 
 import logging
 from datetime import datetime
-from typing import Dict, Any
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import FileResponse
 
 from .middleware.timing import timing_middleware
 from .routers import (
@@ -23,6 +25,33 @@ from .websocket import websocket_router
 logger = logging.getLogger(__name__)
 
 
+def _mount_frontend(app: FastAPI, frontend_dir: Optional[str] = None) -> None:
+    """托管前端构建产物（单端口部署），并为 history 路由提供 SPA fallback。"""
+    dist = Path(frontend_dir) if frontend_dir else (
+        Path(__file__).resolve().parents[2] / "quant_web" / "dist"
+    )
+    root = dist.resolve()
+    index_file = root / "index.html"
+    if not index_file.is_file():
+        logger.warning(
+            "已启用前端托管，但未找到构建产物：%s（请先在 quant_web 下执行 pnpm build）",
+            index_file,
+        )
+        return
+
+    reserved = {"quantTrade", "api", "health", "docs", "redoc", "openapi.json"}
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def frontend_spa(full_path: str):
+        # API/文档命名空间不吞成 index.html，保持 404 语义
+        if full_path.split("/", 1)[0] in reserved:
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = (root / full_path).resolve()
+        if root in candidate.parents and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index_file)
+
+
 def create_app(
     title: str = "一念量化",
     version: str = "1.0.0",
@@ -32,6 +61,8 @@ def create_app(
     openapi_url: str = "/openapi.json",
     enabled_modules: list = None,
     cors_origins: list = None,
+    serve_frontend: bool = False,
+    frontend_dir: Optional[str] = None,
 ) -> FastAPI:
     """创建FastAPI应用
 
@@ -44,6 +75,8 @@ def create_app(
         openapi_url: OpenAPI规范URL
         enabled_modules: 启用的模块列表，None表示全部启用
         cors_origins: CORS允许源列表，None使用默认值
+        serve_frontend: 是否托管 quant_web/dist（生产单端口部署）
+        frontend_dir: 前端构建目录，None 时使用 <repo>/quant_web/dist
 
     Returns:
         FastAPI: 应用实例
@@ -177,5 +210,9 @@ def create_app(
     app.include_router(websocket_router, prefix="/api")
     # 信号确认路由（自带 /quantTrade/signals 前缀）
     app.include_router(signal_router)
+
+    # 前端静态资源托管（生产单端口部署；必须最后注册，避免吞掉 API 路由）
+    if serve_frontend:
+        _mount_frontend(app, frontend_dir)
 
     return app
