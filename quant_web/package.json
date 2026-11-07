@@ -5,6 +5,7 @@
   "scripts": {
     "serve": "vite",
     "build": "vite build",
+    "build:release": "vite build --target esnext --minify terser",
     "preview": "vite preview",
     "test:unit": "vitest",
     "test:e2e": "cypress open",
@@ -42,6 +43,7 @@
     "lint-staged": "^15.2.2",
     "prettier": "^3.3.2",
     "sass-embedded": "^1.90.0",
+    "terser": "^5.51.2",
     "typescript": "~5.9.2",
     "vite": "^5.4.19",
     "vitest": "^3.2.4",

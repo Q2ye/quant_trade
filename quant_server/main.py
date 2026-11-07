@@ -5,6 +5,7 @@ quant_server/main.py
 使用结构化日志工具包，提供完整的上下文感知日志记录
 """
 import logging
+import os
 
 import asyncio
 import contextvars
@@ -1223,6 +1224,11 @@ async def main():
 	                    help="日志级别")
 
 	args = parser.parse_args()
+
+	# `--mode` 与 ENVIRONMENT 对齐：数据库配置只认 ENVIRONMENT（DEV_DB_* / PROD_DB_*），
+	# 命令行显式给了模式就以它为准，避免 .env 里的 ENVIRONMENT 把 dev 进程连到生产库。
+	if args.mode:
+		os.environ["ENVIRONMENT"] = args.mode
 
 	# 创建请求上下文
 	request_id = f"cli_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
