@@ -1,0 +1,208 @@
+﻿#Requires -Version 5.1
+<#
+.SYNOPSIS
+    release 环境一键部署：拉取最新 release 分支 → 依赖检查 → 前端打包 → 重启后端 → 健康校验。
+
+.DESCRIPTION
+    默认在 release 工作树（E:\QuantitativeTrading\quant_trade_release）上执行：
+      1) git fetch + merge --ff-only origin/<Branch>（拉不到远程时降级为只用本地分支）
+      2) lockfile / pyproject.toml 有变动时自动安装依赖
+      3) pnpm run build:release 生成压缩后的前端 dist
+      4) 停止并重新拉起后端（优先计划任务 QuantTradeRelease，其次直接调用 start_release.ps1）
+      5) 轮询 /health/live 并打印首页加载的 JS 产物
+
+.PARAMETER RepoRoot
+    release 工作树根目录，默认按脚本位置向上三级推导。
+
+.PARAMETER Branch
+    要拉取的分支名，默认 release_v1.0.0。
+
+.PARAMETER Port
+    后端端口，默认 8082。
+
+.EXAMPLE
+    powershell -NoProfile -ExecutionPolicy Bypass -File deploy_release.ps1
+
+.EXAMPLE
+    # 不拉代码、只重打包并重启
+    powershell -NoProfile -ExecutionPolicy Bypass -File deploy_release.ps1 -SkipPull
+#>
+[CmdletBinding()]
+param(
+    [string]$RepoRoot = "",
+    [string]$Branch = "release_v1.0.0",
+    [string]$Remote = "origin",
+    [int]$Port = 8082,
+    [switch]$SkipPull,
+    [switch]$SkipInstall,
+    [switch]$SkipBuild,
+    [switch]$NoStart
+)
+
+$ErrorActionPreference = "Stop"
+$scriptPath = $MyInvocation.MyCommand.Path
+
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $here = Split-Path -Parent $scriptPath
+    $RepoRoot = (Resolve-Path (Join-Path $here "..\..\..")).Path
+}
+$RepoRoot = (Resolve-Path $RepoRoot).Path
+$ServerDir = Join-Path $RepoRoot "quant_server"
+$WebDir = Join-Path $RepoRoot "quant_web"
+$Py = Join-Path $ServerDir ".venv\Scripts\python.exe"
+$LogFile = Join-Path $ServerDir "logs\quant_server.log"
+
+function Write-Step([string]$Message) {
+    Write-Host ("[{0}] {1}" -f (Get-Date -Format "HH:mm:ss"), $Message) -ForegroundColor Cyan
+}
+function Write-Warn([string]$Message) {
+    Write-Host ("[{0}] 警告: {1}" -f (Get-Date -Format "HH:mm:ss"), $Message) -ForegroundColor Yellow
+}
+function Fail([string]$Message) {
+    Write-Host ("[{0}] 失败: {1}" -f (Get-Date -Format "HH:mm:ss"), $Message) -ForegroundColor Red
+    exit 1
+}
+
+if (-not (Test-Path $ServerDir)) { Fail "找不到 quant_server 目录: $ServerDir" }
+if (-not (Test-Path $Py)) { Fail "找不到 release 虚拟环境: $Py" }
+
+$Pnpm = "D:\apps\node\pnpm.cmd"
+if (-not (Test-Path $Pnpm)) {
+    $cmd = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
+    if (-not $cmd) { Fail "找不到 pnpm.cmd，请先安装 pnpm 或在脚本里指定路径" }
+    $Pnpm = $cmd.Source
+}
+
+Write-Step "工作树: $RepoRoot"
+$branchNow = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD).Trim()
+if ($branchNow -ne $Branch) {
+    Write-Warn "当前分支为 $branchNow（期望 $Branch），继续执行，请自行确认"
+}
+
+$oldHead = (& git -C $RepoRoot rev-parse HEAD).Trim()
+
+# ---------------------------------------------------------------- 1. 拉取
+if (-not $SkipPull) {
+    $dirty = & git -C $RepoRoot status --porcelain --untracked-files=no
+    if ($dirty) {
+        Write-Warn "工作树有未提交改动，跳过拉取（先提交或清理后再运行）"
+    }
+    else {
+        Write-Step "拉取 $Remote/$Branch"
+        $fetchOk = $true
+        try {
+            & git -C $RepoRoot fetch $Remote --prune 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { $fetchOk = $false }
+        }
+        catch { $fetchOk = $false }
+
+        if (-not $fetchOk) {
+            Write-Warn "无法连接远程 $Remote，跳过拉取，使用当前本地分支"
+        }
+        else {
+            $remoteRef = "$Remote/$Branch"
+            & git -C $RepoRoot rev-parse --verify --quiet "refs/remotes/$remoteRef" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warn "远程不存在 $remoteRef，使用当前本地分支"
+            }
+            else {
+                & git -C $RepoRoot merge --ff-only $remoteRef
+                if ($LASTEXITCODE -ne 0) { Fail "合并 $remoteRef 失败（本地与远程已分叉），请手动处理" }
+            }
+        }
+    }
+}
+else {
+    Write-Step "已指定 -SkipPull，跳过拉取"
+}
+
+$newHead = (& git -C $RepoRoot rev-parse HEAD).Trim()
+Write-Step ("当前提交: " + $newHead.Substring(0, 8))
+
+$changed = @()
+if ($oldHead -ne $newHead) {
+    $changed = & git -C $RepoRoot diff --name-only $oldHead $newHead
+    Write-Step ("本次更新 {0} 个文件" -f $changed.Count)
+}
+
+# ---------------------------------------------------------------- 2. 依赖
+if (-not $SkipInstall) {
+    if ($changed -match "^quant_web/(pnpm-lock\.yaml|package\.json)$") {
+        Write-Step "前端依赖有变动，执行 pnpm install --frozen-lockfile"
+        Push-Location $WebDir
+        & $Pnpm install --frozen-lockfile
+        $code = $LASTEXITCODE
+        Pop-Location
+        if ($code -ne 0) { Fail "前端依赖安装失败" }
+    }
+    if ($changed -match "^quant_server/pyproject\.toml$") {
+        Write-Step "后端依赖声明有变动，执行 pip install -e"
+        & $Py -m pip install -e $ServerDir
+        if ($LASTEXITCODE -ne 0) { Fail "后端依赖安装失败" }
+    }
+}
+
+# ---------------------------------------------------------------- 3. 打包
+if (-not $SkipBuild) {
+    Write-Step "打包前端（vite build --target esnext --minify terser）"
+    Push-Location $WebDir
+    & $Pnpm run build:release
+    $buildCode = $LASTEXITCODE
+    Pop-Location
+    if ($buildCode -ne 0) { Fail "前端打包失败" }
+    if (-not (Test-Path (Join-Path $WebDir "dist\index.html"))) { Fail "打包完成但 dist\index.html 不存在" }
+}
+else {
+    Write-Step "已指定 -SkipBuild，跳过打包"
+}
+
+if ($NoStart) {
+    Write-Step "已指定 -NoStart，部署完成（未重启服务）"
+    exit 0
+}
+
+# ---------------------------------------------------------------- 4. 重启
+$stopScript = Join-Path $ServerDir "scripts\ops\stop_release.ps1"
+$startScript = Join-Path $ServerDir "scripts\ops\start_release.ps1"
+if (Test-Path $stopScript) {
+    Write-Step "停止现有后端"
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript -Root $ServerDir | Out-Null
+}
+
+Write-Step "启动后端（端口 $Port）"
+$taskName = "QuantTradeRelease"
+schtasks /Query /TN $taskName 2>$null | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    schtasks /Run /TN $taskName | Out-Null
+}
+elseif (Test-Path $startScript) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript -Root $ServerDir -NoWait | Out-Null
+}
+else {
+    Fail "既没有计划任务 $taskName，也没有 start_release.ps1"
+}
+
+# ---------------------------------------------------------------- 5. 校验
+Write-Step "等待健康检查"
+$healthy = $false
+for ($i = 0; $i -lt 45; $i++) {
+    try {
+        $resp = Invoke-WebRequest "http://127.0.0.1:$Port/health/live" -UseBasicParsing -TimeoutSec 3
+        if ($resp.StatusCode -eq 200) { $healthy = $true; break }
+    }
+    catch { }
+    Start-Sleep -Seconds 2
+}
+if (-not $healthy) { Fail "90 秒内 /health/live 未返回 200，请查看 $LogFile" }
+
+$rootResp = Invoke-WebRequest "http://127.0.0.1:$Port/" -UseBasicParsing -TimeoutSec 10
+$asset = ""
+$m = [regex]::Match($rootResp.Content, "assets/index-[^`"]+\.js")
+if ($m.Success) { $asset = $m.Value }
+
+Write-Step "健康检查通过: /health/live = 200, / = $($rootResp.StatusCode), 资源 = $asset"
+if (Test-Path $LogFile) {
+    $dbLine = Get-Content $LogFile -Encoding utf8 -Tail 400 | Select-String "使用.*数据库配置" | Select-Object -Last 1
+    if ($dbLine) { Write-Step ("数据库: " + $dbLine.Line.Trim()) }
+}
+Write-Step "部署完成。访问 http://127.0.0.1:$Port"
