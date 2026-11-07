@@ -76,7 +76,7 @@ if (-not (Test-Path $Pnpm)) {
 Write-Step "工作树: $RepoRoot"
 $branchNow = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD).Trim()
 if ($branchNow -ne $Branch) {
-    Write-Warn "当前分支为 $branchNow（期望 $Branch），继续执行，请自行确认"
+    Fail "当前分支为 $branchNow，期望 $Branch；请确认 RepoRoot 指向 release 工作树"
 }
 
 $newHead = (& git -C $RepoRoot rev-parse HEAD).Trim()
