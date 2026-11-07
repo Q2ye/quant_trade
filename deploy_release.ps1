@@ -162,11 +162,12 @@ if ($NoStart) {
 }
 
 # ---------------------------------------------------------------- 4. 重启
-$stopScript = Join-Path $ServerDir "scripts\ops\stop_release.ps1"
+$stopScript = Join-Path $RepoRoot "stop_release.ps1"
 $startScript = Join-Path $ServerDir "scripts\ops\start_release.ps1"
 if (Test-Path $stopScript) {
     Write-Step "停止现有后端"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript -Root $ServerDir | Out-Null
+    # venv 的 python.exe 是启动器，真正的监听进程是其子进程；必须用根目录的按进程树停止脚本
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript -RepoRoot $RepoRoot -Port $Port | Out-Null
 }
 
 Write-Step "启动后端（端口 $Port）"
