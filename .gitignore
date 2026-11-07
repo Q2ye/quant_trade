@@ -59,12 +59,17 @@ quant_web/.env.local
 quant_web/.next
 quant_web/out
 quant_server/logs
+# 本地配置含凭证，不入库；模板见 quant_server/.env.example
+quant_server/.env
+quant_server/.env.local
+quant_web/.env.production
+.pnpm-store/
+quant_web/.tmp-esbuild/
 
 *.egg-info/
 
 .venv/
 quant_web/node_modules/.modules.yaml
 quant_web/stats.html
-quant_web/pnpm-lock.yaml
 .gitignore
 .vscode/private-folder-alias.json
