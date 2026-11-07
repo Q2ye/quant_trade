@@ -38,27 +38,11 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // 只把「不依赖 Vue」的叶子库单独分块。
+        // 任何 import vue 的库（naive-ui / @iconify/vue / vue-router / pinia …）都必须
+        // 与入口同块：一旦被拆成独立 chunk，入口与它会形成循环 chunk 依赖，
+        // 生产构建下表现为 "Cannot access 'x' before initialization"（TDZ）。
         manualChunks(id) {
-          // vendor — Vue 生态必须同块：vue 包与 @vue/* 运行时被拆到不同 chunk 时，
-          // 会出现跨 chunk 的 TDZ（Cannot access 'x' before initialization）
-          if (
-            id.includes("node_modules/vue") ||
-            id.includes("node_modules/@vue/") ||
-            id.includes("node_modules/vuex") ||
-            id.includes("node_modules/vue-router") ||
-            id.includes("node_modules/pinia") ||
-            id.includes("node_modules/vue-demi")
-          ) {
-            return "vendor-vue";
-          }
-          // UI framework
-          if (id.includes("node_modules/naive-ui")) {
-            return "vendor-naive";
-          }
-          // icons
-          if (id.includes("node_modules/@iconify")) {
-            return "vendor-icons";
-          }
           // charts
           if (
             id.includes("node_modules/echarts") ||
