@@ -3,6 +3,17 @@ import axios from "axios";
 import { createDiscreteApi } from "naive-ui";
 const { message } = createDiscreteApi(["message"]);
 
+// 认证接口自身返回 401 时（密码错误 / token 已失效 / 已登出），只把错误抛给调用方，
+// 不再触发"清理登录态 + 派发登出"。否则登出请求 401 会再次进入 401 分支，
+// 形成 401 → logout → 401 的无限递归（表现为控制台刷屏）。
+const AUTH_ENDPOINTS = [
+  "/system/auth/login",
+  "/system/auth/logout",
+  "/system/auth/refresh",
+];
+const isAuthEndpoint = (url?: string) =>
+  !!url && AUTH_ENDPOINTS.some((path) => url.includes(path));
+
 // 创建axios实例
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -102,15 +113,25 @@ request.interceptors.response.use(
     let errorMessage = data?.message || data?.detail || `请求失败: ${status}`;
 
     switch (status) {
-      case 401:
+      case 401: {
+        // 认证接口自身的 401（密码错误 / token 失效 / 重复登出）不做登出流程
+        if (isAuthEndpoint(error.config?.url)) {
+          break;
+        }
         errorMessage = "登录已过期，请重新登录";
+        // 无 token 说明登录态已被清理（并发 401 的后续请求），跳过避免重复处理
+        if (!getAuthToken()) {
+          break;
+        }
         clearAuth();
-        // 修复 2026-08（A38）：同步清理 Vuex store（此前只清 localStorage，
-        // 登录态残留导致 UI 状态与后端不一致）
+        // 修复 2026-11（A38）：同步清理 Vuex store（此前只清 localStorage，
+        // 登录态残留导致 UI 状态与后端不一致）；这里直接 commit，不再 dispatch
+        // user/logout —— 本地 token 已失效，再调登出接口必然 401 并再次进入本分支
         import("@/store")
           .then((m) => {
             const store = m.default;
-            store.dispatch("user/logout").catch(() => {});
+            store.commit("user/SET_TOKEN", null);
+            store.commit("user/SET_USER_INFO", null);
           })
           .catch(() => {});
         // 使用 setTimeout 避免在请求上下文中直接跳转
@@ -118,8 +139,9 @@ request.interceptors.response.use(
           if (window.location.pathname !== "/login") {
             window.location.href = "/login";
           }
-        }, 1000);
+        }, 300);
         break;
+      }
       case 403:
         errorMessage = "没有权限访问该资源";
         break;

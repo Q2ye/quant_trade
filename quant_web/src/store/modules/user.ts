@@ -6,6 +6,7 @@ import { RootState } from "@/types";
 import { User } from "@/types";
 import { AuthResponse } from "@/api/auth";
 import { UserConverter } from "@/types";
+import { getAuthToken } from "@/utils/request";
 
 interface UserState {
   token: string | null;
@@ -66,7 +67,11 @@ const userModule: Module<UserState, RootState> = {
     },
     async logout({ commit }) {
       try {
-        await authApi.logout();
+        // 服务端登出（token 入黑名单）必须带有效 token；
+        // 本地已无 token 时直接清状态，避免发出必然 401 的请求
+        if (getAuthToken()) {
+          await authApi.logout();
+        }
       } catch (error) {
         console.warn(
           "Logout API call failed, but clearing local state anyway:",
