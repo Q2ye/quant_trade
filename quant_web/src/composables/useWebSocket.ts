@@ -61,7 +61,12 @@ export function useWebSocket() {
         console.warn("[useWebSocket] 无可用认证令牌，跳过连接");
         return;
       }
-      const wsUrl = `${import.meta.env.VITE_WS_URL}?token=${token}`;
+      const configuredWsUrl = import.meta.env.VITE_WS_URL;
+      // 单端口部署（生产）未显式配置时按当前页面 origin 推导：端口/域名变化无需重新构建
+      const wsBaseUrl =
+        configuredWsUrl ||
+        `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/ws`;
+      const wsUrl = `${wsBaseUrl}?token=${token}`;
 
       ws.value = new WebSocket(wsUrl);
 
