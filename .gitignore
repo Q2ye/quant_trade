@@ -19,7 +19,9 @@
 x64
 
 # Temp
-build
+# 仅忽略仓库根的 build/（打包产物）；不要写成裸 `build`，否则会误伤
+# 前端目录 `quant_web/src/views/StrategyCenter/Build/`（Windows 下大小写不敏感）
+/build
 dist
 *.local
 
