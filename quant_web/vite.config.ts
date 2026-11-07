@@ -39,11 +39,15 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // vendor — Vue ecosystem
+          // vendor — Vue 生态必须同块：vue 包与 @vue/* 运行时被拆到不同 chunk 时，
+          // 会出现跨 chunk 的 TDZ（Cannot access 'x' before initialization）
           if (
             id.includes("node_modules/vue") ||
+            id.includes("node_modules/@vue/") ||
             id.includes("node_modules/vuex") ||
-            id.includes("node_modules/vue-router")
+            id.includes("node_modules/vue-router") ||
+            id.includes("node_modules/pinia") ||
+            id.includes("node_modules/vue-demi")
           ) {
             return "vendor-vue";
           }
