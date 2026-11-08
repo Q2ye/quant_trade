@@ -1481,3 +1481,425 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取申万日线行情失败: {e}")
 			return pd.DataFrame()
 
+	# ==================================================================
+	# 2026-11-08 日频数据底座（REQ-20261108-daily-data-base）
+	# 63 个取数方法；统一走 _query_ext（限流/日期规范化/异常兜底）。
+	# 注意：hk_daily / us_daily 接口限 1 次/小时，调用方必须自行控频。
+	# ==================================================================
+
+	_EXT_DATE_COLS = (
+		"trade_date", "ann_date", "start_date", "end_date", "nav_date",
+		"list_date", "delist_date", "maturity_date", "issue_date", "value_date",
+		"conv_start_date", "conv_end_date", "conv_stop_date", "last_edate",
+		"last_ddate", "release_date", "exp_date", "call_date", "payment_date",
+		"call_reg_date", "record_date", "ex_date", "pay_date", "earpay_date",
+		"net_ex_date", "account_date", "base_date", "imp_anndate", "res_ann_date",
+		"onl_date", "shd_ration_date", "shd_ration_record_date",
+		"shd_ration_pay_date", "publish_date", "surv_date", "rating_date", "date",
+	)
+
+	@staticmethod
+	def _ext_params(**kwargs) -> dict:
+		"""去掉空字符串/None，避免 Tushare 把空串当过滤条件。"""
+		return {k: v for k, v in kwargs.items() if v not in (None, "")}
+
+	def _query_ext(self, api: str, **kwargs) -> pd.DataFrame:
+		"""日频底座通用取数：限流 + 日期规范化 + 异常兜底。"""
+		_check_rate_limit(api, max_calls=_RATE_LIMITS.get(api, 500))
+		try:
+			df = self.pro.query(api, **kwargs)
+			if df is not None and not df.empty:
+				for col in self._EXT_DATE_COLS:
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col], errors="coerce")
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			_log_tushare_error(api, e)
+			return pd.DataFrame()
+
+	# ---------- 外汇 / 基金 ----------
+
+	def get_fx_obasic(self, exchange: str = "FXCM") -> pd.DataFrame:
+		"""外汇基础信息（Tushare fx_obasic）。"""
+		return self._query_ext("fx_obasic", **self._ext_params(exchange=exchange))
+
+	def get_fx_daily(self, ts_code: str = "", trade_date: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""外汇日线（Tushare fx_daily）；trade_date 为源 GMT 日期。"""
+		return self._query_ext("fx_daily", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_fund_nav(self, ts_code: str = "", nav_date: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""基金净值（Tushare fund_nav）；PIT 用 ann_date。"""
+		return self._query_ext("fund_nav", **self._ext_params(
+			ts_code=ts_code, nav_date=nav_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_fund_basic(self, market: str = "E", status: str = "") -> pd.DataFrame:
+		"""基金基础信息（Tushare fund_basic）。"""
+		return self._query_ext("fund_basic", **self._ext_params(
+			market=market, status=status))
+
+	def get_fund_company(self) -> pd.DataFrame:
+		"""基金公司（Tushare fund_company）。"""
+		return self._query_ext("fund_company")
+
+	def get_fund_manager(self, ts_code: str = "", ann_date: str = "") -> pd.DataFrame:
+		"""基金经理（Tushare fund_manager）。"""
+		return self._query_ext("fund_manager", **self._ext_params(
+			ts_code=ts_code, ann_date=ann_date))
+
+	def get_fund_div(self, ts_code: str = "", ann_date: str = "",
+	                 ex_date: str = "", pay_date: str = "") -> pd.DataFrame:
+		"""基金分红（Tushare fund_div）。"""
+		return self._query_ext("fund_div", **self._ext_params(
+			ts_code=ts_code, ann_date=ann_date, ex_date=ex_date, pay_date=pay_date))
+
+	def get_fund_share(self, ts_code: str = "", trade_date: str = "",
+	                   start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""基金份额（Tushare fund_share）。"""
+		return self._query_ext("fund_share", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_fund_daily(self, ts_code: str = "", trade_date: str = "",
+	                   start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""非 ETF 基金日线（Tushare fund_daily）。"""
+		return self._query_ext("fund_daily", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	# ---------- 两融 / 新股 / 指数月线 / 宏观 ----------
+
+	def get_margin_detail(self, trade_date: str = "", ts_code: str = "",
+	                      start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""个股两融明细（Tushare margin_detail）。"""
+		return self._query_ext("margin_detail", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_margin_secs(self, trade_date: str = "", ts_code: str = "") -> pd.DataFrame:
+		"""两融标的名单（Tushare margin_secs）。"""
+		return self._query_ext("margin_secs", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code))
+
+	def get_new_share(self, start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""IPO 新股（Tushare new_share）。"""
+		return self._query_ext("new_share", **self._ext_params(
+			start_date=start_date, end_date=end_date))
+
+	def get_index_monthly(self, ts_code: str = "", trade_date: str = "",
+	                      start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""指数月线（Tushare index_monthly）。"""
+		return self._query_ext("index_monthly", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_shibor(self, start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""Shibor（Tushare shibor）；宽表按期限拆行。"""
+		return self._query_ext("shibor", **self._ext_params(
+			start_date=start_date, end_date=end_date))
+
+	def get_libor(self, start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""Libor（Tushare libor）；含 curr_type。"""
+		return self._query_ext("libor", **self._ext_params(
+			start_date=start_date, end_date=end_date))
+
+	def get_hibor(self, start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""Hibor（Tushare hibor）。"""
+		return self._query_ext("hibor", **self._ext_params(
+			start_date=start_date, end_date=end_date))
+
+	def get_us_tbr(self, start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""美国短期国债收益率（Tushare us_tbr）。"""
+		return self._query_ext("us_tbr", **self._ext_params(
+			start_date=start_date, end_date=end_date))
+
+	def get_us_tycr(self, start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""美国国债收益率曲线（Tushare us_tycr）。"""
+		return self._query_ext("us_tycr", **self._ext_params(
+			start_date=start_date, end_date=end_date))
+
+	def get_sf_month(self, start_m: str = "", end_m: str = "") -> pd.DataFrame:
+		"""社融（Tushare sf_month）。"""
+		return self._query_ext("sf_month", **self._ext_params(
+			start_m=start_m, end_m=end_m))
+
+	def get_cn_m(self, start_m: str = "", end_m: str = "") -> pd.DataFrame:
+		"""货币供应（Tushare cn_m）。"""
+		return self._query_ext("cn_m", **self._ext_params(
+			start_m=start_m, end_m=end_m))
+
+	def get_cn_pmi(self, start_m: str = "", end_m: str = "") -> pd.DataFrame:
+		"""PMI（Tushare cn_pmi）。"""
+		return self._query_ext("cn_pmi", **self._ext_params(
+			start_m=start_m, end_m=end_m))
+
+	# ---------- 龙虎榜 / 筹码 / THS / 资金流 / 市场统计 ----------
+
+	def get_top_list(self, trade_date: str = "", ts_code: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""龙虎榜每日统计（Tushare top_list）。"""
+		return self._query_ext("top_list", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_top_inst(self, trade_date: str = "", ts_code: str = "") -> pd.DataFrame:
+		"""龙虎榜机构交易（Tushare top_inst）。"""
+		return self._query_ext("top_inst", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code))
+
+	def get_cyq_perf(self, ts_code: str = "", trade_date: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""每日筹码及胜率（Tushare cyq_perf）。"""
+		return self._query_ext("cyq_perf", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_ths_index(self, exchange: str = "A", type: str = "N") -> pd.DataFrame:
+		"""THS 概念分类（Tushare ths_index）。"""
+		return self._query_ext("ths_index", **self._ext_params(
+			exchange=exchange, type=type))
+
+	def get_ths_daily(self, ts_code: str = "", trade_date: str = "",
+	                  start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""THS 概念日线（Tushare ths_daily）。"""
+		return self._query_ext("ths_daily", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_ths_member(self, ts_code: str = "") -> pd.DataFrame:
+		"""THS 概念成分（Tushare ths_member）；仅当前快照，无 in/out_date。"""
+		return self._query_ext("ths_member", **self._ext_params(ts_code=ts_code))
+
+	def get_moneyflow_dc(self, trade_date: str = "", ts_code: str = "",
+	                     start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""个股资金流 DC（Tushare moneyflow_dc）。"""
+		return self._query_ext("moneyflow_dc", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_moneyflow_ths(self, trade_date: str = "", ts_code: str = "",
+	                      start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""个股资金流 THS（Tushare moneyflow_ths）。"""
+		return self._query_ext("moneyflow_ths", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_moneyflow_ind_dc(self, trade_date: str = "", ts_code: str = "",
+	                         start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""板块资金流 DC（Tushare moneyflow_ind_dc）。"""
+		return self._query_ext("moneyflow_ind_dc", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_moneyflow_ind_ths(self, trade_date: str = "", ts_code: str = "",
+	                          start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""行业资金流 THS（Tushare moneyflow_ind_ths）。"""
+		return self._query_ext("moneyflow_ind_ths", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_moneyflow_cnt_ths(self, trade_date: str = "", ts_code: str = "",
+	                          start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""概念资金流 THS（Tushare moneyflow_cnt_ths）。"""
+		return self._query_ext("moneyflow_cnt_ths", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_daily_info(self, trade_date: str = "", ts_code: str = "",
+	                   start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""沪深市场每日统计（Tushare daily_info）。"""
+		return self._query_ext("daily_info", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_sz_daily_info(self, trade_date: str = "", ts_code: str = "") -> pd.DataFrame:
+		"""深市每日统计（Tushare sz_daily_info）；ts_code 为板块名。"""
+		return self._query_ext("sz_daily_info", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code))
+
+	# ---------- 大宗 / 全球指数 / 期货 / 期权 / 转债 / 北向十大 ----------
+
+	def get_block_trade(self, trade_date: str = "", ts_code: str = "",
+	                    start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""大宗交易（Tushare block_trade）。"""
+		return self._query_ext("block_trade", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_index_global(self, ts_code: str = "", trade_date: str = "",
+	                     start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""国际指数（Tushare index_global）。"""
+		return self._query_ext("index_global", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_fut_basic(self, exchange: str = "", fut_type: str = "1") -> pd.DataFrame:
+		"""期货合约信息（Tushare fut_basic）；exchange 为空时由接口决定。"""
+		return self._query_ext("fut_basic", **self._ext_params(
+			exchange=exchange, fut_type=fut_type))
+
+	def get_fut_daily(self, trade_date: str = "", ts_code: str = "",
+	                  start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""期货日线（Tushare fut_daily）。"""
+		return self._query_ext("fut_daily", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_fut_holding(self, trade_date: str = "", symbol: str = "",
+	                    exchange: str = "") -> pd.DataFrame:
+		"""期货持仓排名（Tushare fut_holding）；symbol/exchange 必需。"""
+		return self._query_ext("fut_holding", **self._ext_params(
+			trade_date=trade_date, symbol=symbol, exchange=exchange))
+
+	def get_fut_wsr(self, trade_date: str = "", symbol: str = "",
+	                exchange: str = "") -> pd.DataFrame:
+		"""期货仓单日报（Tushare fut_wsr）。"""
+		return self._query_ext("fut_wsr", **self._ext_params(
+			trade_date=trade_date, symbol=symbol, exchange=exchange))
+
+	def get_fut_settle(self, trade_date: str = "", ts_code: str = "",
+	                   start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""期货结算参数（Tushare fut_settle）。"""
+		return self._query_ext("fut_settle", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_fut_mapping(self, trade_date: str = "", ts_code: str = "",
+	                    start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""主力/连续合约映射（Tushare fut_mapping）。"""
+		return self._query_ext("fut_mapping", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_fut_index_daily(self, ts_code: str = "", trade_date: str = "",
+	                        start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""南华期货指数（Tushare fut_index_daily）。"""
+		return self._query_ext("fut_index_daily", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_opt_basic(self, exchange: str = "SSE") -> pd.DataFrame:
+		"""期权合约信息（Tushare opt_basic）。"""
+		return self._query_ext("opt_basic", **self._ext_params(exchange=exchange))
+
+	def get_opt_daily(self, trade_date: str = "", ts_code: str = "",
+	                  start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""期权日线（Tushare opt_daily）。"""
+		return self._query_ext("opt_daily", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_cb_basic(self, ts_code: str = "", list_date: str = "") -> pd.DataFrame:
+		"""可转债基础信息（Tushare cb_basic）。"""
+		return self._query_ext("cb_basic", **self._ext_params(
+			ts_code=ts_code, list_date=list_date))
+
+	def get_cb_issue(self, ts_code: str = "", ann_date: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""可转债发行（Tushare cb_issue）。"""
+		return self._query_ext("cb_issue", **self._ext_params(
+			ts_code=ts_code, ann_date=ann_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_cb_call(self, ts_code: str = "", ann_date: str = "",
+	                start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""可转债赎回（Tushare cb_call）。"""
+		return self._query_ext("cb_call", **self._ext_params(
+			ts_code=ts_code, ann_date=ann_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_cb_daily(self, trade_date: str = "", ts_code: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""可转债行情（Tushare cb_daily）。"""
+		return self._query_ext("cb_daily", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code,
+			start_date=start_date, end_date=end_date))
+
+	def get_cb_share(self, ts_code: str = "", end_date: str = "") -> pd.DataFrame:
+		"""可转债转股结果（Tushare cb_share）。"""
+		return self._query_ext("cb_share", **self._ext_params(
+			ts_code=ts_code, end_date=end_date))
+
+	def get_cb_rating(self, ts_code: str = "", rating_date: str = "") -> pd.DataFrame:
+		"""可转债评级（Tushare cb_rating）。"""
+		return self._query_ext("cb_rating", **self._ext_params(
+			ts_code=ts_code, rating_date=rating_date))
+
+	def get_hsgt_top10(self, trade_date: str = "", ts_code: str = "",
+	                   market_type: str = "1") -> pd.DataFrame:
+		"""沪深股通十大成交股（Tushare hsgt_top10）。"""
+		return self._query_ext("hsgt_top10", **self._ext_params(
+			trade_date=trade_date, ts_code=ts_code, market_type=market_type))
+
+	# ---------- P2 事件 / 港美股 ----------
+
+	def get_pledge_detail(self, ts_code: str = "", ann_date: str = "",
+	                      start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""股权质押明细（Tushare pledge_detail）。"""
+		return self._query_ext("pledge_detail", **self._ext_params(
+			ts_code=ts_code, ann_date=ann_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_repurchase(self, ts_code: str = "", ann_date: str = "",
+	                   start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""股票回购（Tushare repurchase）。"""
+		return self._query_ext("repurchase", **self._ext_params(
+			ts_code=ts_code, ann_date=ann_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_stk_surv(self, ts_code: str = "", trade_date: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""机构调研（Tushare stk_surv）。"""
+		return self._query_ext("stk_surv", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_kpl_list(self, trade_date: str = "", tag: str = "涨停") -> pd.DataFrame:
+		"""开盘啦榜单（Tushare kpl_list）。"""
+		return self._query_ext("kpl_list", **self._ext_params(
+			trade_date=trade_date, tag=tag))
+
+	def get_hm_list(self, name: str = "") -> pd.DataFrame:
+		"""游资名录（Tushare hm_list）。"""
+		return self._query_ext("hm_list", **self._ext_params(name=name))
+
+	def get_eco_cal(self, date: str = "", currency: str = "",
+	                start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""财经日历（Tushare eco_cal）。"""
+		return self._query_ext("eco_cal", **self._ext_params(
+			date=date, currency=currency,
+			start_date=start_date, end_date=end_date))
+
+	def get_hk_basic(self, list_status: str = "L") -> pd.DataFrame:
+		"""港股基础信息（Tushare hk_basic）。"""
+		return self._query_ext("hk_basic", **self._ext_params(
+			list_status=list_status))
+
+	def get_hk_daily(self, ts_code: str = "", trade_date: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""港股日线（Tushare hk_daily）；接口限 1 次/小时。"""
+		return self._query_ext("hk_daily", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_us_basic(self) -> pd.DataFrame:
+		"""美股基础信息（Tushare us_basic）。"""
+		return self._query_ext("us_basic")
+
+	def get_us_daily(self, ts_code: str = "", trade_date: str = "",
+	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
+		"""美股日线（Tushare us_daily）；接口限 1 次/小时。"""
+		return self._query_ext("us_daily", **self._ext_params(
+			ts_code=ts_code, trade_date=trade_date,
+			start_date=start_date, end_date=end_date))
+
+	def get_ggt_daily(self, trade_date: str = "", start_date: str = "",
+	                  end_date: str = "") -> pd.DataFrame:
+		"""港股通每日成交（Tushare ggt_daily）。"""
+		return self._query_ext("ggt_daily", **self._ext_params(
+			trade_date=trade_date, start_date=start_date, end_date=end_date))
+
