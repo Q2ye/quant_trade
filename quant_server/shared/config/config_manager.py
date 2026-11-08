@@ -417,6 +417,8 @@ class SystemSettings(BaseSettings):
 	serve_frontend: Optional[bool] = None
 	# 前端构建目录，留空则使用 <repo>/quant_web/dist
 	frontend_dir: Optional[str] = None
+	# 日终流水线触发时间（交易日，HH:MM）
+	daily_sync_time: str = "19:20"
 
 
 class ServerSettings(BaseSettings):
@@ -838,7 +840,8 @@ class ConfigManager:
 				},
 				'system': {
 					'serve_frontend': self.get('SYSTEM.serve_frontend'),
-					'frontend_dir': self.get('SYSTEM.frontend_dir')
+					'frontend_dir': self.get('SYSTEM.frontend_dir'),
+					'daily_sync_time': self.get('SYSTEM.daily_sync_time'),
 				},
 				'modules': {
 					k: v for k, v in self.get('MODULES').model_dump().items()

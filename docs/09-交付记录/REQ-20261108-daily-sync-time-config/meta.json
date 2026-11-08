@@ -1,0 +1,10 @@
+{
+  "req": "REQ-20261108-daily-sync-time-config",
+  "title": "日终流水线触发时间可配置",
+  "tier": "T2",
+  "status": "DONE",
+  "created": "2026-11-08",
+  "updated": "2026-11-08",
+  "commits": [],
+  "scope": []
+}
