@@ -2,9 +2,21 @@
   "req": "REQ-20261108-sync-tiering",
   "title": "日终/夜间同步分层",
   "tier": "T2",
-  "status": "S1",
+  "status": "DONE",
   "created": "2026-11-08",
   "updated": "2026-11-08",
-  "commits": [],
-  "scope": []
+  "commits": [
+    "b1a202b"
+  ],
+  "scope": [
+    "quant_server/modules/data/",
+    "quant_server/core/engines/system/main_engine.py",
+    "quant_server/main.py",
+    "quant_server/shared/config/config_manager.py",
+    "quant_server/config.yaml",
+    "quant_server/tests/modules/test_data/",
+    "quant_server/tests/test_daily_sync_time_config.py",
+    "docs/02-功能设计/市场模块/日频数据底座补全-设计文档.md",
+    "docs/09-交付记录/"
+  ]
 }
