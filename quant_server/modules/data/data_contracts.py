@@ -211,6 +211,30 @@ _CONTRACTS = [
 DATA_CONTRACTS: Dict[str, DataContract] = {c.data_type: c for c in _CONTRACTS}
 CONTRACTS_BY_TABLE: Dict[str, DataContract] = {c.table: c for c in _CONTRACTS}
 
+# 各表的业务日期列（门禁/回填/校验共用；默认 trade_date）
+DATE_COLUMNS: Dict[str, str] = {
+    "fund_nav": "nav_date",
+    "macro_sf": "month",
+    "macro_money": "month",
+    "macro_pmi": "month",
+    "macro_eco_cal": "event_date",
+    "index_ths_member": "snapshot_date",
+    "cb_share": "end_date",
+    "stock_namechange": "ann_date",
+    "stock_pledge_detail": "ann_date",
+    "stock_repurchase": "ann_date",
+    "stock_surv": "surv_date",
+    "fund_manager": "ann_date",
+    "fund_div": "ann_date",
+    "cb_rating": "rating_date",
+    "cb_call": "ann_date",
+    "cb_issue": "ann_date",
+}
+
+
+def date_column(data_type: str) -> str:
+    return DATE_COLUMNS.get(data_type, "trade_date")
+
 
 def get_contract(data_type: str) -> DataContract:
     """按 DataType 值取契约；不存在时抛 KeyError，调用方负责转成业务错误。"""

@@ -394,6 +394,25 @@ async def initialize (
 								logger.info(
 									"覆盖度校验: %s 当日(%s)覆盖正常（缺失 %d/%d）",
 									_tbl, today, _missing, _base)
+
+						# ③ 日频底座契约门（2026-11-08）：按 DATA_CONTRACTS 检查
+						#    dense 表的新鲜度。只告警、不阻断策略驱动。
+						from modules.data.data_contracts import DATA_CONTRACTS as _CONTRACTS, date_column as _dcol
+						for _key, _c in _CONTRACTS.items():
+							if _c.gate_mode != "dense":
+								continue
+							_col = _dcol(_key)
+							_r = await _s.execute(_text(
+								"SELECT count(*), max({c}) FROM {t} WHERE {c} >= :ws".format(
+									c=_col, t=_c.table)), {"ws": _ws})
+							_n, _mx = _r.fetchone()
+							if _n == 0:
+								logger.warning(
+									"覆盖度校验: %s 近60日无数据（日频底座契约）", _c.table)
+							elif _mx is None or _mx < today - _td(days=3):
+								logger.warning(
+									"覆盖度校验: %s 最新 %s 陈旧（日频底座契约）",
+									_c.table, _mx)
 				except Exception as _ce:
 					logger.warning("覆盖度校验异常（非致命）: %s", _ce)
 

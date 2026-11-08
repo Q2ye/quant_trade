@@ -45,24 +45,7 @@ BEGIN_MARK = "-- ===== BEGIN DAILY_DATA_BASE ====="
 END_MARK = "-- ===== END DAILY_DATA_BASE ====="
 
 # 契约里的日期列（用于计数与报表）
-_DATE_COL = {
-    "fund_nav": "nav_date",
-    "macro_sf": "month",
-    "macro_money": "month",
-    "macro_pmi": "month",
-    "macro_eco_cal": "event_date",
-    "index_ths_member": "snapshot_date",
-    "cb_share": "end_date",
-    "stock_namechange": "ann_date",
-    "stock_pledge_detail": "ann_date",
-    "stock_repurchase": "ann_date",
-    "stock_surv": "surv_date",
-    "fund_manager": "ann_date",
-    "fund_div": "ann_date",
-    "cb_rating": "rating_date",
-    "cb_call": "ann_date",
-    "cb_issue": "ann_date",
-}
+from modules.data.data_contracts import DATE_COLUMNS as _DATE_COL  # noqa: E402
 # 源日期 → 入库日期的偏移（fx_daily 的 GMT +1）
 _DATE_SHIFT_DAYS = {"fx_daily": 1}
 # 1 次/小时的接口，估算时单独告警
