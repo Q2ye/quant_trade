@@ -2,10 +2,12 @@
   "req": "REQ-20261108-live-strategy-env-guard",
   "title": "Live 策略环境硬门",
   "tier": "T2",
-  "status": "S5",
+  "status": "DONE",
   "created": "2026-11-08",
   "updated": "2026-11-08",
-  "commits": [],
+  "commits": [
+    "dd44b10"
+  ],
   "scope": [],
   "approvals": {
     "S1": {
