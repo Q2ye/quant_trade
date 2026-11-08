@@ -5595,197 +5595,197 @@ ALTER TABLE strategies
 -- ---------- P0b 外汇 / 基金 ----------
 
 CREATE TABLE IF NOT EXISTS fx_basic (
-    ts_code           VARCHAR(20) PRIMARY KEY,
-    name              VARCHAR(80),
-    classify          VARCHAR(40),
-    exchange          VARCHAR(20),
-    min_unit          NUMERIC(18,6),
-    max_unit          NUMERIC(18,6),
-    pip               NUMERIC(10,6),
-    pip_cost          NUMERIC(18,6),
+    ts_code           VARCHAR(20) PRIMARY KEY,  -- 代码
+    name              VARCHAR(80),  -- 名称
+    classify          VARCHAR(40),  -- 分类
+    exchange          VARCHAR(20),  -- 交易所
+    min_unit          NUMERIC(18,6),  -- 最小交易单位
+    max_unit          NUMERIC(18,6),  -- 最大交易单位
+    pip               NUMERIC(10,6),  -- 点值
+    pip_cost          NUMERIC(18,6),  -- 点差成本
     target_spread     NUMERIC(18,6),      -- 源字段拼写为 traget_spread，入库改名
-    min_stop_distance NUMERIC(18,6),
-    trading_hours     VARCHAR(100),
-    break_time        VARCHAR(100),
-    data_source       VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    min_stop_distance NUMERIC(18,6),  -- 最小止损距离
+    trading_hours     VARCHAR(100),  -- 交易时段
+    break_time        VARCHAR(100),  -- 休市时间
+    data_source       VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at        TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE fx_basic IS '外汇基础信息（Tushare fx_obasic）；traget_spread 已改名 target_spread';
 
 CREATE TABLE IF NOT EXISTS fx_daily (
-    ts_code     VARCHAR(20) NOT NULL,
+    ts_code     VARCHAR(20) NOT NULL,  -- 代码
     trade_date  DATE        NOT NULL,     -- 北京业务日 = 源 GMT 日期 + 1 天
     source_date DATE,                     -- 源 GMT 日期，保留便于回溯
-    bid_open    NUMERIC(18,6),
-    bid_close   NUMERIC(18,6),
-    bid_high    NUMERIC(18,6),
-    bid_low     NUMERIC(18,6),
-    ask_open    NUMERIC(18,6),
-    ask_close   NUMERIC(18,6),
-    ask_high    NUMERIC(18,6),
-    ask_low     NUMERIC(18,6),
-    tick_qty    BIGINT,
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    bid_open    NUMERIC(18,6),  -- 买报价开盘价
+    bid_close   NUMERIC(18,6),  -- 买报价收盘价
+    bid_high    NUMERIC(18,6),  -- 买报价最高价
+    bid_low     NUMERIC(18,6),  -- 买报价最低价
+    ask_open    NUMERIC(18,6),  -- 卖报价开盘价
+    ask_close   NUMERIC(18,6),  -- 卖报价收盘价
+    ask_high    NUMERIC(18,6),  -- 卖报价最高价
+    ask_low     NUMERIC(18,6),  -- 卖报价最低价
+    tick_qty    BIGINT,  -- 最小变动量
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE fx_daily IS '外汇日线（Tushare fx_daily）；trade_date 已转北京业务日；源不返回 exchange';
 
 CREATE TABLE IF NOT EXISTS fund_nav (
-    ts_code        VARCHAR(20) NOT NULL,
-    nav_date       DATE        NOT NULL,
-    ann_date       DATE,
-    unit_nav       NUMERIC(18,6),
-    accum_nav      NUMERIC(18,6),
-    accum_div      NUMERIC(18,6),
-    net_asset      NUMERIC(20,2),
-    adj_nav        NUMERIC(18,6),
-    update_flag    VARCHAR(8),
-    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code        VARCHAR(20) NOT NULL,  -- 代码
+    nav_date       DATE        NOT NULL,  -- 净值日期
+    ann_date       DATE,  -- 公告日期
+    unit_nav       NUMERIC(18,6),  -- 单位净值
+    accum_nav      NUMERIC(18,6),  -- 累计净值
+    accum_div      NUMERIC(18,6),  -- 累计分红
+    net_asset      NUMERIC(20,2),  -- 资产净值
+    adj_nav        NUMERIC(18,6),  -- 复权净值
+    update_flag    VARCHAR(8),  -- 净值更新标志
+    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, nav_date)
 );
 CREATE INDEX IF NOT EXISTS idx_fund_nav_ann ON fund_nav(ann_date);
 COMMENT ON TABLE fund_nav IS '基金净值（Tushare fund_nav）；PIT 用 ann_date，QDII 净值常滞后 1-2 个交易日';
 
 CREATE TABLE IF NOT EXISTS fund_basic (
-    ts_code        VARCHAR(20) PRIMARY KEY,
-    name           VARCHAR(80),
-    management     VARCHAR(80),
-    custodian      VARCHAR(80),
-    fund_type      VARCHAR(40),
-    found_date     DATE,
-    due_date       DATE,
-    list_date      DATE,
-    issue_date     DATE,
-    delist_date    DATE,
-    issue_amount   NUMERIC(20,4),
-    m_fee          NUMERIC(10,4),
-    c_fee          NUMERIC(10,4),
-    duration_year  NUMERIC(10,4),
-    p_value        NUMERIC(12,4),
-    min_amount     NUMERIC(20,4),
-    exp_return     NUMERIC(12,4),
-    benchmark      TEXT,
-    status         VARCHAR(8),
-    invest_type    VARCHAR(40),
-    type           VARCHAR(20),
-    trustee        VARCHAR(80),
-    purc_startdate DATE,
-    redm_startdate DATE,
-    market         VARCHAR(8),
-    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code        VARCHAR(20) PRIMARY KEY,  -- 代码
+    name           VARCHAR(80),  -- 名称
+    management     VARCHAR(80),  -- 基金管理人
+    custodian      VARCHAR(80),  -- 托管人
+    fund_type      VARCHAR(40),  -- 基金类型
+    found_date     DATE,  -- 成立日
+    due_date       DATE,  -- 到期日
+    list_date      DATE,  -- 上市日
+    issue_date     DATE,  -- 发行日
+    delist_date    DATE,  -- 退市日
+    issue_amount   NUMERIC(20,4),  -- 发行量
+    m_fee          NUMERIC(10,4),  -- 管理费率
+    c_fee          NUMERIC(10,4),  -- 托管费率
+    duration_year  NUMERIC(10,4),  -- 存续年限
+    p_value        NUMERIC(12,4),  -- 面值
+    min_amount     NUMERIC(20,4),  -- 最小申购金额
+    exp_return     NUMERIC(12,4),  -- 预期收益率
+    benchmark      TEXT,  -- 业绩比较基准
+    status         VARCHAR(8),  -- 上市状态
+    invest_type    VARCHAR(40),  -- 投资类型
+    type           VARCHAR(20),  -- 基金类型代码
+    trustee        VARCHAR(80),  -- 受托人
+    purc_startdate DATE,  -- 申购起始日
+    redm_startdate DATE,  -- 赎回起始日
+    market         VARCHAR(8),  -- 市场
+    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE fund_basic IS '基金基础信息（Tushare fund_basic）';
 
 CREATE TABLE IF NOT EXISTS fund_company (
-    name           VARCHAR(80) PRIMARY KEY,
-    shortname      VARCHAR(80),
-    province       VARCHAR(40),
-    city           VARCHAR(40),
-    address        VARCHAR(200),
-    phone          VARCHAR(80),
-    office         VARCHAR(200),
-    website        VARCHAR(120),
-    chairman       VARCHAR(40),
-    manager        VARCHAR(40),
-    reg_capital    NUMERIC(20,4),
-    setup_date     DATE,
-    end_date       DATE,
-    employees      INTEGER,
-    main_business  TEXT,
-    org_code       VARCHAR(40),
-    credit_code    VARCHAR(40),
-    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    name           VARCHAR(80) PRIMARY KEY,  -- 名称
+    shortname      VARCHAR(80),  -- 简称
+    province       VARCHAR(40),  -- 省份
+    city           VARCHAR(40),  -- 城市
+    address        VARCHAR(200),  -- 注册地址
+    phone          VARCHAR(80),  -- 联系电话
+    office         VARCHAR(200),  -- 办公地址
+    website        VARCHAR(120),  -- 网址
+    chairman       VARCHAR(40),  -- 董事长
+    manager        VARCHAR(40),  -- 总经理/基金经理
+    reg_capital    NUMERIC(20,4),  -- 注册资本
+    setup_date     DATE,  -- 成立日期
+    end_date       DATE,  -- 结束日
+    employees      INTEGER,  -- 员工人数
+    main_business  TEXT,  -- 主营业务
+    org_code       VARCHAR(40),  -- 组织机构代码
+    credit_code    VARCHAR(40),  -- 统一社会信用代码
+    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE fund_company IS '基金公司（Tushare fund_company）';
 
 CREATE TABLE IF NOT EXISTS fund_manager (
-    ts_code      VARCHAR(20) NOT NULL,
-    ann_date     DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    name         VARCHAR(40) NOT NULL,
-    gender       VARCHAR(8),
-    birth_year   VARCHAR(8),
-    edu          VARCHAR(40),
-    nationality  VARCHAR(40),
-    begin_date   DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    end_date     DATE,
-    resume       TEXT,
-    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code      VARCHAR(20) NOT NULL,  -- 代码
+    ann_date     DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 公告日期
+    name         VARCHAR(40) NOT NULL,  -- 名称
+    gender       VARCHAR(8),  -- 性别
+    birth_year   VARCHAR(8),  -- 出生年份
+    edu          VARCHAR(40),  -- 学历
+    nationality  VARCHAR(40),  -- 国籍
+    begin_date   DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 任职起始日
+    end_date     DATE,  -- 结束日
+    resume       TEXT,  -- 个人简历
+    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, ann_date, name, begin_date)
 );
 COMMENT ON TABLE fund_manager IS '基金经理（Tushare fund_manager）；空公告/任职日以 1900-01-01 占位以保幂等';
 
 CREATE TABLE IF NOT EXISTS fund_div (
-    ts_code       VARCHAR(20) NOT NULL,
-    ann_date      DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    imp_anndate   DATE,
-    base_date     DATE,
-    div_proc      VARCHAR(40) NOT NULL DEFAULT '',
-    record_date   DATE,
-    ex_date       DATE,
-    pay_date      DATE,
-    earpay_date   DATE,
-    net_ex_date   DATE,
-    div_cash      NUMERIC(18,6),
-    base_unit     NUMERIC(18,6),
-    ear_distr     NUMERIC(18,6),
-    ear_amount    NUMERIC(20,2),
-    account_date  DATE,
-    base_year     VARCHAR(8),
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code       VARCHAR(20) NOT NULL,  -- 代码
+    ann_date      DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 公告日期
+    imp_anndate   DATE,  -- 分红实施公告日
+    base_date     DATE,  -- 基准日
+    div_proc      VARCHAR(40) NOT NULL DEFAULT '',  -- 分红进度
+    record_date   DATE,  -- 权益登记日
+    ex_date       DATE,  -- 除息日
+    pay_date      DATE,  -- 派息日
+    earpay_date   DATE,  -- 收益支付日
+    net_ex_date   DATE,  -- 净值除息日
+    div_cash      NUMERIC(18,6),  -- 每份分红金额
+    base_unit     NUMERIC(18,6),  -- 基准份额
+    ear_distr     NUMERIC(18,6),  -- 收益分配
+    ear_amount    NUMERIC(20,2),  -- 收益金额
+    account_date  DATE,  -- 权益登记日
+    base_year     VARCHAR(8),  -- 基准年份
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, ann_date, div_proc)
 );
 COMMENT ON TABLE fund_div IS '基金分红（Tushare fund_div）；主键用 ann_date 而非 ex_date（后者可空）';
 
 CREATE TABLE IF NOT EXISTS fund_share (
-    ts_code      VARCHAR(20) NOT NULL,
-    trade_date   DATE        NOT NULL,
-    fd_share     NUMERIC(20,4),
-    fund_type    VARCHAR(40),
-    market       VARCHAR(8),
-    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code      VARCHAR(20) NOT NULL,  -- 代码
+    trade_date   DATE        NOT NULL,  -- 交易日期
+    fd_share     NUMERIC(20,4),  -- 基金份额
+    fund_type    VARCHAR(40),  -- 基金类型
+    market       VARCHAR(8),  -- 市场
+    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE fund_share IS '基金份额（Tushare fund_share）；fd_share 单位=万份';
 
 CREATE TABLE IF NOT EXISTS fund_daily_ex (
-    ts_code      VARCHAR(20) NOT NULL,
-    trade_date   DATE        NOT NULL,
-    pre_close    NUMERIC(12,4),
-    open         NUMERIC(12,4),
-    high         NUMERIC(12,4),
-    low          NUMERIC(12,4),
-    close        NUMERIC(12,4),
-    change       NUMERIC(12,4),
-    pct_chg      NUMERIC(10,4),
-    vol          NUMERIC(20,4),
-    amount       NUMERIC(20,2),
-    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code      VARCHAR(20) NOT NULL,  -- 代码
+    trade_date   DATE        NOT NULL,  -- 交易日期
+    pre_close    NUMERIC(12,4),  -- 前收盘价
+    open         NUMERIC(12,4),  -- 开盘价
+    high         NUMERIC(12,4),  -- 最高价
+    low          NUMERIC(12,4),  -- 最低价
+    close        NUMERIC(12,4),  -- 收盘价
+    change       NUMERIC(12,4),  -- 涨跌额
+    pct_chg      NUMERIC(10,4),  -- 涨跌幅（%）
+    vol          NUMERIC(20,4),  -- 成交量
+    amount       NUMERIC(20,2),  -- 成交额
+    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE fund_daily_ex IS '非 ETF 基金日线（Tushare fund_daily）；ETF 部分仍由 etf_daily 承载';
@@ -5793,347 +5793,347 @@ COMMENT ON TABLE fund_daily_ex IS '非 ETF 基金日线（Tushare fund_daily）�
 -- ---------- P0b 两融 / 改名 / 新股 / 指数月线 / 宏观 ----------
 
 CREATE TABLE IF NOT EXISTS stock_margin_detail (
-    trade_date DATE        NOT NULL,
-    ts_code    VARCHAR(12) NOT NULL,
-    rzye       NUMERIC(20,2),
-    rqye       NUMERIC(20,2),
-    rzmre      NUMERIC(20,2),
-    rqyl       NUMERIC(20,2),
-    rzche      NUMERIC(20,2),
-    rqchl      NUMERIC(20,2),
-    rqmcl      NUMERIC(20,2),
-    rzrqye     NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    trade_date DATE        NOT NULL,  -- 交易日期
+    ts_code    VARCHAR(12) NOT NULL,  -- 代码
+    rzye       NUMERIC(20,2),  -- 融资余额
+    rqye       NUMERIC(20,2),  -- 融券余额
+    rzmre      NUMERIC(20,2),  -- 融资买入额
+    rqyl       NUMERIC(20,2),  -- 融券余量
+    rzche      NUMERIC(20,2),  -- 融资偿还额
+    rqchl      NUMERIC(20,2),  -- 融券偿还量
+    rqmcl      NUMERIC(20,2),  -- 融券卖出量
+    rzrqye     NUMERIC(20,2),  -- 融资融券余额
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, ts_code)
 );
 COMMENT ON TABLE stock_margin_detail IS '个股两融明细（Tushare margin_detail）；源不返回 name；T 日晚发布';
 
 CREATE TABLE IF NOT EXISTS stock_margin_secs (
-    trade_date DATE        NOT NULL,
-    ts_code    VARCHAR(12) NOT NULL,
-    name       VARCHAR(40),
-    exchange   VARCHAR(10),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    trade_date DATE        NOT NULL,  -- 交易日期
+    ts_code    VARCHAR(12) NOT NULL,  -- 代码
+    name       VARCHAR(40),  -- 名称
+    exchange   VARCHAR(10),  -- 交易所
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, ts_code)
 );
 COMMENT ON TABLE stock_margin_secs IS '两融标的名单（Tushare margin_secs，盘前）';
 
 CREATE TABLE IF NOT EXISTS stock_namechange (
-    ts_code       VARCHAR(12) NOT NULL,
-    start_date    DATE        NOT NULL,
-    name          VARCHAR(40) NOT NULL,
-    end_date      DATE,
-    ann_date      DATE,
-    change_reason VARCHAR(200),
-    is_st         BOOLEAN,
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code       VARCHAR(12) NOT NULL,  -- 代码
+    start_date    DATE        NOT NULL,  -- 起始日
+    name          VARCHAR(40) NOT NULL,  -- 名称
+    end_date      DATE,  -- 结束日
+    ann_date      DATE,  -- 公告日期
+    change_reason VARCHAR(200),  -- 变更原因
+    is_st         BOOLEAN,  -- 是否ST
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, start_date, name)
 );
 CREATE INDEX IF NOT EXISTS idx_namechange_ann ON stock_namechange(ann_date);
 COMMENT ON TABLE stock_namechange IS '股票曾用名全量（Tushare namechange）；is_st 由 name 派生';
 
 CREATE TABLE IF NOT EXISTS stock_new_share (
-    ts_code       VARCHAR(12) PRIMARY KEY,
-    sub_code      VARCHAR(20),
-    name          VARCHAR(40),
-    ipo_date      DATE,
-    issue_date    DATE,
-    amount        NUMERIC(20,4),
-    market_amount NUMERIC(20,4),
-    price         NUMERIC(12,4),
-    pe            NUMERIC(12,4),
-    limit_amount  NUMERIC(20,4),
-    funds         NUMERIC(20,2),
-    ballot        NUMERIC(12,6),
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code       VARCHAR(12) PRIMARY KEY,  -- 代码
+    sub_code      VARCHAR(20),  -- 申购代码
+    name          VARCHAR(40),  -- 名称
+    ipo_date      DATE,  -- 上市日
+    issue_date    DATE,  -- 发行日
+    amount        NUMERIC(20,4),  -- 成交额
+    market_amount NUMERIC(20,4),  -- 上网发行量
+    price         NUMERIC(12,4),  -- 成交价
+    pe            NUMERIC(12,4),  -- 市盈率
+    limit_amount  NUMERIC(20,4),  -- 申购上限
+    funds         NUMERIC(20,2),  -- 募集资金
+    ballot        NUMERIC(12,6),  -- 中签率
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE stock_new_share IS 'IPO 新股（Tushare new_share）；amount/market_amount 单位=万股';
 
 CREATE TABLE IF NOT EXISTS index_monthly (
-    ts_code    VARCHAR(20) NOT NULL,
-    trade_date DATE        NOT NULL,
-    close      NUMERIC(14,4),
-    open       NUMERIC(14,4),
-    high       NUMERIC(14,4),
-    low        NUMERIC(14,4),
-    pre_close  NUMERIC(14,4),
-    change     NUMERIC(14,4),
-    pct_chg    NUMERIC(10,4),
-    vol        NUMERIC(20,2),
-    amount     NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code    VARCHAR(20) NOT NULL,  -- 代码
+    trade_date DATE        NOT NULL,  -- 交易日期
+    close      NUMERIC(14,4),  -- 收盘价
+    open       NUMERIC(14,4),  -- 开盘价
+    high       NUMERIC(14,4),  -- 最高价
+    low        NUMERIC(14,4),  -- 最低价
+    pre_close  NUMERIC(14,4),  -- 前收盘价
+    change     NUMERIC(14,4),  -- 涨跌额
+    pct_chg    NUMERIC(10,4),  -- 涨跌幅（%）
+    vol        NUMERIC(20,2),  -- 成交量
+    amount     NUMERIC(20,2),  -- 成交额
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE index_monthly IS '指数月线（Tushare index_monthly）';
 
 CREATE TABLE IF NOT EXISTS macro_rate (
-    trade_date DATE        NOT NULL,
-    source     VARCHAR(16) NOT NULL,   -- shibor/libor/hibor/us_tbr/us_tycr
+    trade_date DATE        NOT NULL,  -- 交易日期
+    source     VARCHAR(16) NOT NULL,   -- 来源/口径；shibor/libor/hibor/us_tbr/us_tycr
     currency   VARCHAR(8)  NOT NULL,   -- CNY/USD/HKD（libor 取源 curr_type）
-    tenor      VARCHAR(8)  NOT NULL,   -- ON/1W/1M/3M/1Y/W4_BD/M1/Y10 ...
-    value      NUMERIC(12,6),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    tenor      VARCHAR(8)  NOT NULL,   -- 期限；ON/1W/1M/3M/1Y/W4_BD/M1/Y10 ...
+    value      NUMERIC(12,6),  -- 利率值
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, source, currency, tenor)
 );
 COMMENT ON TABLE macro_rate IS '利率长表（Tushare shibor/libor/hibor/us_tbr/us_tycr）；宽表按期限拆行';
 
 CREATE TABLE IF NOT EXISTS macro_sf (
-    month       VARCHAR(8) PRIMARY KEY,
-    inc_month   NUMERIC(20,4),
-    inc_cumval  NUMERIC(20,4),
-    stk_endval  NUMERIC(20,4),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    month       VARCHAR(8) PRIMARY KEY,  -- 月份
+    inc_month   NUMERIC(20,4),  -- 当月增量
+    inc_cumval  NUMERIC(20,4),  -- 累计增量
+    stk_endval  NUMERIC(20,4),  -- 期末存量
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE macro_sf IS '社融（Tushare sf_month）；单位=亿元';
 
 CREATE TABLE IF NOT EXISTS macro_money (
-    month       VARCHAR(8) PRIMARY KEY,
-    m0          NUMERIC(20,4), m0_yoy NUMERIC(10,4), m0_mom NUMERIC(10,4),
-    m1          NUMERIC(20,4), m1_yoy NUMERIC(10,4), m1_mom NUMERIC(10,4),
-    m2          NUMERIC(20,4), m2_yoy NUMERIC(10,4), m2_mom NUMERIC(10,4),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    month       VARCHAR(8) PRIMARY KEY,  -- 月份
+    m0          NUMERIC(20,4), m0_yoy NUMERIC(10,4), m0_mom NUMERIC(10,4),  -- M0（流通中现金）
+    m1          NUMERIC(20,4), m1_yoy NUMERIC(10,4), m1_mom NUMERIC(10,4),  -- M1（狭义货币）
+    m2          NUMERIC(20,4), m2_yoy NUMERIC(10,4), m2_mom NUMERIC(10,4),  -- M2（广义货币）
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE macro_money IS '货币供应（Tushare cn_m）；M0/M1/M2 单位=亿元';
 
 CREATE TABLE IF NOT EXISTS macro_pmi (
-    month       VARCHAR(8) PRIMARY KEY,
-    pmi010000   NUMERIC(10,4),
-    pmi010100   NUMERIC(10,4),
-    pmi010200   NUMERIC(10,4),
-    pmi010300   NUMERIC(10,4),
-    pmi020100   NUMERIC(10,4),
-    pmi030000   NUMERIC(10,4),
-    raw         JSONB,
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    month       VARCHAR(8) PRIMARY KEY,  -- 月份
+    pmi010000   NUMERIC(10,4),  -- 制造业PMI
+    pmi010100   NUMERIC(10,4),  -- 制造业生产
+    pmi010200   NUMERIC(10,4),  -- 制造业新订单
+    pmi010300   NUMERIC(10,4),  -- 制造业原材料库存
+    pmi020100   NUMERIC(10,4),  -- 非制造业商务活动
+    pmi030000   NUMERIC(10,4),  -- 综合PMI
+    raw         JSONB,  -- 原始JSON
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE macro_pmi IS 'PMI（Tushare cn_pmi）；常用分项独立列，其余 50+ 分项进 raw JSONB';
 
 -- ---------- P0c 龙虎榜 / 筹码 / THS / 资金流 / 市场统计 ----------
 
 CREATE TABLE IF NOT EXISTS stock_top_list (
-    id            BIGSERIAL PRIMARY KEY,
-    trade_date    DATE        NOT NULL,
-    ts_code       VARCHAR(12) NOT NULL,
-    name          VARCHAR(40),
-    close         NUMERIC(12,4),
-    pct_change    NUMERIC(10,4),
-    turnover_rate NUMERIC(10,4),
-    amount        NUMERIC(20,2),
-    l_sell        NUMERIC(20,2),
-    l_buy         NUMERIC(20,2),
-    l_amount      NUMERIC(20,2),
-    net_amount    NUMERIC(20,2),
-    net_rate      NUMERIC(12,6),
-    amount_rate   NUMERIC(12,6),
-    float_values  NUMERIC(20,2),
-    reason        VARCHAR(200) NOT NULL DEFAULT '',
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id            BIGSERIAL PRIMARY KEY,  -- 自增主键
+    trade_date    DATE        NOT NULL,  -- 交易日期
+    ts_code       VARCHAR(12) NOT NULL,  -- 代码
+    name          VARCHAR(40),  -- 名称
+    close         NUMERIC(12,4),  -- 收盘价
+    pct_change    NUMERIC(10,4),  -- 涨跌幅（%）
+    turnover_rate NUMERIC(10,4),  -- 换手率（%）
+    amount        NUMERIC(20,2),  -- 成交额
+    l_sell        NUMERIC(20,2),  -- 龙虎榜卖出额
+    l_buy         NUMERIC(20,2),  -- 龙虎榜买入额
+    l_amount      NUMERIC(20,2),  -- 龙虎榜成交额
+    net_amount    NUMERIC(20,2),  -- 净额
+    net_rate      NUMERIC(12,6),  -- 净额占比
+    amount_rate   NUMERIC(12,6),  -- 成交额占比
+    float_values  NUMERIC(20,2),  -- 流通市值
+    reason        VARCHAR(200) NOT NULL DEFAULT '',  -- 上榜原因
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (trade_date, ts_code, reason)
 );
 COMMENT ON TABLE stock_top_list IS '龙虎榜每日统计（Tushare top_list）；T 日晚发布';
 
 CREATE TABLE IF NOT EXISTS stock_top_inst (
-    id          BIGSERIAL PRIMARY KEY,
-    trade_date  DATE        NOT NULL,
-    ts_code     VARCHAR(12) NOT NULL,
-    exalter     VARCHAR(200) NOT NULL,
-    buy         NUMERIC(20,2),
-    buy_rate    NUMERIC(12,6),
-    sell        NUMERIC(20,2),
-    sell_rate   NUMERIC(12,6),
-    net_buy     NUMERIC(20,2),
-    side        CHAR(1)     NOT NULL DEFAULT '',
-    reason      VARCHAR(200) NOT NULL DEFAULT '',
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id          BIGSERIAL PRIMARY KEY,  -- 自增主键
+    trade_date  DATE        NOT NULL,  -- 交易日期
+    ts_code     VARCHAR(12) NOT NULL,  -- 代码
+    exalter     VARCHAR(200) NOT NULL,  -- 营业部/机构名称
+    buy         NUMERIC(20,2),  -- 买入额
+    buy_rate    NUMERIC(12,6),  -- 买入占比
+    sell        NUMERIC(20,2),  -- 卖出额
+    sell_rate   NUMERIC(12,6),  -- 卖出占比
+    net_buy     NUMERIC(20,2),  -- 净买入额
+    side        CHAR(1)     NOT NULL DEFAULT '',  -- 买卖方向（0买方/1卖方）
+    reason      VARCHAR(200) NOT NULL DEFAULT '',  -- 上榜原因
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (trade_date, ts_code, exalter, side, reason)
 );
 COMMENT ON TABLE stock_top_inst IS '龙虎榜机构交易（Tushare top_inst）；side 0=买方 1=卖方';
 
 CREATE TABLE IF NOT EXISTS stock_cyq_perf (
-    ts_code     VARCHAR(12) NOT NULL,
-    trade_date  DATE        NOT NULL,
-    his_low     NUMERIC(12,4),
-    his_high    NUMERIC(12,4),
-    cost_5pct   NUMERIC(12,4),
-    cost_15pct  NUMERIC(12,4),
-    cost_50pct  NUMERIC(12,4),
-    cost_85pct  NUMERIC(12,4),
-    cost_95pct  NUMERIC(12,4),
-    weight_avg  NUMERIC(12,4),
-    winner_rate NUMERIC(12,6),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code     VARCHAR(12) NOT NULL,  -- 代码
+    trade_date  DATE        NOT NULL,  -- 交易日期
+    his_low     NUMERIC(12,4),  -- 历史最低价
+    his_high    NUMERIC(12,4),  -- 历史最高价
+    cost_5pct   NUMERIC(12,4),  -- 5%成本分位
+    cost_15pct  NUMERIC(12,4),  -- 15%成本分位
+    cost_50pct  NUMERIC(12,4),  -- 50%成本分位
+    cost_85pct  NUMERIC(12,4),  -- 85%成本分位
+    cost_95pct  NUMERIC(12,4),  -- 95%成本分位
+    weight_avg  NUMERIC(12,4),  -- 加权平均成本
+    winner_rate NUMERIC(12,6),  -- 获利比例
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE stock_cyq_perf IS '每日筹码及胜率（Tushare cyq_perf）';
 
 CREATE TABLE IF NOT EXISTS index_ths (
-    ts_code     VARCHAR(20) PRIMARY KEY,
-    name        VARCHAR(80),
-    count       INTEGER,
-    exchange    VARCHAR(8),
-    list_date   DATE,
+    ts_code     VARCHAR(20) PRIMARY KEY,  -- 代码
+    name        VARCHAR(80),  -- 名称
+    count       INTEGER,  -- 成分数量
+    exchange    VARCHAR(8),  -- 交易所
+    list_date   DATE,  -- 上市日
     type        VARCHAR(8),          -- N 概念 / I 行业 / R 地域 / S 风格
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE index_ths IS 'THS 概念/行业分类（Tushare ths_index）';
 
 CREATE TABLE IF NOT EXISTS index_ths_daily (
-    ts_code       VARCHAR(20) NOT NULL,
-    trade_date    DATE        NOT NULL,
-    open          NUMERIC(14,4),
-    high          NUMERIC(14,4),
-    low           NUMERIC(14,4),
-    close         NUMERIC(14,4),
-    pre_close     NUMERIC(14,4),
-    avg_price     NUMERIC(14,4),
-    change        NUMERIC(14,4),
-    pct_change    NUMERIC(10,4),
-    vol           NUMERIC(20,2),
-    turnover_rate NUMERIC(10,4),
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code       VARCHAR(20) NOT NULL,  -- 代码
+    trade_date    DATE        NOT NULL,  -- 交易日期
+    open          NUMERIC(14,4),  -- 开盘价
+    high          NUMERIC(14,4),  -- 最高价
+    low           NUMERIC(14,4),  -- 最低价
+    close         NUMERIC(14,4),  -- 收盘价
+    pre_close     NUMERIC(14,4),  -- 前收盘价
+    avg_price     NUMERIC(14,4),  -- 平均价
+    change        NUMERIC(14,4),  -- 涨跌额
+    pct_change    NUMERIC(10,4),  -- 涨跌幅（%）
+    vol           NUMERIC(20,2),  -- 成交量
+    turnover_rate NUMERIC(10,4),  -- 换手率（%）
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE index_ths_daily IS 'THS 概念日线（Tushare ths_daily）；源不返回 total_mv/float_mv';
 
 CREATE TABLE IF NOT EXISTS index_ths_member (
-    snapshot_date DATE        NOT NULL,
-    index_code    VARCHAR(20) NOT NULL,
-    con_code      VARCHAR(12) NOT NULL,
-    con_name      VARCHAR(40),
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    snapshot_date DATE        NOT NULL,  -- 快照日期
+    index_code    VARCHAR(20) NOT NULL,  -- 指数代码
+    con_code      VARCHAR(12) NOT NULL,  -- 成分代码
+    con_name      VARCHAR(40),  -- 成分名称
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (snapshot_date, index_code, con_code)
 );
 CREATE INDEX IF NOT EXISTS idx_ths_member_con ON index_ths_member(con_code, snapshot_date);
 COMMENT ON TABLE index_ths_member IS 'NON_PIT：ths_member 只返回 ts_code/con_code/con_name（无 in/out_date、无 weight），只能按日快照前向使用';
 
 CREATE TABLE IF NOT EXISTS stock_moneyflow_ext (
-    trade_date           DATE        NOT NULL,
-    ts_code              VARCHAR(12) NOT NULL,
-    source               VARCHAR(8)  NOT NULL,   -- dc / ths
-    name                 VARCHAR(40),
-    pct_change           NUMERIC(10,4),
-    close                NUMERIC(12,4),
-    latest               NUMERIC(12,4),          -- THS
-    net_amount           NUMERIC(20,2),
-    net_amount_rate      NUMERIC(12,6),          -- DC
-    net_d5_amount        NUMERIC(20,2),          -- THS
-    buy_elg_amount       NUMERIC(20,2),          -- DC
-    buy_elg_amount_rate  NUMERIC(12,6),
-    buy_lg_amount        NUMERIC(20,2),
-    buy_lg_amount_rate   NUMERIC(12,6),
-    buy_md_amount        NUMERIC(20,2),
-    buy_md_amount_rate   NUMERIC(12,6),
-    buy_sm_amount        NUMERIC(20,2),
-    buy_sm_amount_rate   NUMERIC(12,6),
-    data_source          VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    trade_date           DATE        NOT NULL,  -- 交易日期
+    ts_code              VARCHAR(12) NOT NULL,  -- 代码
+    source               VARCHAR(8)  NOT NULL,   -- 来源/口径；dc / ths
+    name                 VARCHAR(40),  -- 名称
+    pct_change           NUMERIC(10,4),  -- 涨跌幅（%）
+    close                NUMERIC(12,4),  -- 收盘价
+    latest               NUMERIC(12,4),          -- 最新价；THS
+    net_amount           NUMERIC(20,2),  -- 净额
+    net_amount_rate      NUMERIC(12,6),          -- 净额占比；DC
+    net_d5_amount        NUMERIC(20,2),          -- 5日净额；THS
+    buy_elg_amount       NUMERIC(20,2),          -- 超大单买入额；DC
+    buy_elg_amount_rate  NUMERIC(12,6),  -- 超大单买入占比
+    buy_lg_amount        NUMERIC(20,2),  -- 大单买入额
+    buy_lg_amount_rate   NUMERIC(12,6),  -- 大单买入占比
+    buy_md_amount        NUMERIC(20,2),  -- 中单买入额
+    buy_md_amount_rate   NUMERIC(12,6),  -- 中单买入占比
+    buy_sm_amount        NUMERIC(20,2),  -- 小单买入额
+    buy_sm_amount_rate   NUMERIC(12,6),  -- 小单买入占比
+    data_source          VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at           TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, ts_code, source)
 );
 COMMENT ON TABLE stock_moneyflow_ext IS '个股资金流扩展（Tushare moneyflow_dc / moneyflow_ths）；两口径字段并集，缺失侧为 NULL';
 
 CREATE TABLE IF NOT EXISTS stock_moneyflow_ind (
-    trade_date          DATE        NOT NULL,
-    ts_code             VARCHAR(20) NOT NULL,
-    source              VARCHAR(12) NOT NULL,   -- ind_dc / ind_ths / cnt_ths
-    content_type        VARCHAR(20),
-    name                VARCHAR(80),
-    industry            VARCHAR(80),
-    lead_stock          VARCHAR(40),
-    close               NUMERIC(14,4),
-    close_price         NUMERIC(14,4),
-    pct_change          NUMERIC(10,4),
-    industry_index      NUMERIC(14,4),
-    company_num         INTEGER,
-    pct_change_stock    NUMERIC(10,4),
-    net_buy_amount      NUMERIC(20,2),
-    net_sell_amount     NUMERIC(20,2),
-    net_amount          NUMERIC(20,2),
-    net_amount_rate     NUMERIC(12,6),
-    buy_elg_amount      NUMERIC(20,2),
-    buy_elg_amount_rate NUMERIC(12,6),
-    buy_lg_amount       NUMERIC(20,2),
-    buy_lg_amount_rate  NUMERIC(12,6),
-    buy_md_amount       NUMERIC(20,2),
-    buy_md_amount_rate  NUMERIC(12,6),
-    buy_sm_amount       NUMERIC(20,2),
-    buy_sm_amount_rate  NUMERIC(12,6),
-    buy_sm_amount_stock VARCHAR(200),
-    rank                INTEGER,
-    data_source         VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    trade_date          DATE        NOT NULL,  -- 交易日期
+    ts_code             VARCHAR(20) NOT NULL,  -- 代码
+    source              VARCHAR(12) NOT NULL,   -- 来源/口径；ind_dc / ind_ths / cnt_ths
+    content_type        VARCHAR(20),  -- 内容类型
+    name                VARCHAR(80),  -- 名称
+    industry            VARCHAR(80),  -- 所属行业
+    lead_stock          VARCHAR(40),  -- 领涨股
+    close               NUMERIC(14,4),  -- 收盘价
+    close_price         NUMERIC(14,4),  -- 收盘价/指数点位
+    pct_change          NUMERIC(10,4),  -- 涨跌幅（%）
+    industry_index      NUMERIC(14,4),  -- 行业指数点位
+    company_num         INTEGER,  -- 公司家数
+    pct_change_stock    NUMERIC(10,4),  -- 领涨股涨跌幅（%）
+    net_buy_amount      NUMERIC(20,2),  -- 净买入额
+    net_sell_amount     NUMERIC(20,2),  -- 净卖出额
+    net_amount          NUMERIC(20,2),  -- 净额
+    net_amount_rate     NUMERIC(12,6),  -- 净额占比
+    buy_elg_amount      NUMERIC(20,2),  -- 超大单买入额
+    buy_elg_amount_rate NUMERIC(12,6),  -- 超大单买入占比
+    buy_lg_amount       NUMERIC(20,2),  -- 大单买入额
+    buy_lg_amount_rate  NUMERIC(12,6),  -- 大单买入占比
+    buy_md_amount       NUMERIC(20,2),  -- 中单买入额
+    buy_md_amount_rate  NUMERIC(12,6),  -- 中单买入占比
+    buy_sm_amount       NUMERIC(20,2),  -- 小单买入额
+    buy_sm_amount_rate  NUMERIC(12,6),  -- 小单买入占比
+    buy_sm_amount_stock VARCHAR(200),  -- 小单净买入最大股
+    rank                INTEGER,  -- 排名
+    data_source         VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at          TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, ts_code, source)
 );
 COMMENT ON TABLE stock_moneyflow_ind IS '板块/行业/概念资金流（Tushare moneyflow_ind_dc / ind_ths / cnt_ths）';
 
 CREATE TABLE IF NOT EXISTS market_daily_info (
-    trade_date  DATE        NOT NULL,
+    trade_date  DATE        NOT NULL,  -- 交易日期
     ts_code     VARCHAR(40) NOT NULL,   -- 沪：SH_A...；深：接口返回的中文板块名
-    source      VARCHAR(8)  NOT NULL,   -- sse / szse
-    ts_name     VARCHAR(40),
+    source      VARCHAR(8)  NOT NULL,   -- 来源/口径；sse / szse
+    ts_name     VARCHAR(40),  -- 名称
     com_count   INTEGER,                -- sz 的 count 映射到此
-    total_share NUMERIC(20,4),
-    float_share NUMERIC(20,4),
-    total_mv    NUMERIC(20,2),
-    float_mv    NUMERIC(20,2),
-    amount      NUMERIC(20,2),
-    vol         NUMERIC(20,2),
-    trans_count BIGINT,
-    pe          NUMERIC(12,4),
-    tr          NUMERIC(12,6),
-    exchange    VARCHAR(8),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    total_share NUMERIC(20,4),  -- 总股本
+    float_share NUMERIC(20,4),  -- 流通股本
+    total_mv    NUMERIC(20,2),  -- 总市值
+    float_mv    NUMERIC(20,2),  -- 流通市值
+    amount      NUMERIC(20,2),  -- 成交额
+    vol         NUMERIC(20,2),  -- 成交量
+    trans_count BIGINT,  -- 成交笔数
+    pe          NUMERIC(12,4),  -- 市盈率
+    tr          NUMERIC(12,6),  -- 换手率
+    exchange    VARCHAR(8),  -- 交易所
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, ts_code, source)
 );
 COMMENT ON TABLE market_daily_info IS '沪深每日交易统计（Tushare daily_info / sz_daily_info）；深市 ts_code 为接口返回的板块名';
@@ -6141,392 +6141,392 @@ COMMENT ON TABLE market_daily_info IS '沪深每日交易统计（Tushare daily_
 -- ---------- P1 大宗 / 全球指数 / 期货 / 期权 / 转债 / 北向十大 ----------
 
 CREATE TABLE IF NOT EXISTS stock_block_trade (
-    id          BIGSERIAL PRIMARY KEY,
-    trade_date  DATE        NOT NULL,
-    ts_code     VARCHAR(12) NOT NULL,
-    price       NUMERIC(12,4),
-    vol         NUMERIC(20,4),
-    amount      NUMERIC(20,2),
-    buyer       VARCHAR(200) NOT NULL DEFAULT '',
-    seller      VARCHAR(200) NOT NULL DEFAULT '',
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id          BIGSERIAL PRIMARY KEY,  -- 自增主键
+    trade_date  DATE        NOT NULL,  -- 交易日期
+    ts_code     VARCHAR(12) NOT NULL,  -- 代码
+    price       NUMERIC(12,4),  -- 成交价
+    vol         NUMERIC(20,4),  -- 成交量
+    amount      NUMERIC(20,2),  -- 成交额
+    buyer       VARCHAR(200) NOT NULL DEFAULT '',  -- 买方营业部
+    seller      VARCHAR(200) NOT NULL DEFAULT '',  -- 卖方营业部
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (trade_date, ts_code, price, vol, buyer, seller)
 );
 COMMENT ON TABLE stock_block_trade IS '大宗交易（Tushare block_trade）';
 
 CREATE TABLE IF NOT EXISTS index_global_daily (
-    ts_code    VARCHAR(20) NOT NULL,
+    ts_code    VARCHAR(20) NOT NULL,  -- 代码
     trade_date DATE        NOT NULL,   -- 指数本地交易日
-    open       NUMERIC(14,4),
-    high       NUMERIC(14,4),
-    low        NUMERIC(14,4),
-    close      NUMERIC(14,4),
-    pre_close  NUMERIC(14,4),
-    change     NUMERIC(14,4),
-    pct_chg    NUMERIC(10,4),
-    swing      NUMERIC(10,4),
-    vol        NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    open       NUMERIC(14,4),  -- 开盘价
+    high       NUMERIC(14,4),  -- 最高价
+    low        NUMERIC(14,4),  -- 最低价
+    close      NUMERIC(14,4),  -- 收盘价
+    pre_close  NUMERIC(14,4),  -- 前收盘价
+    change     NUMERIC(14,4),  -- 涨跌额
+    pct_chg    NUMERIC(10,4),  -- 涨跌幅（%）
+    swing      NUMERIC(10,4),  -- 振幅（%）
+    vol        NUMERIC(20,2),  -- 成交量
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE index_global_daily IS '国际指数（Tushare index_global）；源不返回 amount';
 
 CREATE TABLE IF NOT EXISTS fut_basic (
-    ts_code         VARCHAR(20) PRIMARY KEY,
-    symbol          VARCHAR(20),
-    exchange        VARCHAR(10),
-    name            VARCHAR(80),
-    fut_code        VARCHAR(20),
-    multiplier      NUMERIC(12,4),
-    trade_unit      VARCHAR(20),
-    per_unit        NUMERIC(12,4),
-    quote_unit      VARCHAR(20),
-    quote_unit_desc VARCHAR(40),
-    d_mode_desc     VARCHAR(80),
-    list_date       DATE,
-    delist_date     DATE,
-    d_month         VARCHAR(10),
-    last_ddate      DATE,
-    data_source     VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code         VARCHAR(20) PRIMARY KEY,  -- 代码
+    symbol          VARCHAR(20),  -- 品种代码
+    exchange        VARCHAR(10),  -- 交易所
+    name            VARCHAR(80),  -- 名称
+    fut_code        VARCHAR(20),  -- 品种代码
+    multiplier      NUMERIC(12,4),  -- 合约乘数
+    trade_unit      VARCHAR(20),  -- 交易单位
+    per_unit        NUMERIC(12,4),  -- 每手数量
+    quote_unit      VARCHAR(20),  -- 报价单位
+    quote_unit_desc VARCHAR(40),  -- 报价单位说明
+    d_mode_desc     VARCHAR(80),  -- 交割方式说明
+    list_date       DATE,  -- 上市日
+    delist_date     DATE,  -- 退市日
+    d_month         VARCHAR(10),  -- 交割月份
+    last_ddate      DATE,  -- 最后交割日
+    data_source     VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE fut_basic IS '期货合约信息（Tushare fut_basic）';
 
 CREATE TABLE IF NOT EXISTS fut_daily (
-    ts_code     VARCHAR(20) NOT NULL,
-    trade_date  DATE        NOT NULL,
-    pre_close   NUMERIC(14,4),
-    pre_settle  NUMERIC(14,4),
-    open        NUMERIC(14,4),
-    high        NUMERIC(14,4),
-    low         NUMERIC(14,4),
-    close       NUMERIC(14,4),
-    settle      NUMERIC(14,4),
-    change1     NUMERIC(14,4),
-    change2     NUMERIC(14,4),
-    vol         NUMERIC(20,2),
-    amount      NUMERIC(20,2),
-    oi          NUMERIC(20,2),
-    oi_chg      NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code     VARCHAR(20) NOT NULL,  -- 代码
+    trade_date  DATE        NOT NULL,  -- 交易日期
+    pre_close   NUMERIC(14,4),  -- 前收盘价
+    pre_settle  NUMERIC(14,4),  -- 前结算价
+    open        NUMERIC(14,4),  -- 开盘价
+    high        NUMERIC(14,4),  -- 最高价
+    low         NUMERIC(14,4),  -- 最低价
+    close       NUMERIC(14,4),  -- 收盘价
+    settle      NUMERIC(14,4),  -- 结算价
+    change1     NUMERIC(14,4),  -- 涨跌1
+    change2     NUMERIC(14,4),  -- 涨跌2
+    vol         NUMERIC(20,2),  -- 成交量
+    amount      NUMERIC(20,2),  -- 成交额
+    oi          NUMERIC(20,2),  -- 持仓量
+    oi_chg      NUMERIC(20,2),  -- 持仓变化
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE fut_daily IS '期货日线（Tushare fut_daily）；源不返回 delv_settle';
 
 CREATE TABLE IF NOT EXISTS fut_holding (
-    trade_date  DATE        NOT NULL,
-    symbol      VARCHAR(20) NOT NULL,
-    broker      VARCHAR(80) NOT NULL,
-    exchange    VARCHAR(10) NOT NULL DEFAULT '',
-    vol         INTEGER,
-    vol_chg     INTEGER,
-    long_hld    INTEGER,
-    long_chg    INTEGER,
-    short_hld   INTEGER,
-    short_chg   INTEGER,
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    trade_date  DATE        NOT NULL,  -- 交易日期
+    symbol      VARCHAR(20) NOT NULL,  -- 品种代码
+    broker      VARCHAR(80) NOT NULL,  -- 会员/经纪商
+    exchange    VARCHAR(10) NOT NULL DEFAULT '',  -- 交易所
+    vol         INTEGER,  -- 成交量
+    vol_chg     INTEGER,  -- 仓单变化
+    long_hld    INTEGER,  -- 多头持仓量
+    long_chg    INTEGER,  -- 多头持仓变化
+    short_hld   INTEGER,  -- 空头持仓量
+    short_chg   INTEGER,  -- 空头持仓变化
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, symbol, broker, exchange)
 );
 COMMENT ON TABLE fut_holding IS '期货持仓排名（Tushare fut_holding）；exchange 由请求参数补齐';
 
 CREATE TABLE IF NOT EXISTS fut_wsr (
-    id          BIGSERIAL PRIMARY KEY,
-    trade_date  DATE        NOT NULL,
-    symbol      VARCHAR(20) NOT NULL,
-    fut_name    VARCHAR(80) NOT NULL DEFAULT '',
-    warehouse   VARCHAR(120) NOT NULL DEFAULT '',
-    pre_vol     INTEGER,
-    vol         INTEGER,
-    vol_chg     INTEGER,
-    unit        VARCHAR(20) NOT NULL DEFAULT '',
-    exchange    VARCHAR(10) NOT NULL DEFAULT '',
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id          BIGSERIAL PRIMARY KEY,  -- 自增主键
+    trade_date  DATE        NOT NULL,  -- 交易日期
+    symbol      VARCHAR(20) NOT NULL,  -- 品种代码
+    fut_name    VARCHAR(80) NOT NULL DEFAULT '',  -- 品种名称
+    warehouse   VARCHAR(120) NOT NULL DEFAULT '',  -- 仓库
+    pre_vol     INTEGER,  -- 昨日仓单量
+    vol         INTEGER,  -- 成交量
+    vol_chg     INTEGER,  -- 仓单变化
+    unit        VARCHAR(20) NOT NULL DEFAULT '',  -- 单位
+    exchange    VARCHAR(10) NOT NULL DEFAULT '',  -- 交易所
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (trade_date, symbol, warehouse, fut_name, unit, exchange)
 );
 COMMENT ON TABLE fut_wsr IS '期货仓单日报（Tushare fut_wsr）；源字段比旧设计少，按实调建表';
 
 CREATE TABLE IF NOT EXISTS fut_settle (
-    ts_code               VARCHAR(20) NOT NULL,
-    trade_date            DATE        NOT NULL,
-    settle                NUMERIC(14,4),
-    trading_fee_rate      NUMERIC(12,6),
-    trading_fee           NUMERIC(14,4),
-    delivery_fee          NUMERIC(14,4),
-    b_hedging_margin_rate NUMERIC(10,6),
-    s_hedging_margin_rate NUMERIC(10,6),
-    long_margin_rate      NUMERIC(10,6),
-    short_margin_rate     NUMERIC(10,6),
-    data_source           VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code               VARCHAR(20) NOT NULL,  -- 代码
+    trade_date            DATE        NOT NULL,  -- 交易日期
+    settle                NUMERIC(14,4),  -- 结算价
+    trading_fee_rate      NUMERIC(12,6),  -- 交易手续费率
+    trading_fee           NUMERIC(14,4),  -- 交易手续费
+    delivery_fee          NUMERIC(14,4),  -- 交割手续费
+    b_hedging_margin_rate NUMERIC(10,6),  -- 买套保保证金率
+    s_hedging_margin_rate NUMERIC(10,6),  -- 卖套保保证金率
+    long_margin_rate      NUMERIC(10,6),  -- 多头保证金率
+    short_margin_rate     NUMERIC(10,6),  -- 空头保证金率
+    data_source           VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at            TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE fut_settle IS '期货每日结算参数（Tushare fut_settle）；源不返回 offset_today_fee/exchange';
 
 CREATE TABLE IF NOT EXISTS fut_mapping (
-    ts_code         VARCHAR(20) NOT NULL,
-    trade_date      DATE        NOT NULL,
-    mapping_ts_code VARCHAR(20),
-    data_source     VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code         VARCHAR(20) NOT NULL,  -- 代码
+    trade_date      DATE        NOT NULL,  -- 交易日期
+    mapping_ts_code VARCHAR(20),  -- 映射合约代码
+    data_source     VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE fut_mapping IS '主力与连续合约映射（Tushare fut_mapping）';
 
 CREATE TABLE IF NOT EXISTS fut_index_daily (
-    ts_code    VARCHAR(20) NOT NULL,
-    trade_date DATE        NOT NULL,
-    close      NUMERIC(14,4),
-    open       NUMERIC(14,4),
-    high       NUMERIC(14,4),
-    low        NUMERIC(14,4),
-    pre_close  NUMERIC(14,4),
-    change     NUMERIC(14,4),
-    pct_chg    NUMERIC(10,4),
-    vol        NUMERIC(20,2),
-    amount     NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code    VARCHAR(20) NOT NULL,  -- 代码
+    trade_date DATE        NOT NULL,  -- 交易日期
+    close      NUMERIC(14,4),  -- 收盘价
+    open       NUMERIC(14,4),  -- 开盘价
+    high       NUMERIC(14,4),  -- 最高价
+    low        NUMERIC(14,4),  -- 最低价
+    pre_close  NUMERIC(14,4),  -- 前收盘价
+    change     NUMERIC(14,4),  -- 涨跌额
+    pct_chg    NUMERIC(10,4),  -- 涨跌幅（%）
+    vol        NUMERIC(20,2),  -- 成交量
+    amount     NUMERIC(20,2),  -- 成交额
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE fut_index_daily IS '南华期货指数日线（Tushare fut_index_daily）';
 
 CREATE TABLE IF NOT EXISTS opt_basic (
-    ts_code        VARCHAR(24) PRIMARY KEY,
-    symbol         VARCHAR(40),
-    exchange       VARCHAR(10),
-    name           VARCHAR(100),
-    per_unit       VARCHAR(20),
-    opt_code       VARCHAR(40),
-    opt_type       VARCHAR(10),
-    call_put       CHAR(1),
-    exercise_type  VARCHAR(10),
-    exercise_price NUMERIC(14,4),
-    opt_multiplier NUMERIC(12,4),
-    s_month        VARCHAR(10),
-    maturity_date  DATE,
-    list_price     NUMERIC(14,4),
-    list_date      DATE,
-    delist_date    DATE,
-    last_edate     DATE,
-    last_ddate     DATE,
-    quote_unit     VARCHAR(20),
-    min_price_chg  VARCHAR(20),
-    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code        VARCHAR(24) PRIMARY KEY,  -- 代码
+    symbol         VARCHAR(40),  -- 品种代码
+    exchange       VARCHAR(10),  -- 交易所
+    name           VARCHAR(100),  -- 名称
+    per_unit       VARCHAR(20),  -- 每手数量
+    opt_code       VARCHAR(40),  -- 期权代码
+    opt_type       VARCHAR(10),  -- 期权类型
+    call_put       CHAR(1),  -- 看涨/看跌
+    exercise_type  VARCHAR(10),  -- 行权方式
+    exercise_price NUMERIC(14,4),  -- 行权价
+    opt_multiplier NUMERIC(12,4),  -- 合约乘数
+    s_month        VARCHAR(10),  -- 合约月份
+    maturity_date  DATE,  -- 到期日
+    list_price     NUMERIC(14,4),  -- 挂牌基准价
+    list_date      DATE,  -- 上市日
+    delist_date    DATE,  -- 退市日
+    last_edate     DATE,  -- 最后行权日
+    last_ddate     DATE,  -- 最后交割日
+    quote_unit     VARCHAR(20),  -- 报价单位
+    min_price_chg  VARCHAR(20),  -- 最小价格变动
+    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE opt_basic IS '期权合约信息（Tushare opt_basic）';
 
 CREATE TABLE IF NOT EXISTS opt_daily (
-    ts_code    VARCHAR(24) NOT NULL,
-    trade_date DATE        NOT NULL,
-    exchange   VARCHAR(10),
-    pre_settle NUMERIC(14,4),
-    pre_close  NUMERIC(14,4),
-    open       NUMERIC(14,4),
-    high       NUMERIC(14,4),
-    low        NUMERIC(14,4),
-    close      NUMERIC(14,4),
-    settle     NUMERIC(14,4),
-    vol        NUMERIC(20,2),
-    amount     NUMERIC(20,2),
-    oi         NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code    VARCHAR(24) NOT NULL,  -- 代码
+    trade_date DATE        NOT NULL,  -- 交易日期
+    exchange   VARCHAR(10),  -- 交易所
+    pre_settle NUMERIC(14,4),  -- 前结算价
+    pre_close  NUMERIC(14,4),  -- 前收盘价
+    open       NUMERIC(14,4),  -- 开盘价
+    high       NUMERIC(14,4),  -- 最高价
+    low        NUMERIC(14,4),  -- 最低价
+    close      NUMERIC(14,4),  -- 收盘价
+    settle     NUMERIC(14,4),  -- 结算价
+    vol        NUMERIC(20,2),  -- 成交量
+    amount     NUMERIC(20,2),  -- 成交额
+    oi         NUMERIC(20,2),  -- 持仓量
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE opt_daily IS '期权日线（Tushare opt_daily）；接口不含 IV/Greeks';
 
 CREATE TABLE IF NOT EXISTS cb_basic (
-    ts_code          VARCHAR(20) PRIMARY KEY,
-    bond_full_name   VARCHAR(120),
-    bond_short_name  VARCHAR(60),
-    cb_type          VARCHAR(10),
-    cb_code          VARCHAR(20),
-    stk_code         VARCHAR(12),
-    stk_short_name   VARCHAR(60),
-    maturity         NUMERIC(8,4),
-    par              NUMERIC(12,4),
-    issue_price      NUMERIC(12,4),
-    issue_size       NUMERIC(20,4),
-    remain_size      NUMERIC(20,4),
-    value_date       DATE,
-    maturity_date    DATE,
-    rate_type        VARCHAR(20),
-    coupon_rate      NUMERIC(10,6),
-    add_rate         NUMERIC(10,6),
-    pay_per_year     INTEGER,
-    list_date        DATE,
-    delist_date      DATE,
-    exchange         VARCHAR(10),
-    conv_start_date  DATE,
-    conv_end_date    DATE,
-    conv_stop_date   DATE,
-    first_conv_price NUMERIC(12,4),
-    conv_price       NUMERIC(12,4),
-    rate_clause      TEXT,
-    data_source      VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code          VARCHAR(20) PRIMARY KEY,  -- 代码
+    bond_full_name   VARCHAR(120),  -- 债券全称
+    bond_short_name  VARCHAR(60),  -- 债券简称
+    cb_type          VARCHAR(10),  -- 转债类型
+    cb_code          VARCHAR(20),  -- 转债代码
+    stk_code         VARCHAR(12),  -- 正股代码
+    stk_short_name   VARCHAR(60),  -- 正股简称
+    maturity         NUMERIC(8,4),  -- 期限（年）
+    par              NUMERIC(12,4),  -- 面值
+    issue_price      NUMERIC(12,4),  -- 发行价
+    issue_size       NUMERIC(20,4),  -- 发行规模
+    remain_size      NUMERIC(20,4),  -- 剩余规模
+    value_date       DATE,  -- 起息日
+    maturity_date    DATE,  -- 到期日
+    rate_type        VARCHAR(20),  -- 利率类型
+    coupon_rate      NUMERIC(10,6),  -- 票面利率
+    add_rate         NUMERIC(10,6),  -- 补偿利率
+    pay_per_year     INTEGER,  -- 年付息次数
+    list_date        DATE,  -- 上市日
+    delist_date      DATE,  -- 退市日
+    exchange         VARCHAR(10),  -- 交易所
+    conv_start_date  DATE,  -- 转股起始日
+    conv_end_date    DATE,  -- 转股结束日
+    conv_stop_date   DATE,  -- 转股停止日
+    first_conv_price NUMERIC(12,4),  -- 初始转股价
+    conv_price       NUMERIC(12,4),  -- 最新转股价
+    rate_clause      TEXT,  -- 利率条款
+    data_source      VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at       TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE cb_basic IS '可转债基础信息（Tushare cb_basic）；源只返回 rate_clause，其余条款字段不建';
 
 CREATE TABLE IF NOT EXISTS cb_issue (
-    ts_code               VARCHAR(20) PRIMARY KEY,
-    ann_date              DATE,
-    res_ann_date          DATE,
-    plan_issue_size       NUMERIC(20,4),
-    issue_size            NUMERIC(20,4),
-    issue_price           NUMERIC(12,4),
-    issue_type            VARCHAR(20),
-    onl_code              VARCHAR(20),
-    onl_name              VARCHAR(60),
-    onl_date              DATE,
-    onl_size              NUMERIC(20,4),
-    onl_pch_vol           NUMERIC(20,4),
-    onl_pch_num           INTEGER,
-    onl_pch_excess        NUMERIC(20,4),
-    shd_ration_code       VARCHAR(20),
-    shd_ration_name       VARCHAR(60),
-    shd_ration_date       DATE,
-    shd_ration_record_date DATE,
-    shd_ration_pay_date   DATE,
-    shd_ration_price      NUMERIC(12,4),
-    shd_ration_ratio      NUMERIC(12,6),
-    shd_ration_size       NUMERIC(20,4),
-    offl_size             NUMERIC(20,4),
-    data_source           VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code               VARCHAR(20) PRIMARY KEY,  -- 代码
+    ann_date              DATE,  -- 公告日期
+    res_ann_date          DATE,  -- 预案公告日
+    plan_issue_size       NUMERIC(20,4),  -- 计划发行规模
+    issue_size            NUMERIC(20,4),  -- 发行规模
+    issue_price           NUMERIC(12,4),  -- 发行价
+    issue_type            VARCHAR(20),  -- 发行方式
+    onl_code              VARCHAR(20),  -- 网上申购代码
+    onl_name              VARCHAR(60),  -- 网上申购名称
+    onl_date              DATE,  -- 网上申购日
+    onl_size              NUMERIC(20,4),  -- 网上发行规模
+    onl_pch_vol           NUMERIC(20,4),  -- 网上申购量
+    onl_pch_num           INTEGER,  -- 网上申购户数
+    onl_pch_excess        NUMERIC(20,4),  -- 网上超额认购倍数
+    shd_ration_code       VARCHAR(20),  -- 老股东配售代码
+    shd_ration_name       VARCHAR(60),  -- 配售名称
+    shd_ration_date       DATE,  -- 配售日期
+    shd_ration_record_date DATE,  -- 配售登记日
+    shd_ration_pay_date   DATE,  -- 配售缴款日
+    shd_ration_price      NUMERIC(12,4),  -- 配售价格
+    shd_ration_ratio      NUMERIC(12,6),  -- 配售比例
+    shd_ration_size       NUMERIC(20,4),  -- 配售规模
+    offl_size             NUMERIC(20,4),  -- 网下发行规模
+    data_source           VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at            TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE cb_issue IS '可转债发行（Tushare cb_issue）；按实调字段建表';
 
 CREATE TABLE IF NOT EXISTS cb_call (
-    id            BIGSERIAL PRIMARY KEY,
-    ts_code       VARCHAR(20) NOT NULL,
-    call_type     VARCHAR(20) NOT NULL,
-    is_call       VARCHAR(20),
-    ann_date      DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    call_date     DATE,
-    call_price    NUMERIC(12,4),
-    call_price_tax NUMERIC(12,4),
-    call_vol      NUMERIC(20,4),
-    call_amount   NUMERIC(20,2),
-    payment_date  DATE,
-    call_reg_date DATE,
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id            BIGSERIAL PRIMARY KEY,  -- 自增主键
+    ts_code       VARCHAR(20) NOT NULL,  -- 代码
+    call_type     VARCHAR(20) NOT NULL,  -- 赎回类型
+    is_call       VARCHAR(20),  -- 是否赎回
+    ann_date      DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 公告日期
+    call_date     DATE,  -- 赎回日
+    call_price    NUMERIC(12,4),  -- 赎回价
+    call_price_tax NUMERIC(12,4),  -- 税前赎回价
+    call_vol      NUMERIC(20,4),  -- 赎回数量
+    call_amount   NUMERIC(20,2),  -- 赎回金额
+    payment_date  DATE,  -- 兑付日
+    call_reg_date DATE,  -- 赎回登记日
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (ts_code, call_type, ann_date)
 );
 COMMENT ON TABLE cb_call IS '可转债赎回（Tushare cb_call）';
 
 CREATE TABLE IF NOT EXISTS cb_daily (
-    ts_code    VARCHAR(20) NOT NULL,
-    trade_date DATE        NOT NULL,
-    pre_close  NUMERIC(12,4),
-    open       NUMERIC(12,4),
-    high       NUMERIC(12,4),
-    low        NUMERIC(12,4),
-    close      NUMERIC(12,4),
-    change     NUMERIC(12,4),
-    pct_chg    NUMERIC(10,4),
-    vol        NUMERIC(20,2),
-    amount     NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code    VARCHAR(20) NOT NULL,  -- 代码
+    trade_date DATE        NOT NULL,  -- 交易日期
+    pre_close  NUMERIC(12,4),  -- 前收盘价
+    open       NUMERIC(12,4),  -- 开盘价
+    high       NUMERIC(12,4),  -- 最高价
+    low        NUMERIC(12,4),  -- 最低价
+    close      NUMERIC(12,4),  -- 收盘价
+    change     NUMERIC(12,4),  -- 涨跌额
+    pct_chg    NUMERIC(10,4),  -- 涨跌幅（%）
+    vol        NUMERIC(20,2),  -- 成交量
+    amount     NUMERIC(20,2),  -- 成交额
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE cb_daily IS '可转债行情（Tushare cb_daily）；源不返回 bond_value/cb_value 等 4 个估值字段';
 
 CREATE TABLE IF NOT EXISTS cb_share (
-    ts_code              VARCHAR(20) NOT NULL,
-    end_date             DATE        NOT NULL,
-    bond_short_name      VARCHAR(60),
-    publish_date         DATE,
-    issue_size           NUMERIC(20,4),
-    convert_price_initial NUMERIC(12,4),
-    convert_price        NUMERIC(12,4),
-    convert_val          NUMERIC(20,2),
-    convert_vol          NUMERIC(20,4),
-    convert_ratio        NUMERIC(12,6),
-    acc_convert_val      NUMERIC(20,2),
-    acc_convert_vol      NUMERIC(20,4),
-    acc_convert_ratio    NUMERIC(12,6),
-    remain_size          NUMERIC(20,4),
-    total_shares         NUMERIC(20,4),
-    data_source          VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code              VARCHAR(20) NOT NULL,  -- 代码
+    end_date             DATE        NOT NULL,  -- 结束日
+    bond_short_name      VARCHAR(60),  -- 债券简称
+    publish_date         DATE,  -- 公告日期
+    issue_size           NUMERIC(20,4),  -- 发行规模
+    convert_price_initial NUMERIC(12,4),  -- 初始转股价
+    convert_price        NUMERIC(12,4),  -- 最新转股价
+    convert_val          NUMERIC(20,2),  -- 转股金额
+    convert_vol          NUMERIC(20,4),  -- 转股数量
+    convert_ratio        NUMERIC(12,6),  -- 转股比例
+    acc_convert_val      NUMERIC(20,2),  -- 累计转股金额
+    acc_convert_vol      NUMERIC(20,4),  -- 累计转股数量
+    acc_convert_ratio    NUMERIC(12,6),  -- 累计转股比例
+    remain_size          NUMERIC(20,4),  -- 剩余规模
+    total_shares         NUMERIC(20,4),  -- 总股本
+    data_source          VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at           TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, end_date)
 );
 COMMENT ON TABLE cb_share IS '可转债转股结果（Tushare cb_share）；publish_date 为 PIT 字段';
 
 CREATE TABLE IF NOT EXISTS cb_rating (
-    ts_code         VARCHAR(20) NOT NULL,
-    rating_date     DATE        NOT NULL,
-    rating_com_name VARCHAR(80) NOT NULL,
-    ann_date        DATE,
-    rating_way      VARCHAR(40),
-    rating_type     VARCHAR(40),
-    rating          VARCHAR(10),
-    rating_outlook  VARCHAR(40),
-    data_source     VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code         VARCHAR(20) NOT NULL,  -- 代码
+    rating_date     DATE        NOT NULL,  -- 评级日期
+    rating_com_name VARCHAR(80) NOT NULL,  -- 评级机构
+    ann_date        DATE,  -- 公告日期
+    rating_way      VARCHAR(40),  -- 评级方式
+    rating_type     VARCHAR(40),  -- 评级类型
+    rating          VARCHAR(10),  -- 评级
+    rating_outlook  VARCHAR(40),  -- 评级展望
+    data_source     VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, rating_date, rating_com_name)
 );
 COMMENT ON TABLE cb_rating IS '可转债评级（Tushare cb_rating）';
 
 CREATE TABLE IF NOT EXISTS stock_hsgt_top10 (
-    trade_date  DATE        NOT NULL,
-    ts_code     VARCHAR(12) NOT NULL,
-    name        VARCHAR(40),
-    close       NUMERIC(12,4),
-    change      NUMERIC(12,4),
-    rank        INTEGER,
-    market_type VARCHAR(8),
-    amount      NUMERIC(20,2),
-    net_amount  NUMERIC(20,2),
-    buy         NUMERIC(20,2),
-    sell         NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    trade_date  DATE        NOT NULL,  -- 交易日期
+    ts_code     VARCHAR(12) NOT NULL,  -- 代码
+    name        VARCHAR(40),  -- 名称
+    close       NUMERIC(12,4),  -- 收盘价
+    change      NUMERIC(12,4),  -- 涨跌额
+    rank        INTEGER,  -- 排名
+    market_type VARCHAR(8),  -- 市场类型
+    amount      NUMERIC(20,2),  -- 成交额
+    net_amount  NUMERIC(20,2),  -- 净额
+    buy         NUMERIC(20,2),  -- 买入额
+    sell         NUMERIC(20,2),  -- 卖出额
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, ts_code)
 );
 COMMENT ON TABLE stock_hsgt_top10 IS '沪深股通十大成交股（Tushare hsgt_top10）；market_type 1=沪股通 3=深股通';
@@ -6534,226 +6534,226 @@ COMMENT ON TABLE stock_hsgt_top10 IS '沪深股通十大成交股（Tushare hsgt
 -- ---------- P2 事件 / 港美股 / 基金 ----------
 
 CREATE TABLE IF NOT EXISTS stock_pledge_detail (
-    id             BIGSERIAL PRIMARY KEY,
-    ts_code        VARCHAR(12) NOT NULL,
-    ann_date       DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    holder_name    VARCHAR(200) NOT NULL DEFAULT '',
-    pledge_amount  NUMERIC(20,4),
-    start_date     DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    end_date       DATE,
-    is_release     VARCHAR(8),
-    release_date   DATE,
-    pledgor        VARCHAR(200),
-    holding_amount NUMERIC(20,4),
-    pledged_amount NUMERIC(20,4),
-    p_total_ratio  NUMERIC(12,6),
-    h_total_ratio  NUMERIC(12,6),
-    is_buyback     VARCHAR(8),
-    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id             BIGSERIAL PRIMARY KEY,  -- 自增主键
+    ts_code        VARCHAR(12) NOT NULL,  -- 代码
+    ann_date       DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 公告日期
+    holder_name    VARCHAR(200) NOT NULL DEFAULT '',  -- 股东名称
+    pledge_amount  NUMERIC(20,4),  -- 质押数量
+    start_date     DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 起始日
+    end_date       DATE,  -- 结束日
+    is_release     VARCHAR(8),  -- 是否解押
+    release_date   DATE,  -- 解押日
+    pledgor        VARCHAR(200),  -- 出质人
+    holding_amount NUMERIC(20,4),  -- 持股数量
+    pledged_amount NUMERIC(20,4),  -- 质押数量
+    p_total_ratio  NUMERIC(12,6),  -- 占总股本比例
+    h_total_ratio  NUMERIC(12,6),  -- 占持股比例
+    is_buyback     VARCHAR(8),  -- 是否回购
+    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (ts_code, ann_date, holder_name, start_date)
 );
 COMMENT ON TABLE stock_pledge_detail IS '股权质押明细（Tushare pledge_detail）；空公告/起始日以 1900-01-01 占位';
 
 CREATE TABLE IF NOT EXISTS stock_repurchase (
-    id          BIGSERIAL PRIMARY KEY,
-    ts_code     VARCHAR(12) NOT NULL,
-    ann_date    DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    end_date    DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    proc        VARCHAR(40) NOT NULL DEFAULT '',
-    exp_date    DATE,
-    vol         NUMERIC(20,4),
-    amount      NUMERIC(20,2),
-    high_limit  NUMERIC(12,4),
-    low_limit   NUMERIC(12,4),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id          BIGSERIAL PRIMARY KEY,  -- 自增主键
+    ts_code     VARCHAR(12) NOT NULL,  -- 代码
+    ann_date    DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 公告日期
+    end_date    DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 结束日
+    proc        VARCHAR(40) NOT NULL DEFAULT '',  -- 进度
+    exp_date    DATE,  -- 到期日
+    vol         NUMERIC(20,4),  -- 成交量
+    amount      NUMERIC(20,2),  -- 成交额
+    high_limit  NUMERIC(12,4),  -- 价格上限
+    low_limit   NUMERIC(12,4),  -- 价格下限
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (ts_code, ann_date, end_date, proc)
 );
 COMMENT ON TABLE stock_repurchase IS '股票回购（Tushare repurchase）';
 
 CREATE TABLE IF NOT EXISTS stock_surv (
-    id            BIGSERIAL PRIMARY KEY,
-    ts_code       VARCHAR(12) NOT NULL,
-    name          VARCHAR(40),
-    surv_date     DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    fund_visitors NUMERIC(20,4),
-    rece_place    VARCHAR(120),
-    rece_mode     VARCHAR(80),
-    rece_org      VARCHAR(200) NOT NULL DEFAULT '',
-    org_type      VARCHAR(80),
-    comp_rece     VARCHAR(200),
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id            BIGSERIAL PRIMARY KEY,  -- 自增主键
+    ts_code       VARCHAR(12) NOT NULL,  -- 代码
+    name          VARCHAR(40),  -- 名称
+    surv_date     DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 调研日期
+    fund_visitors NUMERIC(20,4),  -- 参与机构数
+    rece_place    VARCHAR(120),  -- 接待地点
+    rece_mode     VARCHAR(80),  -- 接待方式
+    rece_org      VARCHAR(200) NOT NULL DEFAULT '',  -- 接待机构
+    org_type      VARCHAR(80),  -- 机构类型
+    comp_rece     VARCHAR(200),  -- 公司接待人员
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (ts_code, surv_date, rece_org)
 );
 COMMENT ON TABLE stock_surv IS '机构调研（Tushare stk_surv）；源不返回 content，返回 comp_rece/rece_place';
 
 CREATE TABLE IF NOT EXISTS stock_kpl_list (
-    ts_code        VARCHAR(12) NOT NULL,
-    trade_date     DATE        NOT NULL,
-    name           VARCHAR(40),
-    lu_time        VARCHAR(20),
-    ld_time        VARCHAR(20),
-    open_time      VARCHAR(20),
-    last_time      VARCHAR(20),
-    lu_desc        VARCHAR(200),
-    tag            VARCHAR(40) NOT NULL,
-    theme          VARCHAR(200),
-    net_change     NUMERIC(20,2),
-    bid_amount     NUMERIC(20,2),
-    status         VARCHAR(20),
-    bid_change     NUMERIC(20,2),
-    bid_turnover   NUMERIC(20,2),
-    lu_bid_vol     NUMERIC(20,4),
-    pct_chg        NUMERIC(10,4),
-    bid_pct_chg    NUMERIC(10,4),
-    rt_pct_chg     NUMERIC(10,4),
-    limit_order    NUMERIC(20,4),
-    amount         NUMERIC(20,2),
-    turnover_rate  NUMERIC(10,4),
-    free_float     NUMERIC(20,4),
-    lu_limit_order NUMERIC(20,4),
-    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code        VARCHAR(12) NOT NULL,  -- 代码
+    trade_date     DATE        NOT NULL,  -- 交易日期
+    name           VARCHAR(40),  -- 名称
+    lu_time        VARCHAR(20),  -- 涨停时间
+    ld_time        VARCHAR(20),  -- 跌停时间
+    open_time      VARCHAR(20),  -- 开板时间
+    last_time      VARCHAR(20),  -- 最后封板时间
+    lu_desc        VARCHAR(200),  -- 涨停原因
+    tag            VARCHAR(40) NOT NULL,  -- 榜单标签
+    theme          VARCHAR(200),  -- 主题
+    net_change     NUMERIC(20,2),  -- 净额变化
+    bid_amount     NUMERIC(20,2),  -- 封单额
+    status         VARCHAR(20),  -- 榜单状态
+    bid_change     NUMERIC(20,2),  -- 封单变化
+    bid_turnover   NUMERIC(20,2),  -- 封单成交比
+    lu_bid_vol     NUMERIC(20,4),  -- 涨停封单量
+    pct_chg        NUMERIC(10,4),  -- 涨跌幅（%）
+    bid_pct_chg    NUMERIC(10,4),  -- 封单涨跌幅（%）
+    rt_pct_chg     NUMERIC(10,4),  -- 实时涨跌幅（%）
+    limit_order    NUMERIC(20,4),  -- 封单量
+    amount         NUMERIC(20,2),  -- 成交额
+    turnover_rate  NUMERIC(10,4),  -- 换手率（%）
+    free_float     NUMERIC(20,4),  -- 自由流通量
+    lu_limit_order NUMERIC(20,4),  -- 涨停封单额
+    data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (trade_date, ts_code, tag)
 );
 COMMENT ON TABLE stock_kpl_list IS '开盘啦榜单（Tushare kpl_list）；tag=涨停/跌停/炸板等';
 
 CREATE TABLE IF NOT EXISTS stock_hm_list (
-    name        VARCHAR(200) PRIMARY KEY,
+    name        VARCHAR(200) PRIMARY KEY,  -- 名称
     description TEXT,               -- 源字段名 desc（保留字，改名）
-    orgs        JSONB,
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    orgs        JSONB,  -- 关联营业部
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE stock_hm_list IS '游资名录（Tushare hm_list）；orgs 原样存 JSONB';
 
 CREATE TABLE IF NOT EXISTS macro_eco_cal (
-    id          BIGSERIAL PRIMARY KEY,
-    event_date  DATE        NOT NULL,
-    event_time  VARCHAR(20),
-    currency    VARCHAR(8)  NOT NULL DEFAULT '',
-    country     VARCHAR(40),
-    event       VARCHAR(200) NOT NULL,
-    value       VARCHAR(40),
-    pre_value   VARCHAR(40),
-    fore_value  VARCHAR(40),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id          BIGSERIAL PRIMARY KEY,  -- 自增主键
+    event_date  DATE        NOT NULL,  -- 事件日期
+    event_time  VARCHAR(20),  -- 事件时间
+    currency    VARCHAR(8)  NOT NULL DEFAULT '',  -- 币种
+    country     VARCHAR(40),  -- 国家
+    event       VARCHAR(200) NOT NULL,  -- 事件名称
+    value       VARCHAR(40),  -- 公布值
+    pre_value   VARCHAR(40),  -- 前值
+    fore_value  VARCHAR(40),  -- 预测值
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     UNIQUE (event_date, currency, event)
 );
 COMMENT ON TABLE macro_eco_cal IS '财经日历（Tushare eco_cal）；源字段 date/time 改名 event_date/event_time';
 
 CREATE TABLE IF NOT EXISTS hk_basic (
-    ts_code     VARCHAR(20) PRIMARY KEY,
-    name        VARCHAR(80),
-    fullname    VARCHAR(200),
-    enname      VARCHAR(200),
-    cn_spell    VARCHAR(80),
-    market      VARCHAR(20),
-    list_status VARCHAR(8),
-    list_date   DATE,
-    delist_date DATE,
-    trade_unit  NUMERIC(12,4),
-    isin        VARCHAR(40),
-    curr_type   VARCHAR(8),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code     VARCHAR(20) PRIMARY KEY,  -- 代码
+    name        VARCHAR(80),  -- 名称
+    fullname    VARCHAR(200),  -- 公司全称
+    enname      VARCHAR(200),  -- 英文名称
+    cn_spell    VARCHAR(80),  -- 拼音简称
+    market      VARCHAR(20),  -- 市场
+    list_status VARCHAR(8),  -- 上市状态
+    list_date   DATE,  -- 上市日
+    delist_date DATE,  -- 退市日
+    trade_unit  NUMERIC(12,4),  -- 交易单位
+    isin        VARCHAR(40),  -- ISIN代码
+    curr_type   VARCHAR(8),  -- 币种
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE hk_basic IS '港股基础信息（Tushare hk_basic）';
 
 CREATE TABLE IF NOT EXISTS hk_daily (
-    ts_code    VARCHAR(20) NOT NULL,
-    trade_date DATE        NOT NULL,
-    open       NUMERIC(14,4),
-    high       NUMERIC(14,4),
-    low        NUMERIC(14,4),
-    close      NUMERIC(14,4),
-    pre_close  NUMERIC(14,4),
-    change     NUMERIC(14,4),
-    pct_chg    NUMERIC(10,4),
-    vol        NUMERIC(20,2),
-    amount     NUMERIC(20,2),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code    VARCHAR(20) NOT NULL,  -- 代码
+    trade_date DATE        NOT NULL,  -- 交易日期
+    open       NUMERIC(14,4),  -- 开盘价
+    high       NUMERIC(14,4),  -- 最高价
+    low        NUMERIC(14,4),  -- 最低价
+    close      NUMERIC(14,4),  -- 收盘价
+    pre_close  NUMERIC(14,4),  -- 前收盘价
+    change     NUMERIC(14,4),  -- 涨跌额
+    pct_chg    NUMERIC(10,4),  -- 涨跌幅（%）
+    vol        NUMERIC(20,2),  -- 成交量
+    amount     NUMERIC(20,2),  -- 成交额
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE hk_daily IS '港股日线（Tushare hk_daily）；接口限 1 次/小时';
 
 CREATE TABLE IF NOT EXISTS us_basic (
-    ts_code     VARCHAR(20) PRIMARY KEY,
-    name        VARCHAR(200),
-    enname      VARCHAR(200),
-    classify    VARCHAR(40),
-    list_date   DATE,
-    delist_date DATE,
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    ts_code     VARCHAR(20) PRIMARY KEY,  -- 代码
+    name        VARCHAR(200),  -- 名称
+    enname      VARCHAR(200),  -- 英文名称
+    classify    VARCHAR(40),  -- 分类
+    list_date   DATE,  -- 上市日
+    delist_date DATE,  -- 退市日
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE us_basic IS '美股基础信息（Tushare us_basic）';
 
 CREATE TABLE IF NOT EXISTS us_daily (
-    ts_code    VARCHAR(20) NOT NULL,
-    trade_date DATE        NOT NULL,
-    close      NUMERIC(14,4),
-    open       NUMERIC(14,4),
-    high       NUMERIC(14,4),
-    low        NUMERIC(14,4),
-    pre_close  NUMERIC(14,4),
-    pct_change NUMERIC(10,4),
-    vol        NUMERIC(20,2),
-    amount     NUMERIC(20,2),
-    vwap       NUMERIC(14,4),
-    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ts_code    VARCHAR(20) NOT NULL,  -- 代码
+    trade_date DATE        NOT NULL,  -- 交易日期
+    close      NUMERIC(14,4),  -- 收盘价
+    open       NUMERIC(14,4),  -- 开盘价
+    high       NUMERIC(14,4),  -- 最高价
+    low        NUMERIC(14,4),  -- 最低价
+    pre_close  NUMERIC(14,4),  -- 前收盘价
+    pct_change NUMERIC(10,4),  -- 涨跌幅（%）
+    vol        NUMERIC(20,2),  -- 成交量
+    amount     NUMERIC(20,2),  -- 成交额
+    vwap       NUMERIC(14,4),  -- 成交量加权均价
+    data_source VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (ts_code, trade_date)
 );
 COMMENT ON TABLE us_daily IS '美股日线（Tushare us_daily）；字段为 pct_change 非 pct_chg，源不返回 pe/pb';
 CREATE TABLE IF NOT EXISTS ggt_daily (
-    trade_date    DATE PRIMARY KEY,
-    buy_amount    NUMERIC(20,2),
-    buy_volume    NUMERIC(20,4),
-    sell_amount   NUMERIC(20,2),
-    sell_volume   NUMERIC(20,4),
-    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    trade_date    DATE PRIMARY KEY,  -- 交易日期
+    buy_amount    NUMERIC(20,2),  -- 买入金额
+    buy_volume    NUMERIC(20,4),  -- 买入量
+    sell_amount   NUMERIC(20,2),  -- 卖出金额
+    sell_volume   NUMERIC(20,4),  -- 卖出量
+    data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()  -- 更新时间
 );
 COMMENT ON TABLE ggt_daily IS '港股通每日成交（Tushare ggt_daily）';
 
 CREATE TABLE IF NOT EXISTS data_backfill_progress (
-    data_type    VARCHAR(40) NOT NULL,
-    trade_date   DATE        NOT NULL DEFAULT DATE '1900-01-01',
-    period_key   VARCHAR(40) NOT NULL DEFAULT '',
-    status       VARCHAR(12) NOT NULL CHECK (status IN ('pending','running','done','failed','skipped')),
-    rows_written BIGINT DEFAULT 0,
-    error        TEXT,
-    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',
-    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    data_type    VARCHAR(40) NOT NULL,  -- 数据类型
+    trade_date   DATE        NOT NULL DEFAULT DATE '1900-01-01',  -- 交易日期
+    period_key   VARCHAR(40) NOT NULL DEFAULT '',  -- 周期键
+    status       VARCHAR(12) NOT NULL CHECK (status IN ('pending','running','done','failed','skipped')),  -- 回填状态
+    rows_written BIGINT DEFAULT 0,  -- 写入行数
+    error        TEXT,  -- 错误信息
+    data_source  VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
+    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 更新时间
     PRIMARY KEY (data_type, trade_date, period_key)
 );
 COMMENT ON TABLE data_backfill_progress IS '回填断点续传（现有 data_sync_tasks 无 trade_date 列）';
