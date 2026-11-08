@@ -7,18 +7,21 @@
 执行: cd quant_server && .venv/Scripts/python.exe scripts/data/backfill_top100_factors.py
 预估耗时: ~15-20 分钟
 """
-import asyncio, logging, uuid
+import asyncio, logging, sys, uuid
 from datetime import date
+from pathlib import Path
 from typing import Dict, List
 
 import asyncpg
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DB = {"host": "localhost", "port": 5432, "user": "postgres", "password": "123456", "database": "quant_signals_dev"}
 
 TOP_N = 0   # 0=不限数量，回填所有符合条件（日波动>=0.5%）的ETF
 MIN_VOL = 0.005  # 最低日波动率（过滤货币/债券ETF）
@@ -346,7 +349,7 @@ N_FACTORS = len(FACTOR_REGISTRY)
 
 
 async def main():
-    conn = await asyncpg.connect(**DB)
+    conn = await asyncpg.connect(**db_kwargs())
     try:
         # 1. 获取 ETF 池：高波动 + 充足交易日 + 无已有因子数据（或强制全量时包含已有）
         #    使用两层 CTE 避免窗口函数与聚合函数混用

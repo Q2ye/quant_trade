@@ -35,28 +35,18 @@ import numpy as np
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DB_CONFIG = {
-    "host": "localhost", "port": 5432,
-    "user": "postgres", "password": "123456",
-    "database": "quant_signals_dev",
-}
-
-
 def _get_db_config() -> dict:
-    """优先从应用配置读取 DB 连接，失败时回退硬编码默认值。
+    """从应用配置读取 DB 连接（不再回退硬编码默认值）。
 
-    应用流水线（每日同步）调用时使用真实环境配置，独立手动运行不受影响。
+    独立手动运行时也必须先加载 `.env`；失败即报错，避免静默连到旧 dev 库。
     """
-    try:
-        from shared.config.config_manager import config
-        db = config.settings.DATABASE
-        return {
-            "host": db.HOST, "port": int(db.PORT),
-            "user": db.USER, "password": db.PASSWORD,
-            "database": db.NAME,
-        }
-    except Exception:
-        return dict(DB_CONFIG)
+    from shared.config.config_manager import config
+    db = config.settings.DATABASE
+    return {
+        "host": db.HOST, "port": int(db.PORT),
+        "user": db.USER, "password": db.PASSWORD,
+        "database": db.NAME,
+    }
 
 # 基准指数 for regime classification
 BENCHMARK_INDICES = ["000300.SH", "000905.SH"]  # 沪深300 + 中证500

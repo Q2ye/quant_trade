@@ -2,7 +2,7 @@
 """回填 market_state_daily.limit_up_count / avg_turnover（方案 B，一次性）
 
 用法（CWD=quant_server）:
-    python -m scripts.backfill_emotion_metrics
+    python -m scripts.data.backfill_emotion_metrics
 
 前置:
     1. 已执行 DDL（docs/02-功能设计/市场模块/Market概览页重设计-开发路径说明.md §10.15）:
@@ -12,27 +12,20 @@
 """
 import asyncio
 import logging
+import sys
+from pathlib import Path
 
 import asyncpg
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def _get_db_config() -> dict:
-    try:
-        from shared.config.config_manager import config
-        db = config.settings.DATABASE
-        return {
-            "host": db.HOST, "port": int(db.PORT),
-            "user": db.USER, "password": db.PASSWORD,
-            "database": db.NAME,
-        }
-    except Exception:
-        return {
-            "host": "localhost", "port": 5432, "user": "postgres",
-            "password": "123456", "database": "quant_signals_dev",
-        }
+    return db_kwargs()
 
 
 async def main() -> None:

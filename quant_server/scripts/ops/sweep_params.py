@@ -32,11 +32,13 @@ import joblib
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
+
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-DB = {"host": "localhost", "port": 5432, "user": "postgres", "password": "123456", "database": "quant_signals_dev"}
 MODEL_DIR = Path(__file__).resolve().parent.parent.parent / "storage" / "models"
 INITIAL_CAPITAL = 1_000_000
 COMMISSION = 0.0001  # 万分之一佣金（万一免五）
@@ -262,7 +264,7 @@ async def main():
     model, features, scaler = await load_model()
     logger.info("模型: %d features", len(features))
 
-    conn = await asyncpg.connect(**DB)
+    conn = await asyncpg.connect(**db_kwargs())
     try:
         factor_data, price_data = await load_data(conn, features, date(2024, 1, 1), date(2025, 6, 30))
     finally:

@@ -11,7 +11,6 @@ API 端点: POST /api/strategy/train/lgb
 import asyncio
 import json
 import logging
-import os
 import math
 import uuid
 from datetime import date, datetime
@@ -30,15 +29,18 @@ logger = logging.getLogger(__name__)
 
 MODEL_DIR = Path(__file__).resolve().parent.parent.parent / "storage" / "models"
 
-# ── 数据库配置（从系统配置读取，这里给默认值）──
-# 修复 2026-08（A10）：移除硬编码明文密码，改从环境变量读取（与 config 体系一致）
-DB_CONFIG = {
-    "host": os.environ.get("DB_HOST", "localhost"),
-    "port": int(os.environ.get("DB_PORT", "5432")),
-    "user": os.environ.get("DB_USER", "postgres"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-    "database": os.environ.get("DB_NAME", "quant_signals_dev"),
-}
+# ── 数据库配置（统一从 shared.config 读取，不再回退 dev 默认值）──
+def _default_db_config() -> dict:
+    """从应用配置读取 DB 连接（REQ-20261108-db-env-isolation）。"""
+    from shared.config.config_manager import config
+    db = config.settings.DATABASE
+    return {
+        "host": db.HOST,
+        "port": int(db.PORT),
+        "user": db.USER,
+        "password": db.PASSWORD,
+        "database": db.NAME,
+    }
 
 # ── 默认 ETF 池 ──
 DEFAULT_ETF_POOL = [
@@ -55,7 +57,7 @@ class TrainingService:
     """LightGBM 策略离线训练服务"""
 
     def __init__(self, db_config: dict = None):
-        self.db_config = db_config or DB_CONFIG
+        self.db_config = db_config or _default_db_config()
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     async def load_features(

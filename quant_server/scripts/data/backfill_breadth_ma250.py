@@ -16,9 +16,9 @@
     above_ma20/60 的 n>=60 分母口径一致。
 
 用法（CWD=quant_server）:
-    python -m scripts.backfill_breadth_ma250                # 全量回填
-    python -m scripts.backfill_breadth_ma250 --dry-run      # 只算不写，打印分布
-    python -m scripts.backfill_breadth_ma250 --since 2024-01-01
+    python -m scripts.data.backfill_breadth_ma250                # 全量回填
+    python -m scripts.data.backfill_breadth_ma250 --dry-run      # 只算不写，打印分布
+    python -m scripts.data.backfill_breadth_ma250 --since 2024-01-01
 
 前置（一次性 DDL，需手工执行）:
     ALTER TABLE market_state_daily ADD COLUMN IF NOT EXISTS above_ma250_pct NUMERIC(6,3);
@@ -28,10 +28,15 @@
 import argparse
 import asyncio
 import logging
+import sys
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Dict, Optional
 
 import asyncpg
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -45,19 +50,7 @@ _CLASSIFIED_BY = "v1.0_ma_regime"
 
 
 def _get_db_config() -> dict:
-    try:
-        from shared.config.config_manager import config
-        db = config.settings.DATABASE
-        return {
-            "host": db.HOST, "port": int(db.PORT),
-            "user": db.USER, "password": db.PASSWORD,
-            "database": db.NAME,
-        }
-    except Exception:
-        return {
-            "host": "localhost", "port": 5432, "user": "postgres",
-            "password": "123456", "database": "quant_signals_dev",
-        }
+    return db_kwargs()
 
 
 async def _ensure_column(conn: asyncpg.Connection) -> bool:

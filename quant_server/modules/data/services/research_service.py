@@ -1266,7 +1266,7 @@ class FactorResearchService:
 				logger.info(
 					"factor_data 表缺少唯一索引 (uq_factor_data_code_name_date)，"
 					"因子值未更新。请执行: "
-					"psql -d quant_signals_dev -f docs/sql/migration_add_missing_unique_indexes.sql"
+					"psql -d quant_signals -f docs/sql/migration_add_missing_unique_indexes.sql"
 				)
 			elif "NumericValueOutOfRange" in msg or "数字字段溢出" in msg:
 				logger.warning(

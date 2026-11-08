@@ -8,7 +8,7 @@ import os
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import yaml
 from pydantic import Field, field_validator, model_validator
@@ -95,6 +95,66 @@ class DatabaseSettings(BaseSettings):
 			return f"mysql+aiomysql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.NAME}"
 		else:
 			return f"sqlite+aiosqlite:///{self.NAME}.db"
+
+
+class ReadOnlyDatabaseSettings(DatabaseSettings):
+	"""只读数据库配置（DB_RO_*，可选）。
+
+	仅用于研究/看板/外部工具；应用主链路仍使用 DATABASE。
+	未配置 DB_RO_* 时该对象保持 None（见 ConfigSettings.resolve_database_config）。
+	"""
+
+	USER: str = "quant_ro"
+	PASSWORD: str = ""
+	NAME: str = "quant_signals"
+
+	model_config = SettingsConfigDict(
+		env_prefix="DB_RO_",
+		case_sensitive=False,
+		extra="ignore"
+	)
+
+
+def resolve_database_env (
+	env: str,
+	base: Mapping[str, Any],
+	getenv: Callable[..., Optional[str]] = os.getenv,
+) -> Tuple[Dict[str, Any], List[str]]:
+	"""按 ENVIRONMENT 解析开发/生产数据库字段。
+
+	纯函数：不读 self、不写日志，便于单测。返回 (resolved, missing_prod_keys)。
+
+	- development: 读 DB_DEV_*；NAME 缺省 quant_signals（单库目标态）
+	- 其他环境: 读 PROD_DB_*；NAME 缺省 quant_signals
+	"""
+	env = (env or "development").lower()
+	if env == "development":
+		return {
+			"HOST": getenv("DB_DEV_HOST", base.get("HOST")),
+			"PORT": int(getenv("DB_DEV_PORT") or base.get("PORT", 5432)),
+			"USER": getenv("DB_DEV_USER", base.get("USER")),
+			"PASSWORD": getenv("DB_DEV_PASSWORD", base.get("PASSWORD")),
+			"NAME": getenv("DB_DEV_NAME", "quant_signals"),
+			"POOL_SIZE": int(getenv("DB_DEV_POOL_SIZE") or base.get("POOL_SIZE", 10)),
+			"MAX_OVERFLOW": int(getenv("DB_DEV_MAX_OVERFLOW") or base.get("MAX_OVERFLOW", 5)),
+		}, []
+
+	missing = [
+		key for key in (
+			"PROD_DB_HOST", "PROD_DB_PORT", "PROD_DB_USER",
+			"PROD_DB_PASSWORD", "PROD_DB_NAME",
+		)
+		if getenv(key) is None
+	]
+	return {
+		"HOST": getenv("PROD_DB_HOST", base.get("HOST")),
+		"PORT": int(getenv("PROD_DB_PORT") or base.get("PORT", 5432)),
+		"USER": getenv("PROD_DB_USER", base.get("USER")),
+		"PASSWORD": getenv("PROD_DB_PASSWORD", base.get("PASSWORD")),
+		"NAME": getenv("PROD_DB_NAME", "quant_signals"),
+		"POOL_SIZE": int(getenv("PROD_DB_POOL_SIZE") or base.get("POOL_SIZE", 10)),
+		"MAX_OVERFLOW": int(getenv("PROD_DB_MAX_OVERFLOW") or base.get("MAX_OVERFLOW", 5)),
+	}, missing
 
 
 class APISettings(BaseSettings):
@@ -410,6 +470,7 @@ class ConfigSettings(BaseSettings):
 
 	# 子配置
 	DATABASE: DatabaseSettings = Field(default_factory=DatabaseSettings)
+	DATABASE_RO: Optional[ReadOnlyDatabaseSettings] = None
 	API: APISettings = Field(default_factory=APISettings)
 	REDIS: RedisSettings = Field(default_factory=RedisSettings)
 	DATA_SOURCE: DataSourceSettings = Field(default_factory=DataSourceSettings)
@@ -488,56 +549,41 @@ class ConfigSettings(BaseSettings):
 
 	@model_validator(mode="after")
 	def resolve_database_config (self) -> "ConfigSettings":
-		"""
-		根据环境变量解析数据库配置
-		开发环境: 使用 DB_DEV_* 配置
-		生产环境: 使用 DB_PROD_* 配置
+		"""根据 ENVIRONMENT 解析数据库配置（纯逻辑见 resolve_database_env）。
+
+		开发环境读 DB_DEV_*，生产环境读 PROD_DB_*。
+		⚠️ 2026-09-19 修复：生产分支原读 `DB_PROD_*`（与 .env 的 `PROD_DB_*` 相反），
+		导致全部静默回退到开发库凭证；现统一读 `PROD_DB_*`，缺失时打 WARNING。
 		"""
 		env = os.getenv("ENVIRONMENT", "development").lower()
 		logger.info(f"当前环境: {env}")
 
+		base = {
+			"HOST": self.DATABASE.HOST,
+			"PORT": self.DATABASE.PORT,
+			"USER": self.DATABASE.USER,
+			"PASSWORD": self.DATABASE.PASSWORD,
+			"NAME": self.DATABASE.NAME,
+			"POOL_SIZE": self.DATABASE.POOL_SIZE,
+			"MAX_OVERFLOW": self.DATABASE.MAX_OVERFLOW,
+		}
+		values, missing = resolve_database_env(env, base)
+		for key, value in values.items():
+			setattr(self.DATABASE, key, value)
+
 		if env == "development":
-			# 开发环境：从 DB_DEV_* 读取
-			self.DATABASE.HOST = os.getenv("DB_DEV_HOST", self.DATABASE.HOST)
-			self.DATABASE.PORT = int(os.getenv("DB_DEV_PORT", str(self.DATABASE.PORT)))
-			self.DATABASE.USER = os.getenv("DB_DEV_USER", self.DATABASE.USER)
-			self.DATABASE.PASSWORD = os.getenv("DB_DEV_PASSWORD", self.DATABASE.PASSWORD)
-			self.DATABASE.NAME = os.getenv("DB_DEV_NAME", "quant_signals_dev")
-			self.DATABASE.POOL_SIZE = int(os.getenv("DB_DEV_POOL_SIZE", str(self.DATABASE.POOL_SIZE)))
-			self.DATABASE.MAX_OVERFLOW = int(os.getenv("DB_DEV_MAX_OVERFLOW", str(self.DATABASE.MAX_OVERFLOW)))
 			logger.info(f"使用开发环境数据库配置: {self.DATABASE.NAME}")
 		else:
-			# 生产环境：从 PROD_DB_* 读取
-			# ⚠️ 2026-09-19 修复：原读的是 `DB_PROD_*` —— **前缀顺序与 `.env` 相反**。
-			#    `.env` 定义的是 `PROD_DB_HOST/PORT/USER/PASSWORD/NAME/POOL_SIZE`，
-			#    于是**一个都读不到**，全部**静默**回退：
-			#      · 库名 → 硬编码 "quant_signals"（碰巧正确）
-			#      · host/port/user/password → `self.DATABASE.*`，即 `.env` 的
-			#        `DB_*`（**开发库那套凭证**）
-			#    → 「生产库配置写没写、写对没写对，行为完全一样」。
-			#    现改为读 `PROD_DB_*`（与 `.env` 一致），并在发生回退时**打 WARNING**，
-			#    避免同一个坑再次静默复发。
-			# 只对**连接关键项**告警：库名/主机/端口/用户/口令。
-			# 池大小与溢出上限属**调优参数**，回退到基础 `DB_*` 是设计意图，不告警。
-			_missing = [k for k in (
-				"PROD_DB_HOST", "PROD_DB_PORT", "PROD_DB_USER",
-				"PROD_DB_PASSWORD", "PROD_DB_NAME",
-			) if os.getenv(k) is None]
-
-			self.DATABASE.HOST = os.getenv("PROD_DB_HOST", self.DATABASE.HOST)
-			self.DATABASE.PORT = int(os.getenv("PROD_DB_PORT", str(self.DATABASE.PORT)))
-			self.DATABASE.USER = os.getenv("PROD_DB_USER", self.DATABASE.USER)
-			self.DATABASE.PASSWORD = os.getenv("PROD_DB_PASSWORD", self.DATABASE.PASSWORD)
-			self.DATABASE.NAME = os.getenv("PROD_DB_NAME", "quant_signals")
-			self.DATABASE.POOL_SIZE = int(os.getenv("PROD_DB_POOL_SIZE", str(self.DATABASE.POOL_SIZE)))
-			self.DATABASE.MAX_OVERFLOW = int(os.getenv("PROD_DB_MAX_OVERFLOW", str(self.DATABASE.MAX_OVERFLOW)))
-
-			if _missing:
+			if missing:
 				logger.warning(
 					"生产环境缺少 %d 个 `PROD_DB_*` 配置（%s）→ 已回退到 `.env` 的 `DB_*`"
 					"（**开发库那套凭证**）与硬编码库名。若生产库不在同一实例/同凭证，会连到错误的库。",
-					len(_missing), ", ".join(_missing))
+					len(missing), ", ".join(missing))
 			logger.info(f"使用生产环境数据库配置: {self.DATABASE.NAME}")
+
+		# 可选只读 DSN：仅当显式配置 DB_RO_HOST/NAME/USER 时实例化
+		if any(os.getenv(key) is not None for key in ("DB_RO_HOST", "DB_RO_NAME", "DB_RO_USER")):
+			self.DATABASE_RO = ReadOnlyDatabaseSettings()
 
 		return self
 

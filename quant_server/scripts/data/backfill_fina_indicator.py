@@ -20,6 +20,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_url
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -65,12 +68,7 @@ async def main(limit: int, start_date: str) -> None:
         StockFinaIndicatorRepository,
     )
 
-    user = env.get("DB_USER", "postgres")
-    password = env.get("DB_PASSWORD", "")
-    host = env.get("DB_HOST", "localhost")
-    port = env.get("DB_PORT", "5432")
-    dbname = env.get("DB_DEV_NAME", "quant_signals_dev")
-    url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{dbname}"
+    url = db_url()
     engine = create_async_engine(url)
     Session = async_sessionmaker(engine, expire_on_commit=False)
 

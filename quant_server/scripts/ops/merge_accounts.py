@@ -10,23 +10,63 @@
   2. 记录 account_transaction（审计轨迹）
   3. 源账户余额清零（保留账户记录）
 """
+import argparse
 import uuid
 from datetime import datetime
 
 import psycopg2
 
-DB = dict(host="localhost", port=5432, user="postgres",
-          password="123456", database="quant_signals_dev")
+
+def _parse_env_args() -> str:
+    ap = argparse.ArgumentParser(description="合并账户余额")
+    ap.add_argument("--env", choices=("dev", "prod"), default="dev",
+                    help="目标环境（默认 dev；prod 需 --yes-i-mean-prod）")
+    ap.add_argument("--yes-i-mean-prod", action="store_true",
+                    help="确认对生产环境执行账户变更")
+    args = ap.parse_args()
+    if args.env == "prod" and not args.yes_i_mean_prod:
+        raise SystemExit("拒绝：--env prod 需同时传 --yes-i-mean-prod")
+    return args.env
+
+
+def _db_config(env: str) -> dict:
+    from shared.config.config_manager import DatabaseSettings, resolve_database_env
+    base = DatabaseSettings().model_dump()
+    values, missing = resolve_database_env(
+        "development" if env == "dev" else "production", base
+    )
+    if env == "prod" and missing:
+        raise SystemExit(f"拒绝：生产 DB 配置缺失 {missing}")
+    return {
+        "host": values["HOST"], "port": values["PORT"],
+        "user": values["USER"], "password": values["PASSWORD"],
+        "database": values["NAME"],
+    }
+
+
+def _assert_role(cur, env: str) -> None:
+    expected = "quant_dev" if env == "dev" else "quant_prod"
+    cur.execute("SELECT current_user, current_setting('search_path')")
+    user, path = cur.fetchone()
+    if user != expected:
+        raise SystemExit(f"拒绝：{env} 环境应以 {expected} 连接，实际 {user}")
+    compact = (path or "").replace(" ", "")
+    if env == "dev" and not compact.startswith("dev"):
+        raise SystemExit(f"拒绝：dev 的 search_path 为 {path!r}")
+    if env == "prod" and not compact.startswith("public"):
+        raise SystemExit(f"拒绝：prod 的 search_path 为 {path!r}")
 
 TARGET_ACCOUNT = "84d81a14-5f0f-4741-b868-92961863ac3a"  # 共享资金池（低吸账户）
 SOURCE_ACCOUNT = "9188e19e-8990-496a-ab0e-6de501b778b1"  # ETF 原账户
 
 
 def main() -> None:
-    conn = psycopg2.connect(**DB)
+    env = _parse_env_args()
+    conn = psycopg2.connect(**_db_config(env))
     conn.autocommit = False
     cur = conn.cursor()
     try:
+        _assert_role(cur, env)
         # 1. 读两账户余额
         cur.execute("SELECT total_balance, available_balance, frozen_balance, user_id FROM accounts WHERE id = %s", (SOURCE_ACCOUNT,))
         src = cur.fetchone()
@@ -34,7 +74,7 @@ def main() -> None:
         tgt = cur.fetchone()
         if not src or not tgt:
             print("[错误] 账户不存在")
-            return
+            raise SystemExit(1)
 
         src_total = float(src[0] or 0)
         src_avail = float(src[1] or 0)
@@ -80,6 +120,7 @@ def main() -> None:
     except Exception as e:
         conn.rollback()
         print(f"[错误] 合并失败，已回滚: {e}")
+        raise SystemExit(1)
     finally:
         cur.close()
         conn.close()

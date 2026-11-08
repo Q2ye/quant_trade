@@ -47,6 +47,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
@@ -63,14 +65,7 @@ D_END = "20261231"
 
 
 def _get_db_config() -> dict:
-    try:
-        from shared.config.config_manager import config
-        db = config.settings.DATABASE
-        return {"host": db.HOST, "port": int(db.PORT), "user": db.USER,
-                "password": db.PASSWORD, "database": db.NAME}
-    except Exception:
-        return {"host": "localhost", "port": 5432, "user": "postgres",
-                "password": "123456", "database": "quant_signals_dev"}
+    return db_kwargs()
 
 
 def _to_date(v: Any) -> Any:
