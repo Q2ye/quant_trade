@@ -2,9 +2,33 @@
   "req": "REQ-20261108-daily-data-base",
   "title": "日频数据底座补全（56 张表）",
   "tier": "T2",
-  "status": "S3",
+  "status": "DONE",
   "created": "2026-11-08",
   "updated": "2026-11-08",
-  "commits": [],
-  "scope": []
+  "commits": [
+    "9151a09",
+    "b78b289",
+    "fb978d7",
+    "02d9339",
+    "7e9901e",
+    "e0a7447",
+    "6a5dafa",
+    "f66dda6",
+    "b51e1b4",
+    "40eb44a"
+  ],
+  "scope": [
+    "docs/sql/create_table.sql",
+    "docs/02-功能设计/市场模块/日频数据底座补全-设计文档.md",
+    "docs/09-交付记录/",
+    "quant_server/scripts/data/",
+    "quant_server/scripts/quality/",
+    "quant_server/modules/data/",
+    "quant_server/api/routers/data_router.py",
+    "quant_server/shared/database/models/",
+    "quant_server/shared/database/repositories/market/ext/",
+    "quant_server/shared/sources/tushare_source.py",
+    "quant_server/tests/modules/test_data/",
+    "quant_server/tests/shared/test_sources/"
+  ]
 }
