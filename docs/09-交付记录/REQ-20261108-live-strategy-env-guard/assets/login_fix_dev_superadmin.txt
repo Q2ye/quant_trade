@@ -1,0 +1,7 @@
+dev.sys_users before: ['dev']
+public superAdmin before: 1
+dev.sys_users inserted: 1
+dev.sys_roles inserted: 1
+dev.sys_users after: [('dev', 'admin', True, 12, 'ZGV2MTI'), ('superAdmin', 'admin', True, 67, 'BCRYPT:')]
+public superAdmin after: 1
+dev.sys_roles count: 1

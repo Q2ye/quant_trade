@@ -20,6 +20,7 @@ from modules.strategy.constants import (
     ErrorCode,
 )
 from modules.strategy.models import StrategyState
+from modules.strategy.utils.env_guard import can_run_live
 from shared.database.repositories.strategy.management import (
     StrategyRepository,
     StrategyRunRepository,
@@ -125,6 +126,16 @@ class ExecutionService:
                     "success": False,
                     "error": f"当前状态 {strategy.status} 不允许启动",
                     "error_code": ErrorCode.STRATEGY_INVALID_PARAMETER,
+                }
+
+            # 2026-11-08：live 只在 production 启动（写库前拒绝；
+            # 不创建 strategy_runs、不写 running、不发事件）
+            if not can_run_live(run_mode):
+                logger.warning("非生产环境拒绝启动 live 策略: %s", strategy_id)
+                return {
+                    "success": False,
+                    "error": "live 策略仅允许在 production 环境启动",
+                    "error_code": ErrorCode.LIVE_PRODUCTION_ONLY,
                 }
 
             # 获取或设置初始资金（v6.13: 默认用 DB allocated_capital，而非硬编码 100 万。
@@ -460,6 +471,15 @@ class ExecutionService:
                     "error": "无权操作此策略",
                 }
 
+            # 2026-11-08：live 只在 production 恢复（写库前拒绝）
+            if not can_run_live(getattr(strategy, "run_mode", "live")):
+                logger.warning("非生产环境拒绝恢复 live 策略: %s", strategy_id)
+                return {
+                    "success": False,
+                    "error": "live 策略仅允许在 production 环境恢复",
+                    "error_code": ErrorCode.LIVE_PRODUCTION_ONLY,
+                }
+
             # v2.1: 检查转换合法性
             from_status = StrategyLifecycleStatus(strategy.status)
             if StrategyLifecycleStatus.RUNNING not in StrategyLifecycleStatus.allowed_transitions(from_status):
@@ -482,6 +502,7 @@ class ExecutionService:
                     event = StrategyResumedEvent(
                         strategy_id=strategy_id,
                         user_id=user_id,
+                        run_mode=getattr(strategy, "run_mode", "live"),
                     )
                     await self.event_engine.put(event)
                 except Exception as e:

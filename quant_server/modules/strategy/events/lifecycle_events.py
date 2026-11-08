@@ -121,6 +121,7 @@ class StrategyResumedEvent(BaseEvent):
         strategy_id: str,
         user_id: str,
         strategy_name: str = "",
+        run_mode: str = "live",
         source: str = "execution_service",
         **kwargs
     ):
@@ -136,5 +137,6 @@ class StrategyResumedEvent(BaseEvent):
             "strategy_id": strategy_id,
             "strategy_name": strategy_name or "",
             "user_id": user_id,
+            "run_mode": run_mode,
             "resume_time": datetime.now().isoformat(),
         }

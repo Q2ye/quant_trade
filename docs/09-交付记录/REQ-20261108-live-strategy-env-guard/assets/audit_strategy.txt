@@ -1,0 +1,24 @@
+========================================================================
+策略代码质量门报告（机检）— 扫描 16 个文件
+========================================================================
+
+🔴 阻断: 0 项
+
+🟡 警告: 0 项
+
+🟡 除法守卫（启发式，79 处）—— 用 --verbose 看明细
+   25 处  modules\strategy\strategies\reference\stock_low_high_strategy.py
+   18 处  modules\strategy\strategies\rotation\cross_market_momentum_strategy.py
+   14 处  modules\strategy\strategies\rotation\high_vol_momentum_strategy.py
+    9 处  modules\strategy\strategies\panic\panic_bottom_strategy.py
+    6 处  modules\strategy\strategies\etf\bottom_strategy.py
+    4 处  modules\strategy\strategies\microcap\microcap_strategy.py
+    2 处  modules\strategy\strategies\reference\deep_drop_rebound_strategy.py
+    1 处  modules\strategy\strategies\base\base_strategy.py
+
+⚪ 豁免: 2 项
+  [F] modules\strategy\strategies\rotation\high_vol_momentum_strategy.py:118  atr_stop_mult = 2.0：ATR 倍数式止损，豁免（须在注释标注语义）
+  [F] modules\strategy\strategies\rotation\high_vol_momentum_strategy.py:143  bear_atr_stop_mult = 2.5：ATR 倍数式止损，豁免（须在注释标注语义）
+
+------------------------------------------------------------------------
+结论：⚠️ 无阻断；79 处除法启发式仅供参考，无实质警告

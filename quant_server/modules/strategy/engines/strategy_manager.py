@@ -22,6 +22,11 @@ from modules.strategy.constants import (
 )
 from modules.strategy.events import StrategyStartedEvent, StrategyStoppedEvent, StrategyPausedEvent, \
 	StrategyResumedEvent
+from modules.strategy.utils.env_guard import (
+	can_run_live,
+	is_production_env,
+	should_restore_strategy,
+)
 from modules.strategy.events.signal_events import SignalConfirmedEvent
 from modules.strategy.models import (
     StrategyInstance,
@@ -487,6 +492,11 @@ class StrategyManager(EngineBase):
             f"execution_mode={execution_mode_str}"
         )
 
+        # 2026-11-08：非生产拒绝 live（防直接事件绕过 ExecutionService）
+        if not can_run_live(run_mode_str):
+            logger.warning("非生产环境拒绝启动 live 策略: %s", strategy_id)
+            return
+
         try:
             # 如果已在运行中，跳过
             if str(strategy_id) in self.running_states:
@@ -610,6 +620,20 @@ class StrategyManager(EngineBase):
         data = event.data
         strategy_id = data.get("strategy_id")
         logger.info(f"收到策略恢复请求: {strategy_id}")
+
+        # 2026-11-08：非生产拒绝 live 恢复（防直接事件绕过 ExecutionService）
+        # 事件带 run_mode 时以事件为准；否则用内存实例；都没有才按 live。
+        event_run_mode = data.get("run_mode")
+        instance = self.strategies.get(str(strategy_id))
+        if event_run_mode:
+            run_mode = event_run_mode
+        elif instance:
+            run_mode = getattr(instance, "run_mode", "live")
+        else:
+            run_mode = "live"
+        if not can_run_live(run_mode):
+            logger.warning("非生产环境拒绝恢复 live 策略: %s", strategy_id)
+            return
 
         try:
             await self.resume_strategy(strategy_id)
@@ -1286,6 +1310,13 @@ class StrategyManager(EngineBase):
 
         由 DailyStrategyRunner 或 _on_data_sync_completed 调用。
         """
+        # 2026-11-08：live 策略只在 production 驱动；dev/test 保留 paper/backtest
+        if not is_production_env():
+            logger.warning(
+                "非生产环境不驱动 live 策略，跳过 run_daily_strategies: %s",
+                trade_date)
+            return []
+
         # 加载当日 BarData
         bars = await self._load_daily_bars(trade_date)
         if not bars:
@@ -1742,6 +1773,13 @@ class StrategyManager(EngineBase):
 
         含中断检测：若 last_run_date 缺失交易日，补跑但不产生信号。
         """
+        # 2026-11-08：顶层兜底，非生产不驱动 live
+        if not is_production_env():
+            logger.warning(
+                "非生产环境不驱动 live 策略，跳过 _run_live_strategies: %s",
+                trade_date)
+            return []
+
         from modules.strategy.constants import RunMode as RM
         all_signals = []
 
@@ -1904,6 +1942,11 @@ class StrategyManager(EngineBase):
         instance = self.strategies.get(strategy_id)
         if not instance:
             return {"success": False, "error": f"策略 {strategy_id} 未加载"}
+
+        # 2026-11-08：/trigger 也是 live 驱动入口，非生产拒绝
+        if not can_run_live(getattr(instance, "run_mode", "live")):
+            logger.warning("非生产环境拒绝触发 live 策略: %s", strategy_id)
+            return {"success": False, "error": "live 策略仅允许在 production 环境触发"}
 
         strategy = self._strategy_objects.get(strategy_id)
         if not strategy:
@@ -2260,6 +2303,12 @@ class StrategyManager(EngineBase):
 
                 for row in running_rows:
                     sid = row[0]
+                    # 2026-11-08：live 只在 production 恢复；dev/test 跳过并告警
+                    if not should_restore_strategy(row[6]):
+                        logger.warning(
+                            "非生产环境跳过 live 策略恢复: %s (run_mode=%s)",
+                            sid, row[6])
+                        continue
                     try:
                         # 检查是否已在内存中（避免重复加载）
                         if sid in self.strategies:

@@ -16,6 +16,7 @@ from api.dependencies.auth import get_current_user
 from api.dependencies.database import get_db_session
 from api.dependencies.event_engine import get_event_engine
 from api.dependencies.main_engine import MainEngineDep
+from modules.strategy.constants import ErrorCode
 # 导入策略模块的业务层处理函数
 from modules.strategy.handlers import (
 	get_strategy_list,
@@ -59,6 +60,21 @@ from utils.api_utils.response_formatter import success_response, error_response
 logger = logging.getLogger(__name__)
 
 # 创建路由器实例
+def _result_error_code(result):
+	"""兼容 dict / Pydantic 模型的 error_code 提取（403 分支用）。"""
+	if isinstance(result, dict):
+		return result.get("error_code")
+	dump = getattr(result, "model_dump", None)
+	if callable(dump):
+		try:
+			data = dump()
+			if isinstance(data, dict):
+				return data.get("error_code")
+		except Exception:
+			pass
+	return getattr(result, "error_code", None)
+
+
 router = APIRouter(
 	tags=["策略中心"],
 	responses={
@@ -582,6 +598,13 @@ async def start_strategy_api (
 			event_engine=event_engine,
 		)
 
+		# 2026-11-08：live 仅 production 可启动 → 403（不落 500）
+		if _result_error_code(result) == ErrorCode.LIVE_PRODUCTION_ONLY:
+			raise HTTPException(
+				status_code=status.HTTP_403_FORBIDDEN,
+				detail=result.get("error") or "live 策略仅允许在 production 环境启动",
+			)
+
 		return result
 
 	except HTTPException:
@@ -889,6 +912,13 @@ async def resume_strategy_api (
 			user_id=current_user.get("id"),
 			event_engine=event_engine,
 		)
+
+		# 2026-11-08：live 仅 production 可恢复 → 403
+		if _result_error_code(result) == ErrorCode.LIVE_PRODUCTION_ONLY:
+			raise HTTPException(
+				status_code=status.HTTP_403_FORBIDDEN,
+				detail=result.get("error") or "live 策略仅允许在 production 环境恢复",
+			)
 
 		return result
 

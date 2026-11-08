@@ -283,6 +283,10 @@ class ErrorCode:
     STRATEGY_INVALID_PARAMETER = 1006
     STRATEGY_NO_DATA = 1007
     STRATEGY_RISK_LIMIT_EXCEEDED = 1008
+    # 仅 production 可启动/恢复 live 策略（REQ-20261108-live-strategy-env-guard）
+    # 注意：全局 core/exceptions/error_codes.py 的 1009=TOO_MANY_REQUESTS、
+    # 1010=REQUEST_TIMEOUT、1011=RESOURCE_NOT_FOUND，故用 1012 避免撞值。
+    LIVE_PRODUCTION_ONLY = 1012
 
 
 # ==================== 事件类型 ====================
