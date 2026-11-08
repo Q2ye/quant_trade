@@ -284,6 +284,21 @@ async def initialize (
 						# moneyflow 逐股约 11min/日；hsgt/hsgt_flow/sw_daily 均为轻量全量。
 						DataType.MONEYFLOW, DataType.STOCK_HSGT,
 						DataType.MONEYFLOW_HSGT, DataType.INDEX_SW_DAILY,
+						# 2026-11-08 日频数据底座：日频表（26 张）。
+						# 月度（index_monthly/macro_sf/macro_money/macro_pmi）与快照
+						# （index_ths_member）不进日终，由回填脚本按周/月执行。
+						DataType.FX_DAILY, DataType.FUND_NAV,
+						DataType.MARGIN_DETAIL, DataType.MARGIN_SECS,
+						DataType.CYQ_PERF, DataType.THS_DAILY,
+						DataType.MONEYFLOW_EXT, DataType.MONEYFLOW_IND,
+						DataType.MARKET_DAILY_INFO, DataType.BLOCK_TRADE,
+						DataType.INDEX_GLOBAL, DataType.FUT_DAILY,
+						DataType.FUT_HOLDING, DataType.FUT_WSR, DataType.FUT_SETTLE,
+						DataType.FUT_MAPPING, DataType.FUT_INDEX_DAILY,
+						DataType.OPT_DAILY, DataType.CB_DAILY,
+						DataType.HSGT_TOP10, DataType.KPL_LIST,
+						DataType.HK_DAILY, DataType.US_DAILY, DataType.GGT_DAILY,
+						DataType.FUND_SHARE, DataType.FUND_DAILY_EX,
 					)
 					import asyncio as _asyncio
 					_sem = _asyncio.Semaphore(3)
