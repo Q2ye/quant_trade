@@ -103,6 +103,7 @@ from modules.data.schemas import (
 	SyncTaskItem,
 )
 from modules.data.utils.timing import SyncTimingLogger
+from modules.data.services.sync_daily_base import DailyBaseSyncProvider
 from shared.cache.memory_cache import MemoryCache
 from shared.cache.redis_cache import RedisCache
 from shared.database.models.data_models import (
@@ -726,7 +727,7 @@ def _get_bucket(rate_key: str) -> Optional[_TokenBucket]:
     return _rate_buckets[rate_key]
 
 # ================================================================
-class DataSyncService:
+class DataSyncService(DailyBaseSyncProvider):
 	"""
 	数据同步服务（无状态 Service）。
 
@@ -966,6 +967,11 @@ class DataSyncService:
 			DataType.STK_FACTOR_PRO: self._sync_stk_factor_pro,
 			DataType.IDX_FACTOR_PRO: self._sync_idx_factor_pro,
 		}
+
+		# ========== 日频数据底座（REQ-20261108-daily-data-base） ==========
+		# 57 个仓储 + 56 条 DataType 路由；方法体在 DailyBaseSyncProvider。
+		self._init_daily_base_repos()
+		self._register_daily_base_sync()
 
 	@property
 	def cache(self):

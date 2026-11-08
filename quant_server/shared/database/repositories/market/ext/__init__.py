@@ -98,4 +98,6 @@ REPO_CLASSES = (
     DataBackfillProgressRepository,
 )
 
-__all__ = ["REPO_CLASSES"] + [r.__name__ for r in REPO_CLASSES]
+REPO_BY_TABLE = {r(None).model.__tablename__: r for r in REPO_CLASSES}
+
+__all__ = ["REPO_CLASSES", "REPO_BY_TABLE"] + [r.__name__ for r in REPO_CLASSES]
