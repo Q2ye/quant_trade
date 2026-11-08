@@ -175,8 +175,9 @@ _CONTRACTS = [
     _c("stock_surv", "stock_surv", "stk_surv",
        ["ts_code", "surv_date", "rece_org"], "event", "by_range", "sparse", "P2",
        "2020-01-01", pit=["surv_date"]),
-    _c("stock_kpl_list", "stock_kpl_list", "kpl_list", ["trade_date", "ts_code"],
-       "daily", "by_date", "sparse", "P2", "2018-01-01"),
+    _c("stock_kpl_list", "stock_kpl_list", "kpl_list",
+       ["trade_date", "ts_code", "tag"], "daily", "by_date", "sparse", "P2",
+       "2018-01-01", note="tag=涨停/跌停/炸板，主键含 tag"),
     _c("stock_hm_list", "stock_hm_list", "hm_list", ["name"], "catalog",
        "full_snapshot", "periodic", "P2"),
     _c("macro_eco_cal", "macro_eco_cal", "eco_cal", ["event_date", "currency", "event"],
@@ -229,6 +230,7 @@ DATE_COLUMNS: Dict[str, str] = {
     "cb_rating": "rating_date",
     "cb_call": "ann_date",
     "cb_issue": "ann_date",
+    "stock_new_share": "ipo_date",
 }
 
 

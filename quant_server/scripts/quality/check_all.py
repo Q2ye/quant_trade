@@ -93,8 +93,15 @@ def gate_delivery() -> Tuple[str, str]:
 
 
 def _changed_files() -> List[str]:
-    """已跟踪改动 + 未跟踪（排除 pycache / 二进制）。"""
-    rc, out = _run(["git", "status", "--porcelain"], REPO_ROOT, timeout=60)
+    """已跟踪改动 + 未跟踪（排除 pycache / 二进制 / pytest 临时目录）。
+
+    ⚠️ 必须加 ``-c core.quotepath=false``：git 默认把中文路径转成八进制转义，
+    与白名单里的 UTF-8 前缀永远匹配不上（2026-11-08 实测，中文路径被误报越界）。
+    """
+    rc, out = _run(
+        ["git", "-c", "core.quotepath=false", "status", "--porcelain"],
+        REPO_ROOT, timeout=60,
+    )
     if rc != 0:
         return []
     files = []
@@ -105,7 +112,8 @@ def _changed_files() -> List[str]:
         if " -> " in path:  # 重命名/复制：status 行是 "旧路径 -> 新路径"，取新路径
             path = path.rsplit(" -> ", 1)[-1]
         path = path.strip().strip('"')
-        if "__pycache__" in path or path.endswith((".pyc", ".png", ".jpg")):
+        if "__pycache__" in path or "pytest-of-" in path \
+                or path.endswith((".pyc", ".png", ".jpg")):
             continue
         files.append(path.replace("\\", "/"))
     return files

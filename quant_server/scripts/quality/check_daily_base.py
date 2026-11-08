@@ -131,6 +131,14 @@ def _max_month(conn, table: str) -> Optional[str]:
         return cur.fetchone()[0]
 
 
+def _max_date(conn, table: str, col: str) -> Optional[date]:
+    q = sql.SQL("SELECT max({col}) FROM {tbl}").format(
+        col=sql.Identifier(col), tbl=sql.Identifier(table))
+    with conn.cursor() as cur:
+        cur.execute(q)
+        return cur.fetchone()[0]
+
+
 def check_one(conn, contract, today: date, expected_latest: date) -> Tuple[str, str]:
     from modules.data.data_contracts import date_column
 
@@ -139,7 +147,12 @@ def check_one(conn, contract, today: date, expected_latest: date) -> Tuple[str, 
             n = _catalog_count(conn, contract.table)
             return ("PASS", f"{n} 行") if n > 0 else ("FAIL", "目录为空")
         if contract.frequency == "monthly":
-            latest = _max_month(conn, contract.table)
+            col = date_column(contract.data_type)
+            if col == "month":
+                latest = _max_month(conn, contract.table)
+            else:
+                latest_date = _max_date(conn, contract.table, col)
+                latest = latest_date.strftime("%Y%m") if latest_date else None
             return judge_periodic(latest, _prev_month(today))
         # 日频但按周期校验：退化为新鲜度
         col = date_column(contract.data_type)

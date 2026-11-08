@@ -12,8 +12,11 @@
 
 from __future__ import annotations
 
+import calendar
+import logging
 import math
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -33,10 +36,19 @@ from modules.data.constants import DataSource
 from modules.data.data_contracts import DATA_CONTRACTS, DataContract
 from shared.database.repositories.market.ext import REPO_BY_TABLE
 
+logger = logging.getLogger(__name__)
+
 _FUT_EXCHANGES = ("CFFEX", "SHFE", "DCE", "CZCE", "INE", "GFEX")
 _OPT_EXCHANGES = ("SSE", "SZSE", "CFFEX", "DCE", "CZCE", "SHFE", "INE")
 _NANHUA_CODES = ("NHCI.NH", "NHAI.NH", "NHFI.NH", "NHII.NH", "NHMI.NH",
                  "NHNFI.NH", "NHPMI.NH")
+
+# THS 成分无历史：只允许从该日起按日快照，禁止把当前成分回填到历史日期。
+THS_MEMBER_IMPLEMENTATION_DATE = date(2026, 11, 8)
+# 跨市场表不能用 A 股交易日历（A 股休市时港股/美股可能开市）。
+_NATURAL_CALENDAR_TYPES = {"hk_daily", "us_daily", "index_global_daily"}
+# 1 次/小时接口：只允许单日同步
+_HOURLY_TYPES = {"hk_daily", "us_daily"}
 
 # 通用引擎：data_type -> (模式, 取数函数)
 # 取数函数签名：
@@ -74,13 +86,11 @@ _EXT_SPECS: Dict[str, Tuple[str, Callable]] = {
     "cb_issue": ("by_range", lambda s, a, b: s.get_cb_issue(start_date=a, end_date=b)),
     "cb_call": ("by_range", lambda s, a, b: s.get_cb_call(start_date=a, end_date=b)),
     "cb_daily": ("by_date", lambda s, d: s.get_cb_daily(trade_date=d)),
-    "cb_share": ("by_range", lambda s, a, b: s.get_cb_share(end_date=b)),
-    "cb_rating": ("by_range", lambda s, a, b: s.get_cb_rating(rating_date=b)),
+    "cb_share": ("by_quarter", lambda s, d: s.get_cb_share(end_date=d)),
     # ---------- P2 ----------
     "stock_pledge_detail": ("by_range", lambda s, a, b: s.get_pledge_detail(start_date=a, end_date=b)),
     "stock_repurchase": ("by_range", lambda s, a, b: s.get_repurchase(start_date=a, end_date=b)),
     "stock_surv": ("by_range", lambda s, a, b: s.get_stk_surv(start_date=a, end_date=b)),
-    "stock_kpl_list": ("by_date", lambda s, d: s.get_kpl_list(trade_date=d)),
     "stock_hm_list": ("full_snapshot", lambda s: s.get_hm_list()),
     "macro_eco_cal": ("by_range", lambda s, a, b: s.get_eco_cal(start_date=a, end_date=b)),
     "hk_basic": ("full_snapshot", lambda s: s.get_hk_basic()),
@@ -90,8 +100,8 @@ _EXT_SPECS: Dict[str, Tuple[str, Callable]] = {
     "ggt_daily": ("by_date", lambda s, d: s.get_ggt_daily(trade_date=d)),
     "fund_basic": ("full_snapshot", lambda s: s.get_fund_basic()),
     "fund_company": ("full_snapshot", lambda s: s.get_fund_company()),
-    "fund_manager": ("by_range", lambda s, a, b: s.get_fund_manager(ann_date=b)),
-    "fund_div": ("by_range", lambda s, a, b: s.get_fund_div(ann_date=b)),
+    "fund_manager": ("by_range_daily", lambda s, d: s.get_fund_manager(ann_date=d)),
+    "fund_div": ("by_range_daily", lambda s, d: s.get_fund_div(ann_date=d)),
     "fund_share": ("by_date", lambda s, d: s.get_fund_share(trade_date=d)),
     "fund_daily_ex": ("by_date", lambda s, d: s.get_fund_daily(trade_date=d)),
 }
@@ -109,13 +119,35 @@ def _norm_date(value: Any) -> Optional[date]:
     return value
 
 
+def _clean_json(value: Any) -> Any:
+    """递归清洗 JSONB 值：NaN → None，Timestamp → ISO 字符串。"""
+    if isinstance(value, dict):
+        return {k: _clean_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_clean_json(v) for v in value]
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return None if pd.isna(value) else value.isoformat()
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
 def _clean_record(record: Dict[str, Any]) -> Dict[str, Any]:
     for key, value in record.items():
         if isinstance(value, float) and math.isnan(value):
             record[key] = None
         elif isinstance(value, pd.Timestamp):
             record[key] = None if pd.isna(value) else value.date()
-        elif value is not None and not isinstance(value, (list, dict)):
+        elif isinstance(value, (list, dict)):
+            record[key] = _clean_json(value)
+        elif value is not None:
             try:
                 if pd.isna(value):
                     record[key] = None
@@ -149,6 +181,8 @@ class DailyBaseSyncProvider:
             "fut_wsr": self._sync_fut_wsr,
             "fut_index_daily": self._sync_fut_index_daily,
             "stock_hsgt_top10": self._sync_stock_hsgt_top10,
+            "stock_kpl_list": self._sync_stock_kpl_list,
+            "cb_rating": self._sync_cb_rating,
         }
         for key in DATA_CONTRACTS:
             method = special.get(key)
@@ -170,16 +204,27 @@ class DailyBaseSyncProvider:
             start, end = end, start
         return start, end
 
-    async def _ext_trade_dates(self, start: date, end: date) -> List[date]:
+    async def _ext_trade_dates(
+        self, start: date, end: date, data_type: str = ""
+    ) -> List[date]:
         if start > end:
             return []
+        out: List[date] = []
+        if data_type in _NATURAL_CALENDAR_TYPES:
+            # 跨市场：用自然工作日，避免 A 股节假日把港股/美股交易日跳过
+            cur = start
+            while cur <= end:
+                if cur.weekday() < 5:
+                    out.append(cur)
+                cur += timedelta(days=1)
+            return out
         try:
             days = await self.trade_calendar_repo.get_trade_dates("SSE", start, end)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - 日历故障退化为工作日
+            logger.warning("交易日历查询失败，退化为工作日: %s", exc)
             days = []
         if days:
             return days
-        out: List[date] = []
         cur = start
         while cur <= end:
             if cur.weekday() < 5:
@@ -198,6 +243,16 @@ class DailyBaseSyncProvider:
                 y, m = y + 1, 1
         return out
 
+    @staticmethod
+    def _quarter_ends(start: date, end: date) -> List[date]:
+        out: List[date] = []
+        for year in range(start.year, end.year + 1):
+            for month, day in ((3, 31), (6, 30), (9, 30), (12, 31)):
+                dt = date(year, month, day)
+                if start <= dt <= end:
+                    out.append(dt)
+        return out
+
     def _records_from_df(
         self, df: Optional[pd.DataFrame], transform: Optional[Callable] = None
     ) -> List[Dict[str, Any]]:
@@ -212,7 +267,7 @@ class DailyBaseSyncProvider:
 
     @staticmethod
     def _coerce_types(record: Dict[str, Any], model) -> Dict[str, Any]:
-        """按模型列类型清洗源数据：'--' → None，数字串 → int/float，日期串 → date。"""
+        """按模型列类型清洗源数据：'--' → None，数字/日期按列类型转换。"""
         cols = {c.name: c for c in model.__table__.columns}
         nulls = {"", "-", "--", "---", "N/A", "nan", "None"}
         for key, value in list(record.items()):
@@ -230,7 +285,15 @@ class DailyBaseSyncProvider:
                             record[key] = int(float(s))
                         except ValueError:
                             record[key] = None
-                elif isinstance(t, (Numeric, Float)):
+                elif isinstance(t, Numeric):
+                    if s in nulls:
+                        record[key] = None
+                    else:
+                        try:
+                            record[key] = Decimal(s)
+                        except Exception:  # noqa: BLE001 - 非数值串按缺失处理
+                            record[key] = None
+                elif isinstance(t, Float):
                     if s in nulls:
                         record[key] = None
                     else:
@@ -241,6 +304,11 @@ class DailyBaseSyncProvider:
                 elif isinstance(t, (Date, DateTime)):
                     ts = pd.to_datetime(s, errors="coerce")
                     record[key] = None if pd.isna(ts) else ts.date()
+            elif isinstance(t, (Integer, BigInteger)) and isinstance(value, float):
+                record[key] = int(value) if value.is_integer() else value
+            elif isinstance(t, Numeric) and isinstance(value, (int, float)) \
+                    and not isinstance(value, bool):
+                record[key] = Decimal(str(value))
             elif isinstance(t, String) and not isinstance(value, str):
                 record[key] = str(value)
         return record
@@ -269,14 +337,31 @@ class DailyBaseSyncProvider:
         from modules.data.services.sync_service import _drop_unstorable_records
 
         # 归一化：所有记录补齐模型列，避免多来源（DC/THS、沪/深）键不一致。
-        # 排除自增 id 与通用列（data_source/时间戳），让 DB 默认值/序列生效；
-        # 否则显式写入 NULL 会触发 NOT NULL 或「序列权限/重复键」类错误。
-        exclude = {"id", "data_source", "fetched_at", "created_at", "updated_at"}
+        # - 排除自增 id / data_source / created_at，让 DB 默认值/序列生效；
+        # - 显式刷新 fetched_at / updated_at（Core upsert 不触发 ORM onupdate）；
+        # - 业务键缺值：有默认值的用默认值，否则丢弃并告警，避免把不同记录折叠成一条。
+        exclude = {"id", "data_source", "created_at"}
         model_cols = [c.name for c in repo.model.__table__.columns if c.name not in exclude]
+        key_cols = set(self._business_key(repo.model))
+        now = datetime.now(timezone.utc)
         normalized: List[Dict[str, Any]] = []
         for r in records:
             rec = self._coerce_types({k: r.get(k) for k in model_cols}, repo.model)
+            rec["fetched_at"] = now
+            rec["updated_at"] = now
             for col in repo.model.__table__.columns:
+                if col.name not in key_cols or rec.get(col.name) is not None:
+                    continue
+                default = getattr(col.default, "arg", None) if col.default is not None else None
+                if isinstance(default, (str, int, float)) and not callable(default):
+                    rec[col.name] = default
+            if any(rec.get(k) is None for k in key_cols):
+                logger.warning("%s 丢弃无业务键记录：%s", label,
+                               [k for k in key_cols if rec.get(k) is None])
+                continue
+            for col in repo.model.__table__.columns:
+                if col.name in key_cols or col.name in ("fetched_at", "updated_at"):
+                    continue
                 if rec.get(col.name) is None and (
                     col.default is not None or col.server_default is not None
                 ):
@@ -287,7 +372,12 @@ class DailyBaseSyncProvider:
         if not records:
             return 0
         written = await repo.bulk_upsert(records)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.exception("%s 提交失败，已回滚", label)
+            raise
         return written
 
     def _result(self, label: str, written: int, total: int) -> Dict[str, Any]:
@@ -316,35 +406,86 @@ class DailyBaseSyncProvider:
         repo = self._ext_repos[contract.table]
         source = self._ext_source()
         start, end = self._resolve_ext_range(start_date, end_date)
-        records: List[Dict[str, Any]] = []
+        transform = self._transform_for(data_type)
+        buf: List[Dict[str, Any]] = []
+        written = 0
+        total = 0
+
+        async def flush() -> None:
+            nonlocal written, buf
+            if not buf:
+                return
+            written += await self._upsert_ext(repo, buf, contract.table)
+            buf = []
 
         if mode == "by_date":
-            for d in await self._ext_trade_dates(start, end):
+            days = await self._ext_trade_dates(start, end, data_type)
+            if data_type in _HOURLY_TYPES and len(days) > 1:
+                raise ValueError(
+                    f"{data_type} 限 1 次/小时，只能单日同步（请求 {len(days)} 天）")
+            for i, d in enumerate(days, 1):
                 if self.cancel_token is not None and self.cancel_token.is_set():
                     break
                 df = await self._cancellable_run_in_executor(
                     fetch, source, d.strftime("%Y%m%d")
                 )
-                records.extend(self._records_from_df(df, self._transform_for(data_type)))
+                got = self._records_from_df(df, transform)
+                buf.extend(got)
+                total += len(got)
+                if i % 20 == 0:
+                    await flush()
+            await flush()
         elif mode == "by_range":
             df = await self._cancellable_run_in_executor(
                 fetch, source, start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
             )
-            records.extend(self._records_from_df(df, self._transform_for(data_type)))
+            got = self._records_from_df(df, transform)
+            buf.extend(got)
+            total += len(got)
+            await flush()
+        elif mode == "by_range_daily":
+            for i, d in enumerate(await self._ext_trade_dates(start, end, data_type), 1):
+                if self.cancel_token is not None and self.cancel_token.is_set():
+                    break
+                df = await self._cancellable_run_in_executor(
+                    fetch, source, d.strftime("%Y%m%d")
+                )
+                got = self._records_from_df(df, transform)
+                buf.extend(got)
+                total += len(got)
+                if i % 20 == 0:
+                    await flush()
+            await flush()
+        elif mode == "by_quarter":
+            for d in self._quarter_ends(start, end):
+                if self.cancel_token is not None and self.cancel_token.is_set():
+                    break
+                df = await self._cancellable_run_in_executor(
+                    fetch, source, d.strftime("%Y%m%d")
+                )
+                got = self._records_from_df(df, transform)
+                buf.extend(got)
+                total += len(got)
+            await flush()
         elif mode == "by_month":
             for m in self._ext_months(start, end):
                 if self.cancel_token is not None and self.cancel_token.is_set():
                     break
                 df = await self._cancellable_run_in_executor(fetch, source, m, m)
-                records.extend(self._records_from_df(df, self._transform_for(data_type)))
+                got = self._records_from_df(df, transform)
+                buf.extend(got)
+                total += len(got)
+            await flush()
         elif mode == "full_snapshot":
             df = await self._cancellable_run_in_executor(fetch, source)
-            records.extend(self._records_from_df(df, self._transform_for(data_type)))
+            got = self._records_from_df(df, transform)
+            buf.extend(got)
+            total += len(got)
+            await flush()
         else:
             raise ValueError(f"未知回填模式: {mode} ({data_type})")
 
-        written = await self._upsert_ext(repo, records, contract.table)
-        return self._result(contract.table, written, len(records))
+        return self._result(contract.table, written, total)
 
     def _transform_for(self, data_type: str):
         return _EXT_TRANSFORMS.get(data_type)
@@ -479,23 +620,79 @@ class DailyBaseSyncProvider:
         source = self._ext_source()
         start, end = self._resolve_ext_range(start_date, end_date)
         repo = self._ext_repos["index_ths_member"]
+        # ⚠️ 接口只返回「当前」成分，没有 in/out_date：
+        #    - 禁止把当前成分写到实施日之前的任意历史日期；
+        #    - 只允许单日快照，区间运行直接报错，避免伪造数百万行 NON_PIT 数据。
+        days = await self._ext_trade_dates(start, end, "index_ths_member")
+        days = [d for d in days if d >= THS_MEMBER_IMPLEMENTATION_DATE]
+        if not days:
+            return self._result("index_ths_member", 0, 0)
+        if len(days) > 1:
+            raise ValueError(
+                "index_ths_member 无历史，只允许单日快照；"
+                f"本次请求 {start}~{end}（{len(days)} 个交易日）")
+        snapshot = days[0]
         index_df = await self._cancellable_run_in_executor(source.get_ths_index)
         codes = [] if index_df is None or index_df.empty else list(index_df["ts_code"])
         if not codes:
             return self._result("index_ths_member", 0, 0)
         records: List[Dict[str, Any]] = []
-        for d in await self._ext_trade_dates(start, end):
-            if self.cancel_token is not None and self.cancel_token.is_set():
-                break
-            for code in codes:
-                df = await self._cancellable_run_in_executor(
-                    source.get_ths_member, ts_code=code
-                )
-                records.extend(self._records_from_df(df, lambda r, c=code, sd=d: {
-                    **r, "index_code": c, "snapshot_date": sd,
-                }))
+        for code in codes:
+            df = await self._cancellable_run_in_executor(
+                source.get_ths_member, ts_code=code
+            )
+            records.extend(self._records_from_df(df, lambda r, c=code, sd=snapshot: {
+                **r, "index_code": c, "snapshot_date": sd,
+            }))
         written = await self._upsert_ext(repo, records, "index_ths_member")
         return self._result("index_ths_member", written, len(records))
+
+    async def _sync_stock_kpl_list(self, start_date=None, end_date=None,
+                                   ts_codes=None, task_id=None, user_id=None,
+                                   **kwargs) -> Dict[str, Any]:
+        """开盘啦榜单：按 tag 分别拉取，主键含 tag，避免涨停/炸板同日互相覆盖。"""
+        source = self._ext_source()
+        start, end = self._resolve_ext_range(start_date, end_date)
+        repo = self._ext_repos["stock_kpl_list"]
+        records: List[Dict[str, Any]] = []
+        for d in await self._ext_trade_dates(start, end, "stock_kpl_list"):
+            if self.cancel_token is not None and self.cancel_token.is_set():
+                break
+            ds = d.strftime("%Y%m%d")
+            for tag in ("涨停", "跌停", "炸板"):
+                df = await self._cancellable_run_in_executor(
+                    source.get_kpl_list, trade_date=ds, tag=tag
+                )
+                records.extend(self._records_from_df(
+                    df, lambda r, t=tag, dd=d: {
+                        **r, "tag": t,
+                        "trade_date": _norm_date(r.get("trade_date")) or dd,
+                    }))
+        written = await self._upsert_ext(repo, records, "stock_kpl_list")
+        return self._result("stock_kpl_list", written, len(records))
+
+    async def _sync_cb_rating(self, start_date=None, end_date=None,
+                              ts_codes=None, task_id=None, user_id=None,
+                              **kwargs) -> Dict[str, Any]:
+        """可转债评级：接口要求 ts_code，按 cb_basic 的转债代码逐个拉全历史。"""
+        source = self._ext_source()
+        repo = self._ext_repos["cb_rating"]
+        cb_model = self._ext_repos["cb_basic"].model
+        rows = (await self.session.execute(select(cb_model.ts_code))).all()
+        codes = [r[0] for r in rows if r[0]]
+        if not codes:
+            df = await self._cancellable_run_in_executor(source.get_cb_basic)
+            codes = [] if df is None or df.empty else list(df["ts_code"])
+        records: List[Dict[str, Any]] = []
+        for code in codes:
+            if self.cancel_token is not None and self.cancel_token.is_set():
+                break
+            df = await self._cancellable_run_in_executor(
+                source.get_cb_rating, ts_code=code
+            )
+            records.extend(self._records_from_df(df))
+        written = await self._upsert_ext(repo, records, "cb_rating")
+        return self._result("cb_rating", written, len(records))
 
     # ---- 特殊表：目录需按交易所循环 ----
 
@@ -637,7 +834,7 @@ def _tf_fx_daily(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def _tf_pmi(row: Dict[str, Any]) -> Dict[str, Any]:
     raw = {k: v for k, v in row.items() if k != "month"}
-    row["raw"] = raw
+    row["raw"] = _clean_json(raw)
     return row
 
 

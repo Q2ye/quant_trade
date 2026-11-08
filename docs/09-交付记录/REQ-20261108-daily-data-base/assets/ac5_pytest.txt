@@ -174,4 +174,4 @@ tests/modules/test_strategy/test_high_vol_candidate_race_fix.py::TestCandidateRa
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-================ 532 passed, 66 skipped, 55 warnings in 4.30s =================
+================ 532 passed, 66 skipped, 55 warnings in 4.02s =================

@@ -42,6 +42,17 @@ class _RateLimitLogFilter(logging.Filter):
 
 logger.addFilter(_RateLimitLogFilter())
 
+
+class TushareQueryError(RuntimeError):
+    """取数失败（与「接口正常返回空表」区分）。
+
+    回填脚本据此把该日/该类型记为 failed，而不是 done；
+    日终同步由调用方捕获并记 false。
+    """
+
+
+_HOURLY_LAST: dict = {}  # 1 次/小时接口的上次调用时间（monotonic）
+
 # Tushare 免费版各接口频次限制（次/分钟）
 _RATE_LIMITS = {
     "fund_daily": 500,
@@ -57,6 +68,7 @@ _RATE_LIMITS = {
                         #    且此前的取值顺序错误（令牌在请求后才取），实测直接 429。
     "etf_daily": 500,    # ETF日线（fund_daily 频率）
     "etf_share": 500,    # ETF份额（fund_share 频率）
+    "cb_rating": 200,    # 可转债评级（实测 200 次/分）
 }
 
 _last_call_times: dict = {}  # key → list of timestamps for sliding window
@@ -1508,19 +1520,60 @@ class TushareSource(BaseDataSource):
 		"""去掉空字符串/None，避免 Tushare 把空串当过滤条件。"""
 		return {k: v for k, v in kwargs.items() if v not in (None, "")}
 
-	def _query_ext(self, api: str, **kwargs) -> pd.DataFrame:
-		"""日频底座通用取数：限流 + 日期规范化 + 异常兜底。"""
+	def _query_ext(self, api: str, page_size: int = 5000, **kwargs) -> pd.DataFrame:
+		"""日频底座通用取数：限流 + 显式分页 + 日期规范化。
+
+		⚠️ 失败一律抛 ``TushareQueryError``，**不返回空表** ——
+		空表必须只代表「接口正常返回 0 行」，否则回填会把失败日记成 done。
+		1 次/小时的 hk_daily/us_daily 不做分页，且硬性拦截 1 小时内第二次调用。
+		"""
+		hourly = api in ("hk_daily", "us_daily")
+		if hourly:
+			now = time.monotonic()
+			last = _HOURLY_LAST.get(api)
+			if last is not None and now - last < 3600:
+				raise TushareQueryError(
+					f"{api} 限 1 次/小时，距上次调用 {int(now - last)} 秒")
+			_HOURLY_LAST[api] = now
+
 		_check_rate_limit(api, max_calls=_RATE_LIMITS.get(api, 500))
+		frames = []
+		offset = 0
 		try:
-			df = self.pro.query(api, **kwargs)
-			if df is not None and not df.empty:
-				for col in self._EXT_DATE_COLS:
-					if col in df.columns:
-						df[col] = pd.to_datetime(df[col], errors="coerce")
-			return df if df is not None else pd.DataFrame()
-		except Exception as e:
-			_log_tushare_error(api, e)
+			while True:
+				try:
+					if hourly:
+						df = self.pro.query(api, **kwargs)
+					else:
+						df = self.pro.query(api, limit=page_size, offset=offset, **kwargs)
+				except Exception as exc:
+					msg = str(exc)
+					supports_paging = not any(
+						k in msg.lower() for k in
+						("limit", "offset", "unexpected keyword", "参数")
+					)
+					if offset == 0 and not supports_paging:
+						# 接口不支持 limit/offset → 退回单次调用
+						df = self.pro.query(api, **kwargs)
+					else:
+						raise
+				if df is None or df.empty:
+					break
+				frames.append(df)
+				if hourly or len(df) < page_size:
+					break
+				offset += page_size
+		except Exception as exc:
+			_log_tushare_error(api, exc)
+			raise TushareQueryError(f"{api} 取数失败: {str(exc)[:200]}") from exc
+
+		if not frames:
 			return pd.DataFrame()
+		df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+		for col in self._EXT_DATE_COLS:
+			if col in df.columns:
+				df[col] = pd.to_datetime(df[col], errors="coerce")
+		return df
 
 	# ---------- 外汇 / 基金 ----------
 

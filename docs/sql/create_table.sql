@@ -6604,7 +6604,7 @@ CREATE TABLE IF NOT EXISTS stock_kpl_list (
     open_time      VARCHAR(20),
     last_time      VARCHAR(20),
     lu_desc        VARCHAR(200),
-    tag            VARCHAR(40),
+    tag            VARCHAR(40) NOT NULL,
     theme          VARCHAR(200),
     net_change     NUMERIC(20,2),
     bid_amount     NUMERIC(20,2),
@@ -6624,7 +6624,7 @@ CREATE TABLE IF NOT EXISTS stock_kpl_list (
     fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (trade_date, ts_code)
+    PRIMARY KEY (trade_date, ts_code, tag)
 );
 COMMENT ON TABLE stock_kpl_list IS '开盘啦榜单（Tushare kpl_list）；tag=涨停/跌停/炸板等';
 
@@ -6776,6 +6776,12 @@ SELECT create_hypertable('index_ths_daily', 'trade_date',
 
 -- 冒烟修正：cb_call.is_call 实际值超过 4 字符，扩到 20。
 ALTER TABLE cb_call ALTER COLUMN is_call TYPE VARCHAR(20);
+
+-- 评审修正：stock_kpl_list 同一天同一股票可同时出现在涨停/炸板等榜单，
+-- 主键必须含 tag，否则多标签会互相覆盖。
+ALTER TABLE stock_kpl_list ALTER COLUMN tag SET NOT NULL;
+ALTER TABLE stock_kpl_list DROP CONSTRAINT IF EXISTS stock_kpl_list_pkey;
+ALTER TABLE stock_kpl_list ADD PRIMARY KEY (trade_date, ts_code, tag);
 
 -- 新建 BIGSERIAL 序列的权限：public 的默认 ACL 只覆盖表，不覆盖序列。
 -- 缺这两条时，应用用户 quant_prod 插入 stock_top_list / macro_eco_cal 等

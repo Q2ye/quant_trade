@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import calendar
 import os
 import sys
 from datetime import date, datetime, timedelta
@@ -52,11 +53,17 @@ _DATE_SHIFT_DAYS = {"fx_daily": 1}
 # 1 次/小时的接口，估算时单独告警
 _HOURLY_APIS = {"hk_daily", "us_daily"}
 # 特殊表的调用次数修正：固定次数 / 每个交易日的倍数
-_FIXED_CALLS = {"macro_rate": 5, "fut_basic": 6, "opt_basic": 7, "fut_index_daily": 7}
+_FIXED_CALLS = {"macro_rate": 5, "fut_basic": 6, "opt_basic": 7,
+               "fut_index_daily": 7, "cb_rating": 1200}
 _CALL_MULTIPLIER = {
     "fut_holding": 70, "fut_wsr": 70, "index_ths_member": 1666,
     "stock_moneyflow_ext": 2, "stock_moneyflow_ind": 3,
     "market_daily_info": 2, "stock_hsgt_top10": 2,
+}
+# 分页（每 5,000 行一页）后的调用倍数；hk/us 不分页
+_PAGE_MULTIPLIER = {
+    "fund_nav": 5, "stock_cyq_perf": 2, "opt_daily": 4, "opt_basic": 19,
+    "stock_moneyflow_ext": 2, "stock_moneyflow_ind": 2,
 }
 
 
@@ -143,16 +150,33 @@ def _start_for(contract, override: Optional[date]) -> Optional[date]:
     return None
 
 
+def _month_end(m: str) -> date:
+    y, mo = int(m[:4]), int(m[4:])
+    return date(y, mo, calendar.monthrange(y, mo)[1])
+
+
+def _quarter_ends(start: date, end: date) -> List[date]:
+    out: List[date] = []
+    for year in range(start.year, end.year + 1):
+        for mo, day in ((3, 31), (6, 30), (9, 30), (12, 31)):
+            dt = date(year, mo, day)
+            if start <= dt <= end:
+                out.append(dt)
+    return out
+
+
 def estimate(args) -> int:
     from modules.data.data_contracts import DATA_CONTRACTS
 
     end = args.end or date.today()
     conn = connect_db(load_env(ENV_PATH))
-    print(f"{'data_type':<24} {'mode':<14} {'calls':>8}  说明")
+    print("# calls 为估算值；已乘 _CALL_MULTIPLIER 与 _PAGE_MULTIPLIER（每 5,000 行一页）")
+    print(f"{'data_type':<24} {'mode':<16} {'calls':>9}  说明")
     try:
         for key in _resolve_types(args.types):
             c = DATA_CONTRACTS[key]
             start = _start_for(c, args.start)
+            days = len(trade_days(conn, start or end, end))
             if key in _FIXED_CALLS:
                 calls = _FIXED_CALLS[key]
             elif c.backfill_mode == "full_snapshot":
@@ -161,17 +185,31 @@ def estimate(args) -> int:
                 calls = len(months(start or end, end))
             elif c.backfill_mode == "by_range":
                 calls = 1
+            elif c.backfill_mode == "by_range_daily":
+                calls = days
+            elif c.backfill_mode == "by_quarter":
+                calls = len(_quarter_ends(start or end, end))
             else:
-                calls = len(trade_days(conn, start or end, end))
+                calls = days
             calls *= _CALL_MULTIPLIER.get(key, 1)
+            calls *= _PAGE_MULTIPLIER.get(key, 1)
             note = ""
             api = c.api[0] if c.api else ""
             if api in _HOURLY_APIS:
                 note = f"WARN {api} 限 1 次/小时，预计 {calls} 小时"
-            print(f"{key:<24} {c.backfill_mode:<14} {calls:>8}  {note}")
+            print(f"{key:<24} {c.backfill_mode:<16} {calls:>9}  {note}")
     finally:
         conn.close()
     return 0
+
+
+def _written_or_fail(contract, res: Dict) -> int:
+    """dense 表接口返回 0 行时按失败处理，避免把限流/权限/空响应当 done。"""
+    written = int(res.get("records_added", 0) or 0)
+    total_items = int(res.get("total_items", 0) or 0)
+    if contract.gate_mode == "dense" and total_items == 0:
+        raise RuntimeError("接口返回空（dense 表按失败处理）")
+    return written
 
 
 async def _run(args) -> int:
@@ -229,7 +267,7 @@ async def _run(args) -> int:
                 try:
                     res = await method(start_date=start, end_date=end, ts_codes=None,
                                        task_id="backfill", user_id=None)
-                    written = int(res.get("records_added", 0) or 0)
+                    written = _written_or_fail(c, res)
                     if args.apply:
                         await progress.mark(key, date(1900, 1, 1), pk, "done", written)
                         await session.commit()
@@ -237,6 +275,7 @@ async def _run(args) -> int:
                     total["written"] += written
                     print(f"[{key}] {c.backfill_mode} {start}~{end} written={written}")
                 except Exception as exc:  # noqa: BLE001
+                    await session.rollback()
                     total["failed"] += 1
                     if args.apply:
                         await progress.mark(key, date(1900, 1, 1), pk, "failed", 0, str(exc)[:500])
@@ -245,31 +284,72 @@ async def _run(args) -> int:
                 continue
 
             if c.backfill_mode == "by_month":
+                fails = 0
                 for m in months(start, end):
                     pk = m
                     if args.resume and status_map.get(pk) == "done":
                         total["skipped"] += 1
                         continue
                     try:
-                        res = await method(start_date=date(int(m[:4]), int(m[4:]), 1),
-                                           end_date=end, ts_codes=None,
-                                           task_id="backfill", user_id=None)
-                        written = int(res.get("records_added", 0) or 0)
-                        if args.apply:
-                            await progress.mark(key, date(1900, 1, 1), pk, "done", written)
-                            await session.commit()
+                        res = await method(
+                            start_date=date(int(m[:4]), int(m[4:]), 1),
+                            end_date=_month_end(m), ts_codes=None,
+                            task_id="backfill", user_id=None)
+                        written = _written_or_fail(c, res)
+                        await progress.mark(key, date(1900, 1, 1), pk, "done", written)
+                        await session.commit()
                         total["done"] += 1
                         total["written"] += written
+                        fails = 0
                     except Exception as exc:  # noqa: BLE001
+                        await session.rollback()
                         total["failed"] += 1
-                        if args.apply:
-                            await progress.mark(key, date(1900, 1, 1), pk, "failed", 0, str(exc)[:500])
-                            await session.commit()
+                        await progress.mark(key, date(1900, 1, 1), pk, "failed", 0, str(exc)[:500])
+                        await session.commit()
                         print(f"[{key}] {m} FAILED {str(exc)[:160]}")
+                        fails += 1
+                        if fails >= 3:
+                            print(f"[{key}] 连续失败 3 次，停止该类型")
+                            break
+                continue
+
+            if c.backfill_mode in ("by_range_daily", "by_quarter"):
+                dates = (_quarter_ends(start, end) if c.backfill_mode == "by_quarter"
+                         else trade_days(conn, start, end))
+                fails = 0
+                for d in dates:
+                    pk = d.isoformat()
+                    if args.resume and status_map.get(pk) == "done":
+                        total["skipped"] += 1
+                        continue
+                    try:
+                        res = await method(start_date=d, end_date=d, ts_codes=None,
+                                           task_id="backfill", user_id=None)
+                        written = _written_or_fail(c, res)
+                        await progress.mark(key, d, "", "done", written)
+                        await session.commit()
+                        total["done"] += 1
+                        total["written"] += written
+                        fails = 0
+                    except Exception as exc:  # noqa: BLE001
+                        await session.rollback()
+                        total["failed"] += 1
+                        await progress.mark(key, d, "", "failed", 0, str(exc)[:500])
+                        await session.commit()
+                        print(f"[{key}] {d} FAILED {str(exc)[:160]}")
+                        fails += 1
+                        if fails >= 3:
+                            print(f"[{key}] 连续失败 3 次，停止该类型")
+                            break
                 continue
 
             # by_date / by_snapshot
             days = trade_days(conn, start, end)
+            if key in _HOURLY_APIS and len(days) > 1:
+                print(f"[{key}] SKIP 限 1 次/小时，只允许单日（本次 {len(days)} 天）")
+                total["skipped"] += 1
+                continue
+            fails = 0
             for d in days:
                 pk = d.isoformat()
                 if args.resume and status_map.get(pk) == "done":
@@ -278,22 +358,26 @@ async def _run(args) -> int:
                 try:
                     res = await method(start_date=d, end_date=d, ts_codes=None,
                                        task_id="backfill", user_id=None)
-                    written = int(res.get("records_added", 0) or 0)
-                    if args.apply:
-                        await progress.mark(key, d, "", "done", written)
-                        await session.commit()
+                    written = _written_or_fail(c, res)
+                    await progress.mark(key, d, "", "done", written)
+                    await session.commit()
                     total["done"] += 1
                     total["written"] += written
+                    fails = 0
                     if args.verify:
                         await _verify(session, conn, c, d, res)
-                    if args.apply and total["done"] % 20 == 0:
+                    if total["done"] % 20 == 0:
                         print(f"[{key}] {d} ... done={total['done']} written={total['written']}")
                 except Exception as exc:  # noqa: BLE001
+                    await session.rollback()
                     total["failed"] += 1
-                    if args.apply:
-                        await progress.mark(key, d, "", "failed", 0, str(exc)[:500])
-                        await session.commit()
+                    await progress.mark(key, d, "", "failed", 0, str(exc)[:500])
+                    await session.commit()
                     print(f"[{key}] {d} FAILED {str(exc)[:160]}")
+                    fails += 1
+                    if fails >= 3:
+                        print(f"[{key}] 连续失败 3 次，停止该类型")
+                        break
 
     conn.close()
     print(
@@ -305,6 +389,9 @@ async def _run(args) -> int:
 
 async def _verify(session, conn, contract, d: date, res: Dict) -> None:
     api_rows = int(res.get("total_items", 0) or 0)
+    if api_rows == 0 and contract.gate_mode == "dense":
+        print(f"[verify] {contract.data_type} {d} api=0 EMPTY")
+        return
     col = _DATE_COL.get(contract.data_type, "trade_date")
     shift = _DATE_SHIFT_DAYS.get(contract.data_type, 0)
     db_date = d + timedelta(days=shift)
@@ -362,9 +449,10 @@ def main() -> int:
 
     if args.estimate:
         return estimate(args)
-    if args.report and not args.apply and args.types == "all":
-        return report(args)
-    return asyncio.run(_run(args))
+    rc = asyncio.run(_run(args))
+    if args.report:
+        report(args)
+    return rc
 
 
 if __name__ == "__main__":

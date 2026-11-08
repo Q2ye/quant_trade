@@ -293,7 +293,9 @@ async def initialize (
 						DataType.MONEYFLOW_EXT, DataType.MONEYFLOW_IND,
 						DataType.MARKET_DAILY_INFO, DataType.BLOCK_TRADE,
 						DataType.INDEX_GLOBAL, DataType.FUT_DAILY,
-						DataType.FUT_HOLDING, DataType.FUT_WSR, DataType.FUT_SETTLE,
+						# FUT_HOLDING / FUT_WSR 按品种×交易所循环，单日约 140 次、
+						# 实测 25 分钟未完成 → 不进日终，按主力品种另行回填。
+						DataType.FUT_SETTLE,
 						DataType.FUT_MAPPING, DataType.FUT_INDEX_DAILY,
 						DataType.OPT_DAILY, DataType.CB_DAILY,
 						DataType.HSGT_TOP10, DataType.KPL_LIST,

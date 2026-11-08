@@ -120,7 +120,10 @@ def _run_cases(cases):
         src, pro = _source()
         df = getattr(src, method)(**kwargs)
         assert isinstance(df, pd.DataFrame), method
-        assert pro.calls == [(api, expected_kwargs)], method
+        assert pro.calls and pro.calls[0][0] == api, method
+        actual = {k: v for k, v in pro.calls[0][1].items()
+                  if k not in ("limit", "offset")}
+        assert actual == expected_kwargs, method
         if "trade_date" in df.columns:
             assert str(df["trade_date"].dtype).startswith("datetime64"), method
 
@@ -152,15 +155,22 @@ def test_p2():
 def test_empty_params_are_dropped():
     src, pro = _source()
     src.get_fx_daily(ts_code="", trade_date="20261106", start_date="", end_date=None)
-    assert pro.calls == [("fx_daily", {"trade_date": "20261106"})]
+    assert len(pro.calls) == 1
+    api, kwargs = pro.calls[0]
+    assert api == "fx_daily"
+    assert {k: v for k, v in kwargs.items() if k not in ("limit", "offset")} == {
+        "trade_date": "20261106"
+    }
 
 
-def test_query_error_returns_empty_dataframe(monkeypatch):
+def test_query_error_raises_not_empty(monkeypatch):
+    from shared.sources.tushare_source import TushareQueryError
+
     src, pro = _source()
 
     def boom(*args, **kwargs):
         raise RuntimeError("network down")
 
     monkeypatch.setattr(pro, "query", boom)
-    df = src.get_fx_daily(trade_date="20261106")
-    assert df.empty
+    with pytest.raises(TushareQueryError):
+        src.get_fx_daily(trade_date="20261106")

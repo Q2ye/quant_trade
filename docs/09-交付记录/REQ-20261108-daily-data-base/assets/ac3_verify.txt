@@ -1,4 +1,4 @@
 pytdx 未安装，XTP数据源功能受限
 数据工具包 1.0.0 加载完成
 包含 37 个导出项
-SUMMARY done=9 failed=0 skipped=0 written=45263
+SUMMARY done=9 failed=0 skipped=0 written=89846

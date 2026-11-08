@@ -159,7 +159,7 @@ def test_full_snapshot_and_fx_obasic_rename(make_svc):
     svc = make_svc()
     asyncio.run(svc._sync_ext("fx_basic"))
     rec = svc._ext_repos["fx_basic"].records[0]
-    assert rec["target_spread"] == 0.0001
+    assert float(rec["target_spread"]) == 0.0001
     assert "traget_spread" not in rec
 
 
@@ -187,12 +187,12 @@ def test_moneyflow_ext_dual_source(make_svc):
 def test_index_ths_member_snapshot(make_svc):
     svc = make_svc()
     asyncio.run(svc._sync_index_ths_member(
-        start_date=date(2026, 11, 6), end_date=date(2026, 11, 6)
+        start_date=date(2026, 11, 9), end_date=date(2026, 11, 9)
     ))
     recs = svc._ext_repos["index_ths_member"].records
     assert len(recs) == 2
     assert {r["index_code"] for r in recs} == {"885001.TI", "885002.TI"}
-    assert all(r["snapshot_date"] == date(2026, 11, 6) for r in recs)
+    assert all(r["snapshot_date"] == date(2026, 11, 9) for r in recs)
 
 
 def test_fut_holding_and_wsr_paths(make_svc):
