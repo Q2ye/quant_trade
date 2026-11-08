@@ -24,6 +24,8 @@ _EXPECTED_EXCLUDED = {
     DataType.TICK_QUOTES,
     DataType.ETF_MINUTE,
     DataType.FINANCIAL_DATA,
+    DataType.STK_FACTOR,
+    DataType.STK_FACTOR_PRO,
 }
 
 
@@ -36,15 +38,15 @@ def test_daily_types_are_exactly_seven():
     assert set(DAILY_STRATEGY_TYPES) == _EXPECTED_DAILY
 
 
-def test_excluded_types_are_exactly_four():
-    assert len(EXCLUDED_FROM_NIGHT) == 4
+def test_excluded_types_are_exactly_six():
+    assert len(EXCLUDED_FROM_NIGHT) == 6
     assert set(EXCLUDED_FROM_NIGHT) == _EXPECTED_EXCLUDED
 
 
 def test_night_types_cover_everything_else():
     expected = _all_types() - _EXPECTED_DAILY - _EXPECTED_EXCLUDED
-    assert len(NIGHT_SYNC_TYPES) == 102
-    assert len(set(NIGHT_SYNC_TYPES)) == 102
+    assert len(NIGHT_SYNC_TYPES) == 100
+    assert len(set(NIGHT_SYNC_TYPES)) == 100
     assert set(NIGHT_SYNC_TYPES) == expected
 
 
@@ -57,13 +59,17 @@ def test_night_covers_all_new_contracts():
     assert new_types <= set(NIGHT_SYNC_TYPES)
 
 
-def test_factor_and_financial_types_are_in_night():
-    for dt in (DataType.STK_FACTOR, DataType.STK_FACTOR_PRO,
-               DataType.IDX_FACTOR_PRO, DataType.FINANCIAL_INCOME,
+def test_index_factor_and_financial_types_are_in_night():
+    for dt in (DataType.IDX_FACTOR_PRO, DataType.FINANCIAL_INCOME,
                DataType.FINANCIAL_BALANCE, DataType.FINANCIAL_CASHFLOW):
         assert dt in NIGHT_SYNC_TYPES
 
 
-def test_minute_tick_and_merged_financial_are_not_in_night():
+def test_stock_factor_types_are_excluded():
+    assert DataType.STK_FACTOR not in NIGHT_SYNC_TYPES
+    assert DataType.STK_FACTOR_PRO not in NIGHT_SYNC_TYPES
+
+
+def test_excluded_types_are_not_in_night():
     for dt in _EXPECTED_EXCLUDED:
         assert dt not in NIGHT_SYNC_TYPES

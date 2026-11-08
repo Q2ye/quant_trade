@@ -7,12 +7,14 @@
 - ``NIGHT_SYNC_TYPES``：00:00 夜班同步，放**其余全部类型**（含财务、因子、
   目录、治理、周月线、宏观）。
 
-不纳入夜班的 4 个类型：
+不纳入夜班的 6 个类型：
   * ``MINUTE_QUOTES`` / ``TICK_QUOTES`` / ``ETF_MINUTE``：分钟/tick，数据量
     与既有决定（不做分钟/tick）不符；
   * ``FINANCIAL_DATA``：三表合并的旧类型，无独立同步方法；由
     ``FINANCIAL_INCOME`` / ``FINANCIAL_BALANCE`` / ``FINANCIAL_CASHFLOW``
-    分别同步。
+    分别同步；
+  * ``STK_FACTOR`` / ``STK_FACTOR_PRO``：用户 2026-11-08 决定不再同步
+    Tushare 自有股票因子表（``IDX_FACTOR_PRO`` 暂保留）。
 
 改动本文件等于改生产日终时序：新增类型前先确认它是否被当前 running
 策略或数据完整性门读取。依据见
@@ -42,6 +44,8 @@ EXCLUDED_FROM_NIGHT: Tuple[DataType, ...] = (
     DataType.TICK_QUOTES,
     DataType.ETF_MINUTE,
     DataType.FINANCIAL_DATA,     # 用 income/balance/cashflow 三个独立类型
+    DataType.STK_FACTOR,         # 用户 2026-11-08：不再同步 Tushare 自有股票因子
+    DataType.STK_FACTOR_PRO,     # 同上
 )
 
 # 其余全部类型 → 00:00 夜班（含 stk_factor / stk_factor_pro / 财务 / 目录 / 治理）

@@ -4,7 +4,7 @@ rootdir: E:\QuantitativeTrading\quant_trade\quant_server
 configfile: pyproject.toml
 testpaths: tests
 plugins: anyio-3.7.1
-collected 613 items
+collected 614 items
 
 tests\api\test_websocket\test_ws_auth.py ......                          [  0%]
 tests\core\test_engines\test_data_integrity_gate.py .......              [  2%]
@@ -26,19 +26,19 @@ tests\modules\test_data\test_drop_unstorable_records.py ................ [ 21%]
 tests\modules\test_data\test_moneyflow_empty_accounting.py ...........   [ 23%]
 tests\modules\test_data\test_services.py ssss                            [ 24%]
 tests\modules\test_data\test_simple.py ..                                [ 24%]
-tests\modules\test_data\test_sync_schedule.py .......                    [ 25%]
+tests\modules\test_data\test_sync_schedule.py ........                   [ 25%]
 tests\modules\test_pit_financial.py .....ssss                            [ 27%]
 tests\modules\test_strategy\test_bottom_strategy_p1_fixes.py ........... [ 28%]
 ...........                                                              [ 30%]
 tests\modules\test_strategy\test_cross_market_dup_bar.py .....           [ 31%]
-tests\modules\test_strategy\test_cross_market_exit_reason.py ...         [ 31%]
-tests\modules\test_strategy\test_cross_market_exit_retry.py ......       [ 32%]
-tests\modules\test_strategy\test_cross_market_f9_guard.py ......         [ 33%]
+tests\modules\test_strategy\test_cross_market_exit_reason.py ...         [ 32%]
+tests\modules\test_strategy\test_cross_market_exit_retry.py ......       [ 33%]
+tests\modules\test_strategy\test_cross_market_f9_guard.py ......         [ 34%]
 tests\modules\test_strategy\test_cross_market_filters.py ............... [ 36%]
 ......                                                                   [ 37%]
 tests\modules\test_strategy\test_cross_market_held_days.py .....         [ 38%]
-tests\modules\test_strategy\test_cross_market_index_cache.py ........... [ 39%]
-......                                                                   [ 40%]
+tests\modules\test_strategy\test_cross_market_index_cache.py ........... [ 40%]
+......                                                                   [ 41%]
 tests\modules\test_strategy\test_cross_market_min_hold.py .............  [ 43%]
 tests\modules\test_strategy\test_cross_market_scenarios.py ............. [ 45%]
 .                                                                        [ 45%]
@@ -49,7 +49,7 @@ tests\modules\test_strategy\test_high_vol_candidate_race_fix.py ........ [ 49%]
 ...                                                                      [ 50%]
 tests\modules\test_strategy\test_high_vol_momentum.py ..........s...s... [ 53%]
 .                                                                        [ 53%]
-tests\modules\test_strategy\test_high_vol_v8_confirm.py ssssssssssssssss [ 55%]
+tests\modules\test_strategy\test_high_vol_v8_confirm.py ssssssssssssssss [ 56%]
 ssssssss                                                                 [ 57%]
 tests\modules\test_strategy\test_high_vol_v90_exit.py sssssss            [ 58%]
 tests\modules\test_strategy\test_industry_rotation.py ssssssssssssssssss [ 61%]
@@ -175,4 +175,4 @@ tests/modules/test_strategy/test_high_vol_candidate_race_fix.py::TestCandidateRa
   See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-================ 547 passed, 66 skipped, 55 warnings in 4.20s =================
+================ 548 passed, 66 skipped, 55 warnings in 4.24s =================
