@@ -61,6 +61,15 @@ def resolve_daily_sync_time(
     return default
 
 
+def should_run_night(prev_day: Any, is_trading_day: bool) -> bool:
+    """夜班是否执行：周末跳过；A 股节假日但为工作日仍跑（跨市场数据）。
+
+    00:00 周六跑周五数据；00:00 周日/周一跳过；A 股休市但为工作日
+    （如国庆期间）仍需同步港股/美股/全球指数。
+    """
+    return bool(is_trading_day) or prev_day.weekday() < 5
+
+
 def hhmm_to_cron(hhmm: Any, default: str = "00:00") -> str:
     """把 HH:MM 转成 APScheduler 的 crontab（分 时 * * *）。
 
@@ -316,7 +325,7 @@ class MainEngine(EngineBase):
     async def _run_night_pipeline(self, prev_day) -> None:
         """夜间补充同步：只同步、不驱动策略；每任务独立 try/except。"""
         if not self._night_tasks:
-            logger.warning("夜间任务注册表为空（data 模块可能被禁用），夜班空转")
+            logger.info("夜间任务注册表为空（data 模块可能被禁用），夜班空转")
             return
         for _order, name, fn in self._night_tasks:
             try:
@@ -490,7 +499,7 @@ class MainEngine(EngineBase):
                 today = _datetime.now(ZoneInfo("Asia/Shanghai")).date()
                 prev_day = today - _timedelta(days=1)
                 is_trade = await self._is_trading_day(prev_day)
-                if not is_trade and prev_day.weekday() >= 5:
+                if not should_run_night(prev_day, is_trade):
                     logger.info("夜间同步跳过: %s 周末", prev_day)
                     return
                 if not is_trade:

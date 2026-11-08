@@ -23,9 +23,11 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from datetime import date, timedelta
+from typing import Optional, Tuple
 
 from modules.data.constants import DataType
+from modules.data.data_contracts import DATA_CONTRACTS
 
 # 19:20 必须同步（少一张会导致策略缺数据或数据完整性门失败）
 DAILY_STRATEGY_TYPES: Tuple[DataType, ...] = (
@@ -48,14 +50,39 @@ EXCLUDED_FROM_NIGHT: Tuple[DataType, ...] = (
     DataType.STK_FACTOR_PRO,     # 同上
 )
 
-# 其余全部类型 → 00:00 夜班（含 stk_factor / stk_factor_pro / 财务 / 目录 / 治理）
+# 其余全部类型 → 00:00 夜班（不含 EXCLUDED_FROM_NIGHT）
 NIGHT_SYNC_TYPES: Tuple[DataType, ...] = tuple(
     dt for dt in DataType
     if dt not in DAILY_STRATEGY_TYPES and dt not in EXCLUDED_FROM_NIGHT
 )
 
+
+def night_start_for(prev_day: date, data_type: DataType) -> Optional[date]:
+    """夜班滚动窗口：迟发布的数据用回看区间，日频/快照只查 prev_day。
+
+    - ``by_month`` / ``frequency=monthly``：62 天（2–3 个月）
+    - ``by_quarter``：200 天（2–3 个季度末）
+    - ``by_range`` / ``by_range_daily``：7 天（公告可能迟发布）
+    - 旧宏观 CPI/PPI/GDP：62 天
+    - 其余：None（由 sync_market_data 用 end_date=prev_day）
+    """
+    c = DATA_CONTRACTS.get(data_type.value)
+    if c is None:
+        if data_type in (DataType.CPI, DataType.PPI, DataType.GDP):
+            return prev_day - timedelta(days=62)
+        return None
+    if c.backfill_mode == "by_month" or c.frequency == "monthly":
+        return prev_day - timedelta(days=62)
+    if c.backfill_mode == "by_quarter":
+        return prev_day - timedelta(days=200)
+    if c.backfill_mode in ("by_range", "by_range_daily"):
+        return prev_day - timedelta(days=7)
+    return None
+
+
 __all__ = [
     "DAILY_STRATEGY_TYPES",
     "NIGHT_SYNC_TYPES",
     "EXCLUDED_FROM_NIGHT",
+    "night_start_for",
 ]

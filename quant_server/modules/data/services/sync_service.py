@@ -4256,6 +4256,8 @@ class DataSyncService(DailyBaseSyncProvider):
 		async with SyncTimingLogger(logger, label, slow_threshold=30.0) as timer:
 			async def _process_one(session, ts_code):
 				total_added = 0
+				failed_count = 0
+				empty_count = 0
 				_table_configs = [t for t in [
 					("income", source.get_income_statement, FinancialIncomeRepository(session), _income_cols),
 					("balance", source.get_balance_sheet, FinancialBalanceRepository(session), _balance_cols),
@@ -4266,6 +4268,7 @@ class DataSyncService(DailyBaseSyncProvider):
 					try:
 						df = await self._cancellable_run_in_executor(api_fn, symbol=ts_code, period='')
 						if df is None or df.empty:
+							empty_count += 1
 							continue
 						data = _convert_records_datetime(df.to_dict("records"))
 						_preprocess_records(data, date_fields=('ann_date', 'f_ann_date', 'end_date'), known_cols=cols)
@@ -4275,14 +4278,19 @@ class DataSyncService(DailyBaseSyncProvider):
 							_key = (_d.get('ts_code'), str(_d.get('ann_date')))
 							_seen[_key] = _d
 						total_added += await repo.bulk_upsert(list(_seen.values()))
-					except Exception:
-						pass
-				return {"added": total_added, "updated": 0}
+					except Exception as exc:  # noqa: BLE001 - 单表失败不阻断其他表
+						failed_count += 1
+						logger.warning(
+							"[%s] %s %s 同步失败: %s",
+							label, ts_code, stmt_type, str(exc)[:200])
+				# failed 用 0/1 表示「该股至少一张表失败」，_parallel_for_each
+				# 按 truthy 累加 records_failed；empty 用条数累加 records_empty。
+				return {"added": total_added, "updated": 0,
+				        "failed": 1 if failed_count else 0,
+				        "empty": empty_count}
 
 			result = await self._parallel_for_each(ts_codes, label, task_id, user_id, _process_one,
 			                                       rate_key="financial_statement", max_concurrency=6)
-			if not result.get("cancelled"):
-				result["message"] = f"{label}数据同步完成"
 			if not result.get("cancelled"):
 				result["message"] = f"{label}数据同步完成"
 			return result

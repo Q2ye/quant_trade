@@ -55,3 +55,13 @@ def test_system_config_has_night_defaults():
     cfg = SystemSettings()
     assert cfg.night_sync_time == "00:00"
     assert cfg.night_sync_enabled is True
+
+
+def test_should_run_night():
+    from datetime import date
+    from core.engines.system.main_engine import should_run_night
+
+    assert should_run_night(date(2026, 11, 6), True) is True    # 周五交易日
+    assert should_run_night(date(2026, 11, 7), False) is False  # 周六
+    assert should_run_night(date(2026, 10, 2), False) is True   # 周五 A 股休市
+    assert should_run_night(date(2026, 11, 9), True) is True    # 周一交易日

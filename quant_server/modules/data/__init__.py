@@ -30,8 +30,12 @@ def should_register_daily_tasks (environment: str) -> bool:
 
 from typing import Dict
 
-# 日终/夜间同步清单（19:20 七类 / 00:00 六十二类）
-from modules.data.sync_schedule import DAILY_STRATEGY_TYPES, NIGHT_SYNC_TYPES
+# 日终/夜间同步清单（19:20 七类 / 00:00 一百类）
+from modules.data.sync_schedule import (
+	DAILY_STRATEGY_TYPES,
+	NIGHT_SYNC_TYPES,
+	night_start_for,
+)
 
 # 导出常量
 from modules.data.constants import (
@@ -274,13 +278,18 @@ async def initialize (
 
 				``start_for(dt)`` 可选：返回该类型的起始日（None = 与 end_date 同一天）。
 				月/季/事件类型用它做滚动窗口，避免「只查前一天」漏掉迟发布数据。
+				所有 DataSyncService 共享一个线程池，批次结束统一关闭，避免
+				每个类型自建 ThreadPoolExecutor 长期堆积。
 				"""
+				from concurrent.futures import ThreadPoolExecutor
 				from shared.database.session import get_session_manager
 				from modules.data.services.sync_service import DataSyncService
 				import asyncio as _asyncio
 
 				sm = get_session_manager()
 				_sem = _asyncio.Semaphore(3)
+				_executor = ThreadPoolExecutor(
+					max_workers=8, thread_name_prefix="sync_batch")
 
 				async def _sync_one(dt):
 					async with _sem:
@@ -289,7 +298,8 @@ async def initialize (
 							# 每个同步用独立 session（gather 共享 session 会报
 							# "concurrent operations not permitted"）
 							async with sm.get_session() as _sess:
-								_svc = DataSyncService(session=_sess)
+								_svc = DataSyncService(
+									session=_sess, executor=_executor)
 								result = await _svc.sync_market_data(
 									dt, start_date=start_date, end_date=end_date)
 							ok = bool(result.get("success")) if isinstance(result, dict) else False
@@ -299,7 +309,8 @@ async def initialize (
 								logger.info("%s同步 %s 完成: records=%s",
 									label, dt.value, n)
 							else:
-								msg = (result.get("message") or result.get("error") or "") \
+								# 异常路径的 message 是泛化文案，优先取 error
+								msg = (result.get("error") or result.get("message") or "") \
 									if isinstance(result, dict) else ""
 								logger.warning("%s同步 %s 业务失败: %s",
 									label, dt.value, str(msg)[:200])
@@ -308,9 +319,12 @@ async def initialize (
 							logger.error("%s同步 %s 失败: %s", label, dt.value, sync_err)
 							return False
 
-				results = await _asyncio.gather(
-					*[_sync_one(dt) for dt in types], return_exceptions=True)
-				return all(r is True for r in results)
+				try:
+					results = await _asyncio.gather(
+						*[_sync_one(dt) for dt in types], return_exceptions=True)
+					return all(r is True for r in results)
+				finally:
+					_executor.shutdown(wait=False)
 
 			async def _task_sync_daily(today):
 				"""19:20 日终：只同步策略执行/门禁/派生任务所需的 7 类。"""
@@ -320,7 +334,7 @@ async def initialize (
 					logger.warning("日终数据同步部分失败，仍尝试驱动策略")
 
 			async def _task_sync_night(prev_day):
-				"""00:00 夜班：同步其余全部非分钟/tick 类型；不参与策略驱动。
+				"""00:00 夜班：同步其余 100 类（不含 6 个排除）；不参与策略驱动。
 
 				月/季/事件类型用滚动窗口，避免「只查前一天」漏掉迟发布数据：
 				- by_month / frequency=monthly：回看 62 天（2–3 个月）
@@ -329,27 +343,11 @@ async def initialize (
 				- 旧宏观（CPI/PPI/GDP）：回看 62 天
 				- 其余（日频/快照/财务/因子/目录）：交给各自同步方法的默认范围
 				"""
-				from datetime import timedelta as _timedelta
-				from modules.data.data_contracts import DATA_CONTRACTS
-
-				def _start_for(dt):
-					c = DATA_CONTRACTS.get(dt.value)
-					if c is None:
-						if dt in (DataType.CPI, DataType.PPI, DataType.GDP):
-							return prev_day - _timedelta(days=62)
-						return None
-					if c.backfill_mode == "by_month" or c.frequency == "monthly":
-						return prev_day - _timedelta(days=62)
-					if c.backfill_mode == "by_quarter":
-						return prev_day - _timedelta(days=200)
-					if c.backfill_mode in ("by_range", "by_range_daily"):
-						return prev_day - _timedelta(days=7)
-					return None
-
 				logger.info("夜间补充同步开始: %s 类, 目标日 %s",
 					len(NIGHT_SYNC_TYPES), prev_day)
 				sync_ok = await _run_sync_batch(
-					NIGHT_SYNC_TYPES, prev_day, "夜间", start_for=_start_for)
+					NIGHT_SYNC_TYPES, prev_day, "夜间",
+					start_for=lambda dt: night_start_for(prev_day, dt))
 				if not sync_ok:
 					logger.warning("夜间补充同步部分失败（非致命）")
 
@@ -381,9 +379,12 @@ async def initialize (
 					#    实测 2026-10-09 / 10-12 北交所 344 只基准里缺 253 只（覆盖率 26.5%），
 					#    而 09-30 / 10-08 均为 100% —— 缺口起始点与主板一致，同一根因。
 					#    ⇒ 两张表都不再排除。
-					_bj_exclude = {"stock_daily_basic": "", "stock_moneyflow": ""}
+					# 2026-11-08：MONEYFLOW 已移出 19:20（00:00 夜班），这里只查仍在
+					# 19:20 的 stock_daily_basic；否则每个交易日都会因 moneyflow
+					# 当日 0 行误报「覆盖不足」。
+					_bj_exclude = {"stock_daily_basic": ""}
 					async with sm.get_session() as _s:
-						for _tbl in ("stock_daily_basic", "stock_moneyflow"):
+						for _tbl in ("stock_daily_basic",):
 							_r = await _s.execute(_text(
 								"SELECT s.ts_code FROM stock_daily s "
 								"LEFT JOIN {t} x ON x.ts_code = s.ts_code AND x.trade_date = s.trade_date "
@@ -416,8 +417,7 @@ async def initialize (
 									"--start <近端交易日> --min-missing 1",
 									_tbl, today, _missing, _base,
 									(_base - _missing) / _base * 100,
-									{"stock_daily_basic": "daily_basic",
-									 "stock_moneyflow": "moneyflow"}.get(_tbl, _tbl))
+									{"stock_daily_basic": "daily_basic"}.get(_tbl, _tbl))
 							else:
 								logger.info(
 									"覆盖度校验: %s 当日(%s)覆盖正常（缺失 %d/%d）",

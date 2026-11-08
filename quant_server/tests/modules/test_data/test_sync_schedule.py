@@ -73,3 +73,27 @@ def test_stock_factor_types_are_excluded():
 def test_excluded_types_are_not_in_night():
     for dt in _EXPECTED_EXCLUDED:
         assert dt not in NIGHT_SYNC_TYPES
+
+
+def test_night_start_windows():
+    from datetime import date, timedelta
+    from modules.data.sync_schedule import night_start_for
+
+    d = date(2026, 11, 9)
+    assert night_start_for(d, DataType.MACRO_SF) == d - timedelta(days=62)
+    assert night_start_for(d, DataType.CB_SHARE) == d - timedelta(days=200)
+    assert night_start_for(d, DataType.FUND_MANAGER) == d - timedelta(days=7)
+    assert night_start_for(d, DataType.FX_DAILY) is None
+    assert night_start_for(d, DataType.CPI) == d - timedelta(days=62)
+
+
+def test_night_types_have_sync_methods():
+    """夜班 100 类都必须在 _sync_method_map 或 DATA_CONTRACTS 中有实现。"""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[3]
+           / "modules/data/services/sync_service.py").read_text(encoding="utf-8")
+    explicit = set(re.findall(r"DataType\.([A-Z0-9_]+):", src))
+    for dt in NIGHT_SYNC_TYPES:
+        assert dt.name in explicit or dt.value in DATA_CONTRACTS, dt.name
