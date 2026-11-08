@@ -60,7 +60,7 @@ P0C = [
     ("get_top_list", {"trade_date": "20261106"}, "top_list", {"trade_date": "20261106"}),
     ("get_top_inst", {"trade_date": "20261106"}, "top_inst", {"trade_date": "20261106"}),
     ("get_cyq_perf", {"trade_date": "20261106"}, "cyq_perf", {"trade_date": "20261106"}),
-    ("get_ths_index", {}, "ths_index", {"exchange": "A", "type": "N"}),
+    ("get_ths_index", {}, "ths_index", {"exchange": "A"}),
     ("get_ths_daily", {"trade_date": "20261106"}, "ths_daily", {"trade_date": "20261106"}),
     ("get_ths_member", {"ts_code": "885000.TI"}, "ths_member", {"ts_code": "885000.TI"}),
     ("get_moneyflow_dc", {"trade_date": "20261106"}, "moneyflow_dc", {"trade_date": "20261106"}),
@@ -174,3 +174,58 @@ def test_query_error_raises_not_empty(monkeypatch):
     monkeypatch.setattr(pro, "query", boom)
     with pytest.raises(TushareQueryError):
         src.get_fx_daily(trade_date="20261106")
+
+
+def test_pagination_stops_on_repeated_page():
+    """接口忽略 offset、反复返回同一页 → 必须中止，不能死循环。"""
+    from shared.sources.tushare_source import TushareQueryError
+
+    class IgnoringOffsetPro:
+        def __init__(self):
+            self.calls = 0
+
+        def query(self, api, **kwargs):
+            self.calls += 1
+            return pd.DataFrame({"ts_code": [f"{i:06d}" for i in range(6000)],
+                                 "trade_date": pd.Timestamp("2026-11-06")})
+
+    src = TushareSource.__new__(TushareSource)
+    src.pro = IgnoringOffsetPro()
+    with pytest.raises(TushareQueryError):
+        src.get_fx_daily(trade_date="20261106")
+    assert src.pro.calls <= 3
+
+
+def test_pagination_falls_back_on_unknown_error_text():
+    """接口拒绝 limit/offset 且错误文本未知 → 首页无条件回退单次调用。"""
+    class NoPagingPro:
+        def __init__(self):
+            self.calls = 0
+
+        def query(self, api, **kwargs):
+            self.calls += 1
+            if "limit" in kwargs or "offset" in kwargs:
+                raise RuntimeError("invalid argument")
+            return pd.DataFrame({"ts_code": ["A"], "trade_date": pd.Timestamp("2026-11-06")})
+
+    src = TushareSource.__new__(TushareSource)
+    src.pro = NoPagingPro()
+    df = src.get_fx_daily(trade_date="20261106")
+    assert len(df) == 1
+    assert src.pro.calls == 2
+
+
+def test_pagination_collects_multiple_pages():
+    class PagedPro:
+        def query(self, api, **kwargs):
+            offset = kwargs.get("offset", 0)
+            n = 5000 if offset == 0 else 10
+            return pd.DataFrame({
+                "ts_code": [f"{offset + i:06d}" for i in range(n)],
+                "trade_date": pd.Timestamp("2026-11-06"),
+            })
+
+    src = TushareSource.__new__(TushareSource)
+    src.pro = PagedPro()
+    df = src.get_fx_daily(trade_date="20261106")
+    assert len(df) == 5010

@@ -1534,11 +1534,13 @@ class TushareSource(BaseDataSource):
 			if last is not None and now - last < 3600:
 				raise TushareQueryError(
 					f"{api} 限 1 次/小时，距上次调用 {int(now - last)} 秒")
-			_HOURLY_LAST[api] = now
 
 		_check_rate_limit(api, max_calls=_RATE_LIMITS.get(api, 500))
 		frames = []
 		offset = 0
+		pages = 0
+		max_pages = 1000
+		last_first = None
 		try:
 			while True:
 				try:
@@ -1546,24 +1548,34 @@ class TushareSource(BaseDataSource):
 						df = self.pro.query(api, **kwargs)
 					else:
 						df = self.pro.query(api, limit=page_size, offset=offset, **kwargs)
-				except Exception as exc:
-					msg = str(exc)
-					supports_paging = not any(
-						k in msg.lower() for k in
-						("limit", "offset", "unexpected keyword", "参数")
-					)
-					if offset == 0 and not supports_paging:
-						# 接口不支持 limit/offset → 退回单次调用
+				except Exception:
+					if offset == 0 and not hourly:
+						# 首页失败：无条件回退单次调用。接口可能不支持 limit/offset，
+						# 且错误文本未必含已知关键字 —— 不能靠猜文本决定是否回退。
 						df = self.pro.query(api, **kwargs)
 					else:
 						raise
+				pages += 1
+				if pages > max_pages:
+					raise TushareQueryError(
+						f"{api} 分页超过 {max_pages} 页，已中止（疑似 offset 不生效）")
 				if df is None or df.empty:
 					break
+				first = df.iloc[0].to_dict()
+				if offset > 0 and last_first is not None and first == last_first:
+					raise TushareQueryError(
+						f"{api} 分页返回重复页（offset 可能不生效）")
+				last_first = first
 				frames.append(df)
 				if hourly or len(df) < page_size:
 					break
 				offset += page_size
+			if hourly:
+				# 成功后才占用 1 小时窗口；失败（网络抖动）允许重试
+				_HOURLY_LAST[api] = time.monotonic()
 		except Exception as exc:
+			if hourly and _is_rate_limit_error(exc):
+				_HOURLY_LAST[api] = time.monotonic()
 			_log_tushare_error(api, exc)
 			raise TushareQueryError(f"{api} 取数失败: {str(exc)[:200]}") from exc
 
@@ -1716,8 +1728,12 @@ class TushareSource(BaseDataSource):
 			ts_code=ts_code, trade_date=trade_date,
 			start_date=start_date, end_date=end_date))
 
-	def get_ths_index(self, exchange: str = "A", type: str = "N") -> pd.DataFrame:
-		"""THS 概念分类（Tushare ths_index）。"""
+	def get_ths_index(self, exchange: str = "A", type: str = "") -> pd.DataFrame:
+		"""THS 概念/行业/地域/风格分类（Tushare ths_index）。
+
+		type 留空 = 不过滤，返回 N/I/R/S 全部；传 'N' 只会得到概念（实测 395 条，
+		而全量约 1,666 条）。
+		"""
 		return self._query_ext("ths_index", **self._ext_params(
 			exchange=exchange, type=type))
 

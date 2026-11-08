@@ -25,7 +25,7 @@ stock_moneyflow_ext      by_date               2752
 stock_moneyflow_ind      by_date               4128  
 market_daily_info        by_date               8178  
 stock_block_trade        by_date               6504  
-index_global_daily       by_date               6504  
+index_global_daily       by_date               7005  
 fut_basic                full_snapshot            6  
 fut_daily                by_date               6504  
 fut_holding              by_date             150150  
@@ -39,7 +39,7 @@ cb_basic                 full_snapshot            1
 cb_issue                 by_range                 1  
 cb_call                  by_range                 1  
 cb_daily                 by_date               2145  
-cb_share                 by_range                 1  
+cb_share                 by_quarter              35  
 cb_rating                by_range              1200  
 stock_hsgt_top10         by_date               5266  
 stock_pledge_detail      by_range                 1  
@@ -49,13 +49,13 @@ stock_kpl_list           by_date               2145
 stock_hm_list            full_snapshot            1  
 macro_eco_cal            by_range                 1  
 hk_basic                 full_snapshot            1  
-hk_daily                 by_date               5304  WARN hk_daily 限 1 次/小时，预计 5304 小时
+hk_daily                 by_date               5699  WARN hk_daily 限 1 次/小时，预计 5699 小时
 us_basic                 full_snapshot            1  
-us_daily                 by_date               5304  WARN us_daily 限 1 次/小时，预计 5304 小时
+us_daily                 by_date               5699  WARN us_daily 限 1 次/小时，预计 5699 小时
 ggt_daily                by_date               2910  
 fund_basic               full_snapshot            1  
 fund_company             full_snapshot            1  
-fund_manager             by_range                 1  
-fund_div                 by_range                 1  
+fund_manager             by_range_daily           1  
+fund_div                 by_range_daily           1  
 fund_share               by_date               5304  
 fund_daily_ex            by_date               5304  

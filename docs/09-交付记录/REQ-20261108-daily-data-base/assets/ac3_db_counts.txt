@@ -1,0 +1,3 @@
+fx_daily [(datetime.date(2026, 11, 4), 101), (datetime.date(2026, 11, 5), 101), (datetime.date(2026, 11, 6), 101)]
+stock_margin_detail [(datetime.date(2026, 11, 3), 4486), (datetime.date(2026, 11, 4), 4487), (datetime.date(2026, 11, 5), 4487)]
+fund_nav [(datetime.date(2026, 11, 3), 25717), (datetime.date(2026, 11, 4), 25693), (datetime.date(2026, 11, 5), 24673)]

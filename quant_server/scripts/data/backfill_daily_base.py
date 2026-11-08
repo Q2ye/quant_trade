@@ -15,7 +15,7 @@
   cd quant_server
   .venv/Scripts/python.exe scripts/data/backfill_daily_base.py --estimate
   .venv/Scripts/python.exe scripts/data/backfill_daily_base.py --types fx_daily,margin_detail --start 20261103 --end 20261105 --verify --apply
-  .venv/Scripts/python.exe scripts/data/backfill_daily_base.py --all --resume --report --apply
+  .venv/Scripts/python.exe scripts/data/backfill_daily_base.py --types all --resume --report --apply
 """
 
 from __future__ import annotations
@@ -127,16 +127,43 @@ def months(start: date, end: date) -> List[str]:
     return out
 
 
-def _resolve_types(raw: str) -> List[str]:
+def _resolve_types(raw: str, exclude: str = "") -> List[str]:
     from modules.data.data_contracts import DATA_CONTRACTS
 
     if not raw or raw == "all":
-        return list(DATA_CONTRACTS)
-    wanted = [x.strip() for x in raw.split(",") if x.strip()]
-    bad = [x for x in wanted if x not in DATA_CONTRACTS]
-    if bad:
-        raise SystemExit(f"未知 data_type：{bad}")
-    return wanted
+        keys = list(DATA_CONTRACTS)
+    else:
+        keys = [x.strip() for x in raw.split(",") if x.strip()]
+        bad = [x for x in keys if x not in DATA_CONTRACTS]
+        if bad:
+            raise SystemExit(f"未知 data_type：{bad}")
+    skip = {x.strip() for x in exclude.split(",") if x.strip()}
+    bad_skip = [x for x in skip if x not in DATA_CONTRACTS]
+    if bad_skip:
+        raise SystemExit(f"未知 exclude：{bad_skip}")
+    return [k for k in keys if k not in skip]
+
+
+def _days_for(key: str, conn, start: date, end: date) -> List[date]:
+    """按表的日历取日期：公告类=自然日；跨市场=工作日；其余=A股交易日。"""
+    from modules.data.services.sync_daily_base import (
+        _ALL_DAYS_TYPES,
+        _NATURAL_CALENDAR_TYPES,
+    )
+
+    if start > end:
+        return []
+    if key in _ALL_DAYS_TYPES:
+        return [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    if key in _NATURAL_CALENDAR_TYPES:
+        out: List[date] = []
+        cur = start
+        while cur <= end:
+            if cur.weekday() < 5:
+                out.append(cur)
+            cur += timedelta(days=1)
+        return out
+    return trade_days(conn, start, end)
 
 
 def _start_for(contract, override: Optional[date]) -> Optional[date]:
@@ -173,10 +200,10 @@ def estimate(args) -> int:
     print("# calls 为估算值；已乘 _CALL_MULTIPLIER 与 _PAGE_MULTIPLIER（每 5,000 行一页）")
     print(f"{'data_type':<24} {'mode':<16} {'calls':>9}  说明")
     try:
-        for key in _resolve_types(args.types):
+        for key in _resolve_types(args.types, args.exclude):
             c = DATA_CONTRACTS[key]
             start = _start_for(c, args.start)
-            days = len(trade_days(conn, start or end, end))
+            days = len(_days_for(key, conn, start or end, end))
             if key in _FIXED_CALLS:
                 calls = _FIXED_CALLS[key]
             elif c.backfill_mode == "full_snapshot":
@@ -204,11 +231,17 @@ def estimate(args) -> int:
 
 
 def _written_or_fail(contract, res: Dict) -> int:
-    """dense 表接口返回 0 行时按失败处理，避免把限流/权限/空响应当 done。"""
+    """dense 表：空返回、0 写入、写入低于 99% 都按失败处理，避免误记 done。"""
     written = int(res.get("records_added", 0) or 0)
     total_items = int(res.get("total_items", 0) or 0)
-    if contract.gate_mode == "dense" and total_items == 0:
-        raise RuntimeError("接口返回空（dense 表按失败处理）")
+    if contract.gate_mode == "dense":
+        if total_items == 0:
+            raise RuntimeError("接口返回空（dense 表按失败处理）")
+        if written == 0:
+            raise RuntimeError("dense 表 0 行写入（可能全部被 NOT NULL 过滤丢弃）")
+        if written < total_items * 0.99:
+            raise RuntimeError(
+                f"dense 表写入 {written}/{total_items}，低于 99%")
     return written
 
 
@@ -227,7 +260,7 @@ async def _run(args) -> int:
         os.environ["TUSHARE_TOKEN"] = token
     conn = connect_db(env)
     end = args.end or date.today()
-    types = _resolve_types(args.types)
+    types = _resolve_types(args.types, args.exclude)
 
     pool = get_connection_pool()
     try:
@@ -247,6 +280,9 @@ async def _run(args) -> int:
             start = _start_for(c, args.start) or end
             status_map = await progress.get_status_map(key)
 
+            if args.verify and c.backfill_mode not in ("by_date",):
+                print(f"[verify] SKIP {key}：仅 by_date 支持逐日校验")
+
             if not args.apply:
                 # 默认 dry-run：只打印计划，不调用接口、不写库
                 if c.backfill_mode in ("full_snapshot", "by_range"):
@@ -254,7 +290,7 @@ async def _run(args) -> int:
                 elif c.backfill_mode == "by_month":
                     span = f"{months(start, end)[0]}~{months(start, end)[-1]}"
                 else:
-                    span = f"{start}~{end} ({len(trade_days(conn, start, end))} 个交易日)"
+                    span = f"{start}~{end} ({len(_days_for(key, conn, start, end))} 个日期)"
                 print(f"[dry-run] {key:<24} {c.backfill_mode:<14} {span}")
                 total["skipped"] += 1
                 continue
@@ -315,7 +351,7 @@ async def _run(args) -> int:
 
             if c.backfill_mode in ("by_range_daily", "by_quarter"):
                 dates = (_quarter_ends(start, end) if c.backfill_mode == "by_quarter"
-                         else trade_days(conn, start, end))
+                         else _days_for(key, conn, start, end))
                 fails = 0
                 for d in dates:
                     pk = d.isoformat()
@@ -344,7 +380,7 @@ async def _run(args) -> int:
                 continue
 
             # by_date / by_snapshot
-            days = trade_days(conn, start, end)
+            days = _days_for(key, conn, start, end)
             if key in _HOURLY_APIS and len(days) > 1:
                 print(f"[{key}] SKIP 限 1 次/小时，只允许单日（本次 {len(days)} 天）")
                 total["skipped"] += 1
@@ -438,6 +474,7 @@ def report(args) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--types", default="all", help="逗号分隔的 data_type，或 all")
+    ap.add_argument("--exclude", default="", help="逗号分隔的排除类型")
     ap.add_argument("--start", type=parse_day, default=None)
     ap.add_argument("--end", type=parse_day, default=None)
     ap.add_argument("--resume", action="store_true", help="跳过已 done")

@@ -49,6 +49,8 @@ THS_MEMBER_IMPLEMENTATION_DATE = date(2026, 11, 8)
 _NATURAL_CALENDAR_TYPES = {"hk_daily", "us_daily", "index_global_daily"}
 # 1 次/小时接口：只允许单日同步
 _HOURLY_TYPES = {"hk_daily", "us_daily"}
+# 公告类事件表：按自然日（含周末/节假日）遍历，否则非交易日公告会永久缺失
+_ALL_DAYS_TYPES = {"fund_manager", "fund_div"}
 
 # 通用引擎：data_type -> (模式, 取数函数)
 # 取数函数签名：
@@ -285,14 +287,6 @@ class DailyBaseSyncProvider:
                             record[key] = int(float(s))
                         except ValueError:
                             record[key] = None
-                elif isinstance(t, Numeric):
-                    if s in nulls:
-                        record[key] = None
-                    else:
-                        try:
-                            record[key] = Decimal(s)
-                        except Exception:  # noqa: BLE001 - 非数值串按缺失处理
-                            record[key] = None
                 elif isinstance(t, Float):
                     if s in nulls:
                         record[key] = None
@@ -301,11 +295,22 @@ class DailyBaseSyncProvider:
                             record[key] = float(s)
                         except ValueError:
                             record[key] = None
+                elif isinstance(t, Numeric):
+                    if s in nulls:
+                        record[key] = None
+                    else:
+                        try:
+                            record[key] = Decimal(s)
+                        except Exception:  # noqa: BLE001 - 非数值串按缺失处理
+                            record[key] = None
                 elif isinstance(t, (Date, DateTime)):
                     ts = pd.to_datetime(s, errors="coerce")
                     record[key] = None if pd.isna(ts) else ts.date()
             elif isinstance(t, (Integer, BigInteger)) and isinstance(value, float):
                 record[key] = int(value) if value.is_integer() else value
+            elif isinstance(t, Float) and isinstance(value, (int, float)) \
+                    and not isinstance(value, bool):
+                record[key] = float(value)
             elif isinstance(t, Numeric) and isinstance(value, (int, float)) \
                     and not isinstance(value, bool):
                 record[key] = Decimal(str(value))
@@ -444,7 +449,12 @@ class DailyBaseSyncProvider:
             total += len(got)
             await flush()
         elif mode == "by_range_daily":
-            for i, d in enumerate(await self._ext_trade_dates(start, end, data_type), 1):
+            if data_type in _ALL_DAYS_TYPES:
+                days = [start + timedelta(days=i)
+                        for i in range((end - start).days + 1)]
+            else:
+                days = await self._ext_trade_dates(start, end, data_type)
+            for i, d in enumerate(days, 1):
                 if self.cancel_token is not None and self.cancel_token.is_set():
                     break
                 df = await self._cancellable_run_in_executor(
@@ -622,14 +632,18 @@ class DailyBaseSyncProvider:
         repo = self._ext_repos["index_ths_member"]
         # ⚠️ 接口只返回「当前」成分，没有 in/out_date：
         #    - 禁止把当前成分写到实施日之前的任意历史日期；
-        #    - 只允许单日快照，区间运行直接报错，避免伪造数百万行 NON_PIT 数据。
-        days = await self._ext_trade_dates(start, end, "index_ths_member")
-        days = [d for d in days if d >= THS_MEMBER_IMPLEMENTATION_DATE]
-        if not days:
-            return self._result("index_ths_member", 0, 0)
-        if len(days) > 1:
+        #    - 只允许单日快照；任何历史/跨日区间直接报错，避免伪造 NON_PIT 数据。
+        if end < THS_MEMBER_IMPLEMENTATION_DATE:
             raise ValueError(
-                "index_ths_member 无历史，只允许单日快照；"
+                f"index_ths_member 无历史数据；实施日为 {THS_MEMBER_IMPLEMENTATION_DATE}")
+        if start < THS_MEMBER_IMPLEMENTATION_DATE:
+            raise ValueError(
+                "index_ths_member 不允许跨实施日的历史区间；"
+                f"请从 {THS_MEMBER_IMPLEMENTATION_DATE} 起单日运行")
+        days = await self._ext_trade_dates(start, end, "index_ths_member")
+        if len(days) != 1:
+            raise ValueError(
+                "index_ths_member 只允许单日快照；"
                 f"本次请求 {start}~{end}（{len(days)} 个交易日）")
         snapshot = days[0]
         index_df = await self._cancellable_run_in_executor(source.get_ths_index)

@@ -20,8 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
-BACKFILL_MODES = ("by_date", "by_month", "by_range", "by_symbol",
-                  "full_snapshot", "by_snapshot")
+BACKFILL_MODES = ("by_date", "by_month", "by_range", "by_range_daily",
+                  "by_quarter", "by_symbol", "full_snapshot", "by_snapshot")
 GATE_MODES = ("dense", "sparse", "periodic", "derived")
 FREQUENCIES = ("daily", "weekly", "monthly", "quarterly", "catalog", "event", "snapshot")
 TIERS = ("P0b", "P0c", "P1", "P2")
@@ -158,7 +158,7 @@ _CONTRACTS = [
     _c("cb_daily", "cb_daily", "cb_daily", ["ts_code", "trade_date"], "daily",
        "by_date", "dense", "P1", "2018-01-02", partition=True),
     _c("cb_share", "cb_share", "cb_share", ["ts_code", "end_date"], "event",
-       "by_range", "sparse", "P1", "2018-01-01", pit=["publish_date"]),
+       "by_quarter", "sparse", "P1", "2018-01-01", pit=["publish_date"]),
     _c("cb_rating", "cb_rating", "cb_rating",
        ["ts_code", "rating_date", "rating_com_name"], "event", "by_range", "sparse",
        "P1", "2018-01-01", pit=["ann_date"]),
@@ -197,10 +197,10 @@ _CONTRACTS = [
     _c("fund_company", "fund_company", "fund_company", ["name"], "catalog",
        "full_snapshot", "periodic", "P2"),
     _c("fund_manager", "fund_manager", "fund_manager",
-       ["ts_code", "ann_date", "name", "begin_date"], "event", "by_range", "sparse",
+       ["ts_code", "ann_date", "name", "begin_date"], "event", "by_range_daily", "sparse",
        "P2", pit=["ann_date"]),
     _c("fund_div", "fund_div", "fund_div", ["ts_code", "ann_date", "div_proc"],
-       "event", "by_range", "sparse", "P2", pit=["ann_date"],
+       "event", "by_range_daily", "sparse", "P2", pit=["ann_date"],
        note="主键用 ann_date 而非 ex_date（后者可空）"),
     _c("fund_share", "fund_share", "fund_share", ["ts_code", "trade_date"], "daily",
        "by_date", "dense", "P2"),

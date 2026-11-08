@@ -1,0 +1,57 @@
+pytdx 未安装，XTP数据源功能受限
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+stock_repurchase 丢弃无业务键记录：['end_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+fund_manager 丢弃无业务键记录：['begin_date']
+数据工具包 1.0.0 加载完成
+包含 37 个导出项
+[fx_basic] full_snapshot 2026-11-06~2026-11-06 written=69
+[fx_daily] 2026-11-06 FAILED 接口返回空（dense 表按失败处理）
+[stock_namechange] by_range 2026-11-06~2026-11-06 written=1
+[stock_new_share] by_range 2026-11-06~2026-11-06 written=0
+[index_ths] full_snapshot 2026-11-06~2026-11-06 written=395
+[stock_block_trade] 2026-11-06 ... done=20 written=52799
+[fut_basic] full_snapshot 2026-11-06~2026-11-06 written=11148
+[opt_basic] full_snapshot 2026-11-06~2026-11-06 written=225535
+[cb_basic] full_snapshot 2026-11-06~2026-11-06 written=1179
+[cb_issue] by_range 2026-11-06~2026-11-06 written=0
+[cb_call] by_range 2026-11-06~2026-11-06 written=1
+[cb_rating] by_range 2026-11-06~2026-11-06 written=5235
+[stock_pledge_detail] by_range 2026-11-06~2026-11-06 written=38
+[stock_repurchase] by_range 2026-11-06~2026-11-06 written=22
+[stock_surv] by_range 2026-11-06~2026-11-06 written=268
+[stock_hm_list] full_snapshot 2026-11-06~2026-11-06 written=121
+[macro_eco_cal] by_range 2026-11-06~2026-11-06 written=63
+[hk_basic] full_snapshot 2026-11-06~2026-11-06 written=2777
+[us_basic] full_snapshot 2026-11-06~2026-11-06 written=23664
+[fund_basic] full_snapshot 2026-11-06~2026-11-06 written=3014
+[fund_company] full_snapshot 2026-11-06~2026-11-06 written=214
+SUMMARY done=49 failed=1 skipped=0 written=361313

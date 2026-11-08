@@ -289,6 +289,9 @@ async def initialize (
 						# （index_ths_member）不进日终，由回填脚本按周/月执行。
 						DataType.FX_DAILY, DataType.FUND_NAV,
 						DataType.MARGIN_DETAIL, DataType.MARGIN_SECS,
+						# 龙虎榜 2026-11-08 补齐：设计 §5.3 为日频，前端 group 1 预设
+						# 已包含，但此前漏出 _daily_types → 自动日终不会同步。
+						DataType.TOP_LIST, DataType.TOP_INST,
 						DataType.CYQ_PERF, DataType.THS_DAILY,
 						DataType.MONEYFLOW_EXT, DataType.MONEYFLOW_IND,
 						DataType.MARKET_DAILY_INFO, DataType.BLOCK_TRADE,
