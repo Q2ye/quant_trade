@@ -30,7 +30,7 @@
 
     python scripts/data/backfill_sw_member_history.py                          # dry-run（默认）：只拉取并报告，不写库
     python scripts/data/backfill_sw_member_history.py --apply                  # 实际写入
-    python scripts/data/backfill_sw_member_history.py --apply --database quant_signals_dev   # 指定目标库
+    python scripts/data/backfill_sw_member_history.py --apply --database quant_signals   # 指定目标库
 
 > ⚠️ **默认目标是 `config.yaml` 当前环境的库**（本项目为 production → `quant_signals` **生产库**）。
 > 写生产库前请确认：读取方修复（`industry_service` / `screener_service` 的 `out_date IS NULL`）
@@ -55,6 +55,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,25 +69,7 @@ TABLE = "index_sw_member"
 
 
 def _get_db_config() -> dict:
-    try:
-        from shared.config.config_manager import config
-
-        db = config.settings.DATABASE
-        return {
-            "host": db.HOST,
-            "port": int(db.PORT),
-            "user": db.USER,
-            "password": db.PASSWORD,
-            "database": db.NAME,
-        }
-    except Exception:
-        return {
-            "host": "localhost",
-            "port": 5432,
-            "user": "postgres",
-            "password": "123456",
-            "database": "quant_signals_dev",
-        }
+    return db_kwargs()
 
 
 async def _snapshot(conn) -> dict:
@@ -225,7 +209,7 @@ if __name__ == "__main__":
         "--database",
         default="",
         help="覆盖目标库名（留空则用 config.yaml 当前环境，通常为 quant_signals 生产库）。"
-        "例：--database quant_signals_dev",
+        "例：--database quant_signals",
     )
     args = ap.parse_args()
     raise SystemExit(asyncio.run(main(apply=args.apply, database=args.database)))

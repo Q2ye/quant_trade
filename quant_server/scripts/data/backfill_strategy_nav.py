@@ -41,6 +41,9 @@ logger = logging.getLogger("backfill_strategy_nav")
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_url
+
 from shared.database.models.business_models import StrategyDailyPerformance
 from shared.database.repositories.account.asset.strategy_daily_performance_repo import (
     StrategyDailyPerformanceRepository,
@@ -60,14 +63,7 @@ def _load_env() -> dict:
 
 
 def _db_url(env: dict) -> str:
-    env_name = env.get("ENVIRONMENT", "development")
-    prefix = "PROD_" if env_name == "production" else ""
-    user = env.get(f"{prefix}DB_USER") or env.get("DB_USER", "postgres")
-    password = env.get(f"{prefix}DB_PASSWORD") or env.get("DB_PASSWORD", "")
-    host = env.get(f"{prefix}DB_HOST") or env.get("DB_HOST", "localhost")
-    port = env.get(f"{prefix}DB_PORT") or env.get("DB_PORT", "5432")
-    dbname = env.get(f"{prefix}DB_NAME") or env.get("DB_NAME", "quant_signals_dev")
-    return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{dbname}"
+    return db_url()
 
 
 def _as_date(v) -> date:

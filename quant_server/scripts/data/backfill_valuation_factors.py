@@ -8,17 +8,20 @@
 市场状态来源: market_state_daily (已填充5166天) → 映射到每只ETF
 执行: cd quant_server && .venv/Scripts/python.exe scripts/data/backfill_valuation_factors.py
 """
-import asyncio, logging, math, uuid
+import asyncio, logging, math, sys, uuid
 from datetime import date, datetime
+from pathlib import Path
 from typing import Dict, Optional
 
 import asyncpg
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DB = {"host":"localhost","port":5432,"user":"postgres","password":"123456","database":"quant_signals_dev"}
 
 # ── ETF → 跟踪指数 映射 ──
 ETF_IDX = {
@@ -209,7 +212,7 @@ async def backfill_market_regime(conn):
 
 
 async def main():
-    conn = await asyncpg.connect(**DB)
+    conn = await asyncpg.connect(**db_kwargs())
     try:
         n1 = await backfill_valuation(conn)
         n2 = await backfill_market_regime(conn)

@@ -19,6 +19,9 @@ import sys
 import uuid
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_url
+
 SAT_ACCOUNT_NAME = "卫星池"
 
 
@@ -44,12 +47,7 @@ async def main() -> None:
     from sqlalchemy import text
 
     env = _load_env()
-    user = env.get("DB_USER", "postgres")
-    password = env.get("DB_PASSWORD", "")
-    host = env.get("DB_HOST", "localhost")
-    port = env.get("DB_PORT", "5432")
-    dbname = env.get("DB_DEV_NAME", "quant_signals_dev")
-    url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{dbname}"
+    url = db_url()
     engine = create_async_engine(url)
 
     strategies = [

@@ -16,10 +16,12 @@ import joblib
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DB = {"host": "localhost", "port": 5432, "user": "postgres", "password": "123456", "database": "quant_signals_dev"}
 MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "storage" / "models"
 
 # ── 回测参数 ──
@@ -529,7 +531,7 @@ async def main():
     threshold = THRESHOLD if THRESHOLD is not None else saved_threshold
     logger.info("阈值: artifact=%.2f, 回测用=%.2f", saved_threshold, threshold)
 
-    conn = await asyncpg.connect(**DB)
+    conn = await asyncpg.connect(**db_kwargs())
     try:
         factor_data, price_data = await load_data(conn, features, start, end)
         eq_df, trades = run_backtest(model, features, scaler, factor_data, price_data, threshold)

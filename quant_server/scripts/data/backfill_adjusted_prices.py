@@ -43,6 +43,9 @@ for line in env_path.read_text(encoding="utf-8").splitlines():
 
 import psycopg2
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
+
 BATCH = 500  # 每批股票数
 
 # 主板前缀（与策略 _is_tradable 一致）：000/002/600/603/601/605
@@ -51,13 +54,7 @@ FORBID_PREFIXES = ("300", "688", "8", "4", "001", "003")
 
 
 def get_conn():
-    return psycopg2.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        port=int(os.environ.get("DB_PORT", 5432)),
-        user=os.environ.get("DB_USER", "postgres"),
-        password=os.environ.get("DB_PASSWORD", ""),
-        dbname=os.environ.get("DB_NAME", "quant_signals_dev"),
-    )
+    return psycopg2.connect(**db_kwargs())
 
 
 def is_mainboard(ts_code: str) -> bool:

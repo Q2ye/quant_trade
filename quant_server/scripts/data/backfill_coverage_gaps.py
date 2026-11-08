@@ -214,9 +214,9 @@ async def main(limit: int, table: str, start: str, dry_run: bool, workers: int,
     pro = ts.pro_api(token)
 
     # ⚠️ 2026-10-12 根因修复：**必须与 app 同源解析目标库**。
-    #    原实现读 `.env` 的 `DB_NAME`（= `quant_signals_dev`），而 app 走
+    #    原实现读 `.env` 的 `DB_NAME`（曾指向旧 dev 库），而 app 走
     #    `config.settings.DATABASE.NAME`（= `quant_signals`）—— 两者是**不同的库**，
-    #    且前者已停摆（实测 2026-10-12：`quant_signals_dev` 的 `stock_daily`
+    #    且前者已停摆（实测 2026-10-12：旧 dev 库的 `stock_daily`
     #    停在 **2026-09-18**，`stock_moneyflow` 当日 0 行）。
     #    后果：本脚本对生产缺口**完全空转** —— `--start 2026-10-01` 时窗口内
     #    `stock_daily` 为空 → 空洞判定恒为 0。而它恰是覆盖度门告警文案里

@@ -5,16 +5,19 @@
 
 执行: cd quant_server && .venv/Scripts/python.exe scripts/data/backfill_etf_shares_factors.py
 """
-import asyncio, logging, uuid
+import asyncio, logging, sys, uuid
 from datetime import date
+from pathlib import Path
 
 import asyncpg
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _db_env import db_kwargs
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DB = {"host": "localhost", "port": 5432, "user": "postgres", "password": "123456", "database": "quant_signals_dev"}
 
 ETF_POOL = [
     "510050.SH", "510300.SH", "510500.SH", "159919.SZ", "510880.SH",
@@ -29,7 +32,7 @@ FACTOR_NAMES = ["share_change_5d", "share_change_20d", "fund_size_change_20d"]
 
 
 async def main():
-    conn = await asyncpg.connect(**DB)
+    conn = await asyncpg.connect(**db_kwargs())
     try:
         # 加载 etf_shares
         etf_list = "','".join(ETF_POOL)

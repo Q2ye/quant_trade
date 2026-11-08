@@ -1,0 +1,10 @@
+{
+  "req": "REQ-20261108-script-dsn-unification",
+  "title": "脚本数据库连接统一（去除硬编码 DSN）",
+  "tier": "T1",
+  "status": "DONE",
+  "created": "2026-11-08",
+  "updated": "2026-11-08",
+  "commits": [],
+  "scope": []
+}
