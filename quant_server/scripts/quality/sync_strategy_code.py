@@ -17,6 +17,10 @@
     # ③ 同步：把磁盘写入指定实例的 DB code（**先自动备份**原 code 到 scripts/_bak/）
     .venv/Scripts/python.exe scripts/quality/sync_strategy_code.py --apply dc862847
 
+    # ④ 环境自证：--env dev|prod 只「校验」实连库，**不切换**
+    #    （切库由 .env 的 ENVIRONMENT 决定；不符则拒绝执行，避免以为在写 dev 其实连了 prod）
+    .venv/Scripts/python.exe scripts/quality/sync_strategy_code.py --env dev
+
 ⚠️ **同步前三问**（本脚本会提示，但不会替你判断）：
     1. 该实例的 `strategy_parameters` 是否有覆盖？若覆盖里含**磁盘已删除的键**，
        同步后那些键会静默失效（回落到 DEFAULT_PARAMS）。
@@ -71,8 +75,8 @@ def has_unique_fix(disk: str, db: str) -> bool:
     return any(re.search(r"修复|竞态|守卫|guard|hotfix", x, re.I) for x in db_only)
 
 
-async def load_targets(sess) -> List[Tuple[str, str, str, str]]:
-    """取全部 live 实例 (id, name, status, code)。"""
+async def load_targets(sess) -> List[Tuple[str, str, str, str, str]]:
+    """取全部 live 实例 (id, name, status, class_name, code)。"""
     from sqlalchemy import text
     rows = (await sess.execute(text(
         "SELECT id, name, status, class_name, code FROM strategies "
@@ -87,6 +91,31 @@ async def main() -> int:
 
     from shared.database.session.connection_pool import get_connection_pool
 
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(__doc__ or "sync_strategy_code.py")
+        return 0
+
+    # 未知长参数必须报错：否则拼错的 --aply / 文档里的 --env 会被静默忽略，
+    # 结果在「以为是 A 模式」下跑了 B 模式（甚至写错库）。
+    allowed = {"--apply", "--diff", "--class", "--env"}
+    unknown = [a for a in sys.argv[1:] if a.startswith("--") and a not in allowed]
+    if unknown:
+        print(f"❌ 未知参数：{' '.join(unknown)}")
+        print("可用：--apply [ID|名称片段] / --diff [ID|名称片段] / "
+              "--class <策略类名> [--apply] / --env dev|prod")
+        return 2
+
+    env_expect = None
+    if "--env" in sys.argv:
+        idx = sys.argv.index("--env")
+        if idx + 1 >= len(sys.argv) or sys.argv[idx + 1].startswith("--"):
+            print("用法：--env dev|prod")
+            return 2
+        env_expect = sys.argv[idx + 1].lower()
+        if env_expect not in ("dev", "prod"):
+            print(f"❌ --env 只接受 dev / prod（收到 {env_expect}）")
+            return 2
+
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     apply_mode = "--apply" in sys.argv
     show_diff = "--diff" in sys.argv
@@ -98,6 +127,20 @@ async def main() -> int:
     except RuntimeError:
         await pool.initialize()
         sf = pool.get_session_factory()
+
+    # 目标库自证（每次都打，便于确认在哪个库上动手）
+    from shared.config.config_manager import config as app_config
+    db = app_config.settings.DATABASE
+    env_name = getattr(app_config.settings.ENVIRONMENT, "value", None) or str(
+        app_config.settings.ENVIRONMENT)
+    print(f"DB：{db.HOST}:{db.PORT}/{db.NAME}（ENVIRONMENT={env_name}）")
+    if env_expect:
+        is_dev = "dev" in (db.NAME or "").lower() or "test" in (db.NAME or "").lower()
+        if (env_expect == "dev") != is_dev:
+            print(f"❌ --env {env_expect} 与实连库 {db.NAME} 不符 —— 拒绝执行")
+            print("   切库请改 .env 的 ENVIRONMENT（本脚本只校验，不替你切换）")
+            await pool.close()
+            return 2
 
     async with sf() as sess:
         targets = await load_targets(sess)
@@ -146,7 +189,7 @@ async def main() -> int:
                 await pool.close()
                 return 0
 
-            BAK_DIR.mkdir(exist_ok=True)
+            BAK_DIR.mkdir(parents=True, exist_ok=True)
             for kind, rid, name in todo:
                 if kind == "strategies":
                     old = (await sess.execute(text(
@@ -213,7 +256,7 @@ async def main() -> int:
                 return 0
 
             # 备份 → 写入
-            BAK_DIR.mkdir(exist_ok=True)
+            BAK_DIR.mkdir(parents=True, exist_ok=True)
             bak = BAK_DIR / f"{sid[:8]}_{datetime.now():%Y%m%d_%H%M%S}_db_before.py"
             bak.write_text(code, encoding="utf-8")
             print(f"\n已备份原 DB code → {bak}")

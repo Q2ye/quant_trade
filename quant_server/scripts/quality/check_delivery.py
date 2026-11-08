@@ -17,13 +17,17 @@
     .venv/Scripts/python.exe scripts/quality/check_delivery.py scope [--apply]
     .venv/Scripts/python.exe scripts/quality/check_delivery.py use <REQ>
 
-退出码：0 = PASS，1 = FAIL，2 = 无进行中 REQ（SKIP）。
+退出码：0 = PASS，1 = FAIL，2 = 无进行中 REQ（SKIP），64 = 参数错误。
+
+机检项：结构 + 章节非空 + AC 有「→」 + 任务表 ≤3 文件 + 反引号路径真实存在
+（同一行标「新建」的除外）+ 验收行有 ✅/❌/⊘ 且非空话 + 裁定明确。
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from datetime import date
@@ -54,11 +58,11 @@ STAGES = [
 ]
 
 STAGE_HINT = {
-    "S1": "写 01-需求.md：先取证，再写可执行的 AC",
-    "S2": "写 02-设计.md：契约、依赖方向、影响面、备选取舍",
-    "S3": "写 03-任务.md：拆到每任务 ≤3 文件，然后 scope --apply 声明范围",
-    "S4": "写 04-验证.md：逐条跑 AC，贴真实输出；再跑 check_all.py",
-    "S5": "写 05-评审.md：交给独立只读 agent / 新会话评审（作者不自审）",
+    "S1": "写 01-需求.md：先取证，再写可执行的 AC（方法见 docs/06-标准规范/00-1_S1需求澄清.md）",
+    "S2": "写 02-设计.md：契约、依赖方向、影响面、备选取舍（见 00-2_S2设计规范.md）",
+    "S3": "写 03-任务.md：拆到每任务 ≤3 文件，然后 scope --apply（见 00-3_S3任务拆分.md）",
+    "S4": "写 04-验证.md：逐条跑 AC，贴真实输出；再跑 check_all.py（见 00-4_S4S5验证与评审.md）",
+    "S5": "写 05-评审.md：交给独立只读 agent / 新会话评审，作者不自审（见 00-4_S4S5验证与评审.md）",
 }
 
 
@@ -184,6 +188,167 @@ def count_ac(lines: list) -> int:
 
 SYMBOLS = ("✅", "❌", "⊘")
 
+ARROWS = ("→", "->", "=>")
+WEAK_OUTPUT = {"通过", "正常", "ok", "okay", "已修复", "成功", "没问题", "无问题"}
+
+
+def first_table(lines: list):
+    """取章节里的第一张表，返回 (header, data_rows)。"""
+    rows = [ln.strip() for ln in lines if ln.strip().startswith("|")]
+    for i, row in enumerate(rows):
+        nxt = rows[i + 1] if i + 1 < len(rows) else ""
+        if is_sep(nxt):
+            header = [c.strip() for c in row.strip("|").split("|")]
+            data = []
+            for r in rows[i + 2:]:
+                if is_sep(r):
+                    continue
+                data.append([c.strip() for c in r.strip("|").split("|")])
+            return header, data
+    return [], []
+
+
+def _col(header: list, *names: str):
+    for idx, cell in enumerate(header):
+        if any(n in cell for n in names):
+            return idx
+    return None
+
+
+NEW_MARKERS = ("新建", "新增", "待建", "新建文件")
+
+
+def backtick_paths(text: str) -> list:
+    """取反引号里的仓库相对路径（跳过命令、URL、占位符、裸文件名）。"""
+    out = []
+    for m in re.finditer(r"`([^`]+)`", text):
+        p = m.group(1).strip()
+        if (not p or has_placeholder(p) or " " in p or "://" in p
+                or p.startswith("/") or "/" not in p):
+            continue
+        if "." not in p.rsplit("/", 1)[-1]:
+            continue
+        out.append(p)
+    return out
+
+
+def missing_paths(paths: list, repo: Path) -> list:
+    """仓库根相对为准；同时允许 `quant_server/` 相对（文档里 CWD 常是 quant_server）。"""
+    bases = (repo, repo / "quant_server")
+    return [p for p in paths if not any((b / p).exists() for b in bases)]
+
+
+def path_msgs(bad: list) -> list:
+    """把不存在的路径收成一条消息（最多列 3 个，保留首次出现顺序）。"""
+    seen = []
+    for p in bad:
+        if p not in seen:
+            seen.append(p)
+    if not seen:
+        return []
+    shown = "、".join("`%s`" % p for p in seen[:3])
+    more = "（共 %d 个）" % len(seen) if len(seen) > 3 else ""
+    return ["路径不存在：%s%s；新建文件请在同一行标注「新建」" % (shown, more)]
+
+
+def check_s1_paths(text: str, repo: Path) -> list:
+    bad = []
+    for ac in ac_entries(text.splitlines()):
+        if any(mk in ac for mk in NEW_MARKERS):   # 标了「新建」= 允许尚不存在
+            continue
+        bad += missing_paths(backtick_paths(ac), repo)
+    return path_msgs(bad)
+
+
+def ac_entries(lines: list) -> list:
+    out = []
+    for line in lines:
+        s = line.strip()
+        if s[:1] in ("-", "*"):
+            s = s[1:].strip()
+        if s.startswith("AC-") and not has_placeholder(s):
+            out.append(s)
+    return out
+
+
+def check_s1_extra(text: str) -> list:
+    """S1 内容规则：AC 必须写成「操作 → 期望」。"""
+    msgs = []
+    acs = ac_entries(text.splitlines())
+    if not acs:
+        msgs.append("无有效 AC 条目（- AC-1：操作 → 期望）")
+    else:
+        bad = [a for a in acs if not any(k in a for k in ARROWS)]
+        if bad:
+            msgs.append("AC 缺「→」：%s（须写成 操作 → 期望）" % bad[0][:40])
+    return msgs
+
+
+def check_s3_paths(secs: dict, repo: Path) -> list:
+    """任务表反引号路径必须存在；同一行标了「新建」的跳过。"""
+    _header, rows = first_table(secs.get("任务表", []))
+    bad = []
+    for cells in rows:
+        row = " | ".join(cells)
+        if any(mk in row for mk in NEW_MARKERS):
+            continue
+        bad += missing_paths(backtick_paths(row), repo)
+    return path_msgs(bad)
+
+
+def check_s3_extra(secs: dict) -> list:
+    """S3 内容规则：任务表每行 ≤3 个文件，且至少一行有文件路径。"""
+    msgs = []
+    header, rows = first_table(secs.get("任务表", []))
+    if not rows:
+        msgs.append("任务表无「反引号路径」行")
+        return msgs
+    col = _col(header, "文件", "file")
+    with_paths = 0
+    for cells in rows:
+        use = cells[col] if (col is not None and col < len(cells)) else ""
+        paths = [p for p in use.split(",")
+                 if p.strip().startswith("`") and p.strip().endswith("`")
+                 and "/" in p and "." in p.rsplit("/", 1)[-1]]
+        if paths:
+            with_paths += 1
+        if len(paths) > 3:
+            msgs.append("任务行涉及 %d 个文件（每任务 ≤3）：%s"
+                        % (len(paths), use[:50]))
+    if not with_paths:
+        msgs.append("任务表无「反引号路径」行")
+    return msgs
+
+
+def check_s4_extra(secs: dict) -> list:
+    """S4 内容规则：每行有 ✅/❌/⊘，且「实际输出」不是「通过」这类空话。"""
+    msgs = []
+    header, rows = first_table(secs.get("验收逐条", []))
+    if not rows:
+        msgs.append("验收逐条为空（须逐条对照 AC 贴输出）")
+        return msgs
+    out_col = _col(header, "实际输出", "输出")
+    for cells in rows:
+        if any(has_placeholder(c) for c in cells):
+            continue
+        if not any(sym in "".join(cells) for sym in SYMBOLS):
+            msgs.append("验收行缺结论符号（✅/❌/⊘）：%s" % (cells[0][:30] if cells else ""))
+        if out_col is not None and out_col < len(cells):
+            if plain(cells[out_col]).lower() in WEAK_OUTPUT:
+                msgs.append("实际输出只写「%s」（须贴原始输出）" % cells[out_col])
+    return msgs
+
+
+def check_s5_extra(secs: dict) -> list:
+    """S5 内容规则：裁定必须明确（通过 / 有条件通过 / 退回）。"""
+    lines = secs.get("裁定", [])
+    if not section_filled(lines):
+        return []
+    body = "\n".join(lines)
+    if not any(k in body for k in ("通过", "退回")):
+        return ["裁定须写明：通过 / 有条件通过 / 退回 S2/S3"]
+    return []
+
 
 def extract_paths(lines: list) -> list:
     """只取「涉及文件」列的反引号路径，避免把验收命令里的路径也算进范围。"""
@@ -224,7 +389,8 @@ def extract_paths(lines: list) -> list:
     return seen
 
 
-def check_req(d: Path, quiet: bool = False) -> int:
+def check_req(d: Path, quiet: bool = False, repo: Path = None) -> int:
+    """校验五份产物的结构；返回 0=PASS / 1=FAIL。"""
     rid = d.name
     problems: list = []
     meta = load_meta(d)
@@ -246,14 +412,17 @@ def check_req(d: Path, quiet: bool = False) -> int:
             empty = [h for h in headings if h in secs and not section_filled(secs[h])]
             if empty:
                 msgs.append("未填写 " + " / ".join(empty))
+            base = repo or REPO_ROOT
             if code == "S1":
-                body = text.splitlines()
-                if count_ac(body) < 1:
-                    msgs.append("无有效 AC 条目（- AC-1：操作 → 期望）")
+                msgs.extend(check_s1_extra(text))
+                msgs.extend(check_s1_paths(text, base))
             if code == "S3":
-                paths = extract_paths(secs.get("任务表", []))
-                if not paths:
-                    msgs.append("任务表无「反引号路径」行")
+                msgs.extend(check_s3_extra(secs))
+                msgs.extend(check_s3_paths(secs, base))
+            if code == "S4":
+                msgs.extend(check_s4_extra(secs))
+            if code == "S5":
+                msgs.extend(check_s5_extra(secs))
         results.append((code, name, fname, msgs))
 
     if not quiet:
@@ -279,8 +448,11 @@ def check_req(d: Path, quiet: bool = False) -> int:
         if ok:
             print("PASS " + rid)
         else:
-            first = failed_stages[0] if failed_stages else (None, None, "meta.json", [])
-            print("FAIL %s %s %s" % (rid, first[2], "；".join(first[3])))
+            if failed_stages:
+                first = failed_stages[0]
+                print("FAIL %s %s %s" % (rid, first[2], "；".join(first[3])))
+            else:
+                print("FAIL %s meta.json %s" % (rid, "；".join(problems)))
     return 0 if ok else 1
 
 
@@ -293,6 +465,15 @@ def current_stage(d: Path) -> str:
         if any(h not in secs or not section_filled(secs[h]) for h in headings):
             return code
     return "DONE"
+
+
+class _Parser(argparse.ArgumentParser):
+    """参数错误一律 exit 64 —— 不能与「2 = 无进行中 REQ」撞码。"""
+
+    def error(self, message):  # type: ignore[override]
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: 参数错误：{message}", file=sys.stderr)
+        raise SystemExit(64)
 
 
 def resolve(args, root: Path) -> Path:
@@ -395,17 +576,21 @@ def cmd_status(args, root: Path) -> int:
 def cmd_check(args, root: Path) -> int:
     d = resolve(args, root)
     if d is None or not d.is_dir():
+        if getattr(args, "req", None):  # 明确点名却不存在 → 是错误，不是 SKIP
+            print("不存在：" + str(d))
+            return 1
         if not args.quiet:
             print("无进行中 REQ（SKIP）。用 new 开单或用 use 指定。")
         return 2
-    return check_req(d, quiet=args.quiet)
+    repo = Path(args.repo).resolve() if getattr(args, "repo", None) else REPO_ROOT
+    return check_req(d, quiet=args.quiet, repo=repo)
 
 
 def cmd_scope(args, root: Path) -> int:
     d = resolve(args, root)
     if d is None or not d.is_dir():
-        print("无进行中 REQ。")
-        return 2
+        print("不存在：" + str(d) if getattr(args, "req", None) else "无进行中 REQ。")
+        return 1 if getattr(args, "req", None) else 2
     f = d / "03-任务.md"
     if not f.is_file():
         print("缺 03-任务.md")
@@ -424,35 +609,56 @@ def cmd_scope(args, root: Path) -> int:
         print("  python scripts/quality/check_all.py --declare \"" + joined + "\"")
         return 0
     cmd = [sys.executable, str(QUALITY_DIR / "check_all.py"), "--declare", joined]
+    if getattr(args, "root", None):  # 测试用 root：范围文件也写在那里，不污染仓库 .claude/
+        cmd += ["--scope", str(root / "scope.txt")]
     print("→ " + " ".join(cmd))
     return subprocess.call(cmd)
 
 
 def main() -> int:
     _utf8_stdout()
-    p = argparse.ArgumentParser(description="交付流程状态机（S1-S5）")
-    p.add_argument("--root", default=None, help="交付记录根目录（测试用，默认 docs/09-交付记录）")
-    p.add_argument("--req", default=None, help="指定 REQ（默认读 .active）")
+    # 全局开关挂在每个子命令上（argparse 默认只认子命令**之前**的全局参数，
+    # 而实际习惯是写在后面）；SUPPRESS 让「写在前面」的取值不被子命令的默认值覆盖。
+    global_opts = _Parser(add_help=False)
+    global_opts.add_argument("--root", default=argparse.SUPPRESS,
+                             help="交付记录根目录（测试用，默认 docs/09-交付记录）")
+    global_opts.add_argument("--req", default=argparse.SUPPRESS,
+                             help="指定 REQ（默认读 .active）")
+    global_opts.add_argument("--repo", default=argparse.SUPPRESS,
+                             help="路径存在性校验的基准目录（测试用，默认仓库根）")
+
+    # 不用 p.set_defaults()：它会改掉父 parser 里动作的 SUPPRESS 默认值，
+    # 导致子命令解析时把前面已设好的 --root 覆盖成 None。
+    p = _Parser(description="交付流程状态机（S1-S5）", parents=[global_opts])
     sub = p.add_subparsers(dest="cmd")
 
-    sp = sub.add_parser("new", help="开新单")
+    sp = sub.add_parser("new", parents=[global_opts], help="开新单")
     sp.add_argument("slug")
     sp.add_argument("--tier", default="T1", choices=["T0", "T1", "T2", "T3"])
     sp.add_argument("--title", default="")
 
-    sub.add_parser("next", help="当前阶段与出口判据")
-    sub.add_parser("status", help="全部 REQ 一览")
+    sub.add_parser("next", parents=[global_opts], help="当前阶段与出口判据")
+    sub.add_parser("status", parents=[global_opts], help="全部 REQ 一览")
 
-    sp = sub.add_parser("check", help="结构校验")
+    sp = sub.add_parser("check", parents=[global_opts], help="结构校验")
+    sp.add_argument("req_arg", nargs="?", default=None, metavar="REQ",
+                    help="指定 REQ（等价于 --req，位置写法）")
     sp.add_argument("--quiet", action="store_true", help="只打一行结论（供 check_all 调用）")
 
-    sp = sub.add_parser("scope", help="由 03-任务.md 推范围")
+    sp = sub.add_parser("scope", parents=[global_opts], help="由 03-任务.md 推范围")
+    sp.add_argument("req_arg", nargs="?", default=None, metavar="REQ",
+                    help="指定 REQ（等价于 --req，位置写法）")
     sp.add_argument("--apply", action="store_true", help="直接调用 check_all --declare")
 
-    sp = sub.add_parser("use", help="切换当前 REQ")
+    sp = sub.add_parser("use", parents=[global_opts], help="切换当前 REQ")
     sp.add_argument("req")
 
     args = p.parse_args()
+    args.root = getattr(args, "root", None)   # SUPPRESS 默认：未给就没有该属性
+    args.req = getattr(args, "req", None)
+    args.repo = getattr(args, "repo", None)
+    if getattr(args, "req_arg", None):  # check/scope 的位置参数优先于 --req
+        args.req = args.req_arg
     if not args.cmd:
         p.print_help()
         return 1

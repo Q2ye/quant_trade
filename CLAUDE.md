@@ -33,13 +33,13 @@ mypy .                                       # 类型检查（无 mypy.ini，部
 > ⚠️ **格式化器有两套**：`pyproject.toml` 声明的是 black + isort，但 PostToolUse hook 对新建 `.py` 自动跑的是 `ruff format`（ruff 既不在依赖里也无配置，恰好同为 88 列）。改动格式化相关行为时注意两者差异，不要只改一处。
 > ⚠️ `pytest` 的 `addopts = "-v"` 已全局生效（见 `pyproject.toml`），无需再手动加 `-v`。
 > ⚠️ `quant_server/scripts/` 下的脚本是**长期资产**，已纳入 git。
-> **2026-09-15 按类分目录**（32 个 `.py`、未跟踪 0）：
+> **2026-09-15 按类分目录**（四个子目录共 40 个 `.py`；明细、状态与受保护脚本见 `scripts/README.md`）：
 >
 > | 目录 | 数量 | 内容 |
 > |:---|---:|:---|
 > | `scripts/backtest/` | 6 | 回测与冒烟：`backtest_high_vol_momentum` · `backtest_cross_market_momentum` · `backtest_etf_bottom`⚠️ · `backtest_small_cap`⚠️ · `rolling_start_analysis` · `_rolling_start_cross_market` |
-> | `scripts/data/` | 15 | 数据回填与播种：`backfill_*`（11）· `seed_*`（3）· `sync_margin_hsgt` |
-> | `scripts/quality/` | 3 | **质量门与巡检**：`audit_strategy`（准入 G1 机检，已接 hook）· `check_all`（收工检查三道门，零 CI 替代）· `sync_strategy_code`（磁盘↔DB 一致性巡检/同步，见 `review/17` §1-8） |
+> | `scripts/data/` | 21 | 数据回填与播种：`backfill_*`（11）· `seed_*`（3）· `sync_margin_hsgt` |
+> | `scripts/quality/` | 5 | **质量门与巡检**：`check_all`（⓿ 交付预检 + 三道门，零 CI 替代）· `check_delivery`（交付状态机 S1–S5）· `audit_strategy`（准入 G1 机检，已接 hook）· `sync_strategy_code`（磁盘↔DB 一致性巡检/同步）· `permutation_test`（置换检验） |
 > | `scripts/ops/` | 8 | 运维杂项：`setup_composite` · `add_strategy_to_composite` · `merge_accounts` · `password_utils` · `fix_token` · **`archive_logs`（日志归档，已挂日终）** · `sweep_params`⚠️废弃 · `v2_param_sweep`⚠️废弃 |
 >
 > ⚠️ 标记含义：**`backtest_etf_bottom`/`backtest_small_cap` 不加载策略类**（独立重实现 —— 改策略后跑它们**验证不了策略代码**，详细对照见「策略开发」节）；**`sweep_params`/`v2_param_sweep` 已标废弃**。
@@ -50,7 +50,8 @@ mypy .                                       # 类型检查（无 mypy.ini，部
 > | `450ccf2` | 33 个（2026-09-12 清理） | `git show 450ccf2:quant_server/scripts/<文件名>` |
 > | **`17cc54f`** | **44 个**（2026-09-15 清理，含 `_cm_*` 13 / `_probe_*` 11 / `_phase*` 6 / `_diag_*` 4 / `_verify_*` 等 6 / `_sync_*` 2 / 单件 2） | `git show 17cc54f:quant_server/scripts/<文件名>` |
 >
-> 新建诊断脚本请沿用 `_` 前缀，**不要提交**（可放 `scripts/_diag/`）。`scripts/_bak/`（同步前自动备份）已在 `.gitignore`。
+> 新建诊断脚本请沿用 `_` 前缀，**不要提交**（可放 `scripts/_diag/`）。`scripts/_diag/` 与 `scripts/_bak/`（同步前自动备份）均已在 `.gitignore`。
+> **2026-11-08 清理**：`_diag/` 98 个临时探针 → `_diag/_archive_20261108.zip`；`_bak/` 保留最新快照，23 个旧备份 → `_bak/_archive_20261108.zip`（均为 zip 归档，可随时解压取回）。
 
 ### 日志（`quant_server/logs/`，**两路分离**，2026-09-15 起）
 
@@ -141,12 +142,10 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 
 ## 行为约束
 
-- **编码前必须先读核心文档**：`docs/01-业务设计/系统目标与投资哲学.md`（目标）→ `系统建设现状白皮书.md`（代码现状基线）→ `量化交易系统详细设计.md`（系统设计），并浏览 `api/` `core/` `shared/` `modules/` 目录。不跳过信息收集直接编码。
-- **先输出《开发路径说明》，等用户确认后再编码**。不跳过确认步骤。
-- **只修改规划内文件**，不顺手重构无关代码、格式化相邻文件、或"修复"未在计划中的问题。
-- **严禁私自回退代码**（git revert/reset/手动撤销）。任何回退操作前必须向用户说明原因并获取确认。
-- **排查问题必须完整追踪逻辑链路**：从入口到出口逐环节排查，定位到根因后再修改代码。**严禁依据猜测私自修改代码** — 不确定时必须先验证假设，确认根因后再动手。
-- **遇到信息缺失、计划偏差、需求变更 → 立即暂停**，提交结构化报告，等待用户确认。不自行假设解决方案。
+> 流程唯一入口：`docs/06-标准规范/00_交付流程总纲.md`（S1–S5 + 四档 + 产物位置）。此处只留不可妥协项。
+
+- **编码前先读核心文档**（目标 → 白皮书 → 详细设计 → 相关功能设计，并浏览 `api/` `core/` `shared/` `modules/`）；非 T0 变更先出 REQ 的 S1/S2 并经确认再编码，只改 `03-任务.md` 规划内文件。
+- **严禁三件事**：私自回退代码（git revert/reset/手动撤销）、依据猜测修改、跳过确认；遇到信息缺失 / 计划偏差 / 需求变更 → 暂停并提交结构化报告。
 - **处理后端任务时**，先加载 `.claude/skills/quantsys-architect/SKILL.md` 执行步骤 0-3。
 - **处理前端任务时**，遵循 `.claude/rules/frontend.md`，调用 `.claude/skills/frontend-craft/SKILL.md`。
 

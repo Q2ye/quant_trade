@@ -81,7 +81,8 @@ def main() -> int:
         f"[audit_on_edit] ⛔ {rel} 未通过策略质量门（脚本退出码 {proc.returncode}）：\n"
         f"{proc.stdout}\n"
         f"{proc.stderr}\n"
-        f"修复后用 `cd quant_server && .venv/Scripts/python.exe scripts/audit_strategy.py` 复核。",
+        f"修复后用 `cd quant_server && .venv/Scripts/python.exe "
+            f"scripts/quality/audit_strategy.py` 复核。",
         file=sys.stderr,
     )
     return 2

@@ -323,7 +323,11 @@ def main(argv: List[str]) -> int:
         print(f"结论：🔴 存在 {len(blockers)} 项阻断 —— 修复后才能回测/上线")
         return 1
     if warnings:
-        print(f"结论：⚠️ 无阻断，但有 {len(warnings)} 项警告，建议修复")
+        if other_warnings:
+            print(f"结论：⚠️ 无阻断，但有 {len(other_warnings)} 项警告"
+                  f"（另有 {len(div_warnings)} 处除法启发式，仅供参考），建议修复")
+        else:
+            print(f"结论：⚠️ 无阻断；{len(div_warnings)} 处除法启发式仅供参考，无实质警告")
         return 0
     print("结论：✅ 通过（无阻断、无警告）")
     return 0
