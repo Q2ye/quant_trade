@@ -96,6 +96,27 @@ class FakeSource:
         return pd.DataFrame([{"trade_date": pd.Timestamp("2026-11-06"),
                               "ts_code": "000001.SZ", "net_amount": 2.0}])
 
+    def get_ths_index(self):
+        return pd.DataFrame([{"ts_code": "885001.TI"}, {"ts_code": "885002.TI"}])
+
+    def get_ths_member(self, ts_code=""):
+        return pd.DataFrame([{"ts_code": ts_code, "con_code": "000001.SZ",
+                              "con_name": "平安银行"}])
+
+    def get_fut_holding(self, trade_date="", symbol="", exchange=""):
+        return pd.DataFrame([{"trade_date": pd.Timestamp("2026-11-06"),
+                              "symbol": symbol, "broker": "测试", "vol": 1}])
+
+    def get_fut_wsr(self, trade_date="", symbol="", exchange=""):
+        return pd.DataFrame([{"trade_date": pd.Timestamp("2026-11-06"),
+                              "symbol": symbol, "fut_name": "测试",
+                              "warehouse": "库", "unit": "吨", "vol": 1}])
+
+    def get_us_daily(self, trade_date=""):
+        return pd.DataFrame([{"ts_code": "AAPL.US",
+                              "trade_date": pd.Timestamp("2026-11-06"),
+                              "close": 100.0}])
+
 
 @pytest.fixture
 def make_svc():
@@ -161,6 +182,40 @@ def test_moneyflow_ext_dual_source(make_svc):
     ))
     recs = svc._ext_repos["stock_moneyflow_ext"].records
     assert {r["source"] for r in recs} == {"dc", "ths"}
+
+
+def test_index_ths_member_snapshot(make_svc):
+    svc = make_svc()
+    asyncio.run(svc._sync_index_ths_member(
+        start_date=date(2026, 11, 6), end_date=date(2026, 11, 6)
+    ))
+    recs = svc._ext_repos["index_ths_member"].records
+    assert len(recs) == 2
+    assert {r["index_code"] for r in recs} == {"885001.TI", "885002.TI"}
+    assert all(r["snapshot_date"] == date(2026, 11, 6) for r in recs)
+
+
+def test_fut_holding_and_wsr_paths(make_svc):
+    svc = make_svc()
+    asyncio.run(svc._sync_fut_holding(
+        start_date=date(2026, 11, 6), end_date=date(2026, 11, 6)
+    ))
+    asyncio.run(svc._sync_fut_wsr(
+        start_date=date(2026, 11, 6), end_date=date(2026, 11, 6)
+    ))
+    # FakeSession 查不到 fut_basic → 回退 5 个主力品种
+    assert len(svc._ext_repos["fut_holding"].records) == 5
+    assert len(svc._ext_repos["fut_wsr"].records) == 5
+    assert all(r.get("exchange") for r in svc._ext_repos["fut_holding"].records)
+
+
+def test_us_daily_generic_path(make_svc):
+    svc = make_svc()
+    asyncio.run(svc._sync_ext(
+        "us_daily", start_date=date(2026, 11, 6), end_date=date(2026, 11, 6)
+    ))
+    recs = svc._ext_repos["us_daily"].records
+    assert recs and recs[0]["ts_code"] == "AAPL.US"
 
 
 def test_all_contracts_registered(make_svc):

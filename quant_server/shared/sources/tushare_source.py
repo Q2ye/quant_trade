@@ -137,9 +137,11 @@ class TushareSource(BaseDataSource):
 		super().__init__()
 		config = config or {}
 		token = config.get('token') or os.getenv('TUSHARE_TOKEN')
-		if token:
-			ts.set_token(token)
-		self.pro = ts.pro_api()
+		# ⚠️ 2026-11-08：不再调用 ts.set_token(token)。
+		#    set_token 会把 token 写入 ~/tk.csv，在无写权限的环境（如本机
+		#    Administrator 目录被占用/只读）会直接 Permission denied。
+		#    ts.pro_api(token) 直接使用内存 token，效果相同且无副作用。
+		self.pro = ts.pro_api(token) if token else ts.pro_api()
 		self._connected = True
 
 	def __del__ (self):
@@ -1496,6 +1498,9 @@ class TushareSource(BaseDataSource):
 		"net_ex_date", "account_date", "base_date", "imp_anndate", "res_ann_date",
 		"onl_date", "shd_ration_date", "shd_ration_record_date",
 		"shd_ration_pay_date", "publish_date", "surv_date", "rating_date", "date",
+		# 2026-11-08 冒烟补：基金/公司/新股/经理的日期列
+		"found_date", "due_date", "setup_date", "begin_date", "ipo_date",
+		"purc_startdate", "redm_startdate",
 	)
 
 	@staticmethod

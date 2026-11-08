@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -136,6 +137,9 @@ def _start_for(contract, override: Optional[date]) -> Optional[date]:
         return override
     if contract.earliest and contract.earliest != "implementation":
         return parse_day(contract.earliest)
+    if contract.backfill_mode == "by_date":
+        # 契约未写起点但接口有历史的日频表（fund_share 等），按 2005 起估算
+        return date(2005, 1, 1)
     return None
 
 
@@ -180,6 +184,9 @@ async def _run(args) -> int:
     from shared.database.session.connection_pool import get_connection_pool
 
     env = load_env(ENV_PATH)
+    token = env.get("DEV_TUSHARE_TOKEN") or env.get("PROD_TUSHARE_TOKEN")
+    if token:
+        os.environ["TUSHARE_TOKEN"] = token
     conn = connect_db(env)
     end = args.end or date.today()
     types = _resolve_types(args.types)

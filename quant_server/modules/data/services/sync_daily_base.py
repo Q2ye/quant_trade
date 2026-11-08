@@ -17,7 +17,17 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import (
+    BigInteger,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    select,
+)
 
 from modules.data.constants import DataSource
 from modules.data.data_contracts import DATA_CONTRACTS, DataContract
@@ -200,6 +210,57 @@ class DailyBaseSyncProvider:
             out.append(_clean_record(record))
         return out
 
+    @staticmethod
+    def _coerce_types(record: Dict[str, Any], model) -> Dict[str, Any]:
+        """按模型列类型清洗源数据：'--' → None，数字串 → int/float，日期串 → date。"""
+        cols = {c.name: c for c in model.__table__.columns}
+        nulls = {"", "-", "--", "---", "N/A", "nan", "None"}
+        for key, value in list(record.items()):
+            col = cols.get(key)
+            if col is None or value is None:
+                continue
+            t = col.type
+            if isinstance(value, str):
+                s = value.strip()
+                if isinstance(t, (Integer, BigInteger)):
+                    if s in nulls:
+                        record[key] = None
+                    else:
+                        try:
+                            record[key] = int(float(s))
+                        except ValueError:
+                            record[key] = None
+                elif isinstance(t, (Numeric, Float)):
+                    if s in nulls:
+                        record[key] = None
+                    else:
+                        try:
+                            record[key] = float(s)
+                        except ValueError:
+                            record[key] = None
+                elif isinstance(t, (Date, DateTime)):
+                    ts = pd.to_datetime(s, errors="coerce")
+                    record[key] = None if pd.isna(ts) else ts.date()
+            elif isinstance(t, String) and not isinstance(value, str):
+                record[key] = str(value)
+        return record
+
+    @staticmethod
+    def _business_key(model) -> Tuple[str, ...]:
+        for arg in getattr(model, "__table_args__", ()):
+            if isinstance(arg, UniqueConstraint):
+                return tuple(c.name for c in arg.columns)
+        return tuple(c.name for c in model.__table__.primary_key)
+
+    @staticmethod
+    def _dedupe(records: List[Dict[str, Any]], model) -> List[Dict[str, Any]]:
+        """同一批内按业务键去重；否则 ON CONFLICT 会报 cannot affect row a second time。"""
+        key_cols = DailyBaseSyncProvider._business_key(model)
+        seen: Dict[Tuple, Dict[str, Any]] = {}
+        for record in records:
+            seen[tuple(record.get(k) for k in key_cols)] = record
+        return list(seen.values())
+
     async def _upsert_ext(
         self, repo, records: List[Dict[str, Any]], label: str
     ) -> int:
@@ -207,6 +268,21 @@ class DailyBaseSyncProvider:
             return 0
         from modules.data.services.sync_service import _drop_unstorable_records
 
+        # 归一化：所有记录补齐模型列，避免多来源（DC/THS、沪/深）键不一致。
+        # 排除自增 id 与通用列（data_source/时间戳），让 DB 默认值/序列生效；
+        # 否则显式写入 NULL 会触发 NOT NULL 或「序列权限/重复键」类错误。
+        exclude = {"id", "data_source", "fetched_at", "created_at", "updated_at"}
+        model_cols = [c.name for c in repo.model.__table__.columns if c.name not in exclude]
+        normalized: List[Dict[str, Any]] = []
+        for r in records:
+            rec = self._coerce_types({k: r.get(k) for k in model_cols}, repo.model)
+            for col in repo.model.__table__.columns:
+                if rec.get(col.name) is None and (
+                    col.default is not None or col.server_default is not None
+                ):
+                    rec.pop(col.name, None)
+            normalized.append(rec)
+        records = self._dedupe(normalized, repo.model)
         records = _drop_unstorable_records(records, repo.model, label)
         if not records:
             return 0
@@ -259,7 +335,7 @@ class DailyBaseSyncProvider:
             for m in self._ext_months(start, end):
                 if self.cancel_token is not None and self.cancel_token.is_set():
                     break
-                df = await self._cancellable_run_in_executor(fetch, source, m)
+                df = await self._cancellable_run_in_executor(fetch, source, m, m)
                 records.extend(self._records_from_df(df, self._transform_for(data_type)))
         elif mode == "full_snapshot":
             df = await self._cancellable_run_in_executor(fetch, source)

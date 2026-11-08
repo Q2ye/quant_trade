@@ -1,0 +1,2 @@
+[check] role=app
+tables=57 found=57 missing=0

@@ -6433,7 +6433,7 @@ CREATE TABLE IF NOT EXISTS cb_call (
     id            BIGSERIAL PRIMARY KEY,
     ts_code       VARCHAR(20) NOT NULL,
     call_type     VARCHAR(20) NOT NULL,
-    is_call       VARCHAR(4),
+    is_call       VARCHAR(20),
     ann_date      DATE        NOT NULL DEFAULT DATE '1900-01-01',
     call_date     DATE,
     call_price    NUMERIC(12,4),
@@ -6773,5 +6773,15 @@ SELECT create_hypertable('stock_moneyflow_ext', 'trade_date',
     chunk_time_interval => INTERVAL '30 days', if_not_exists => TRUE);
 SELECT create_hypertable('index_ths_daily', 'trade_date',
     chunk_time_interval => INTERVAL '30 days', if_not_exists => TRUE);
+
+-- 冒烟修正：cb_call.is_call 实际值超过 4 字符，扩到 20。
+ALTER TABLE cb_call ALTER COLUMN is_call TYPE VARCHAR(20);
+
+-- 新建 BIGSERIAL 序列的权限：public 的默认 ACL 只覆盖表，不覆盖序列。
+-- 缺这两条时，应用用户 quant_prod 插入 stock_top_list / macro_eco_cal 等
+-- 带自增 id 的表会报「对于序列 xxx 权限不够」。
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO quant_prod, quant_dev;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO quant_prod, quant_dev;
 
 -- ===== END DAILY_DATA_BASE =====

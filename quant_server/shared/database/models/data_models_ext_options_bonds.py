@@ -125,7 +125,7 @@ class CbCall(ExtCommonMixin, Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     ts_code = Column(String(20), nullable=False)
     call_type = Column(String(20), nullable=False)
-    is_call = Column(String(4))
+    is_call = Column(String(20))
     ann_date = Column(Date, nullable=False)
     call_date = Column(Date)
     call_price = Column(Numeric(12, 4))
