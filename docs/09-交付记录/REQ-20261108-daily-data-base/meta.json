@@ -1,0 +1,10 @@
+{
+  "req": "REQ-20261108-daily-data-base",
+  "title": "日频数据底座补全（56 张表）",
+  "tier": "T2",
+  "status": "S3",
+  "created": "2026-11-08",
+  "updated": "2026-11-08",
+  "commits": [],
+  "scope": []
+}
