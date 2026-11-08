@@ -101,7 +101,10 @@ def _changed_files() -> List[str]:
     for line in out.splitlines():
         if len(line) < 4:
             continue
-        path = line[3:].strip().strip('"')
+        path = line[3:].strip()
+        if " -> " in path:  # 重命名/复制：status 行是 "旧路径 -> 新路径"，取新路径
+            path = path.rsplit(" -> ", 1)[-1]
+        path = path.strip().strip('"')
         if "__pycache__" in path or path.endswith((".pyc", ".png", ".jpg")):
             continue
         files.append(path.replace("\\", "/"))
@@ -147,17 +150,18 @@ def gate_scope(scope_file: Optional[Path]) -> Tuple[str, str]:
     )
 
 
-def declare_scope(prefixes_raw: str) -> int:
+def declare_scope(prefixes_raw: str, scope_file: Optional[Path] = None) -> int:
     """声明范围：写白名单 + 对当前 git status 打快照。"""
     prefixes = [p.strip().replace("\\", "/") for p in prefixes_raw.split(",") if p.strip()]
     if not prefixes:
         print("用法：--declare \".claude/,docs/\"（逗号分隔的路径前缀）")
         return 2
-    DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)
+    scope_file = scope_file or DEFAULT_SCOPE
+    scope_file.parent.mkdir(parents=True, exist_ok=True)
     body = "# 本次允许改动的路径前缀（check_all.py --declare 生成）\n" + "\n".join(prefixes) + "\n"
-    DEFAULT_SCOPE.write_text(body, encoding="utf-8")
+    scope_file.write_text(body, encoding="utf-8")
     snap = "\n".join(_changed_files())
-    DEFAULT_SCOPE.with_name("scope_baseline.txt").write_text(snap + "\n", encoding="utf-8")
+    scope_file.with_name("scope_baseline.txt").write_text(snap + "\n", encoding="utf-8")
     print(f"✅ 已声明范围：{prefixes}")
     print(f"   快照：{len(snap.splitlines()) if snap else 0} 个当前已改动/未跟踪文件（作为基线）")
     print("   之后新增的改动中，超出白名单的会被 ③ 范围门拦下。")
@@ -165,15 +169,15 @@ def declare_scope(prefixes_raw: str) -> int:
 
 
 def main() -> int:
-    """跑三道门并汇总。"""
-    ap = argparse.ArgumentParser(description="收工检查（质量门 + 回归门 + 范围门）")
+    """跑 ⓿ 交付预检 + 三道门并汇总。"""
+    ap = argparse.ArgumentParser(description="收工检查（交付预检 + 质量门 + 回归门 + 范围门）")
     ap.add_argument("--scope", default=str(DEFAULT_SCOPE), help="范围声明文件路径")
     ap.add_argument("--declare", default=None,
                     help="声明本次允许改动的路径前缀（逗号分隔），并对当前状态打快照")
     args = ap.parse_args()
 
     if args.declare is not None:
-        return declare_scope(args.declare)
+        return declare_scope(args.declare, Path(args.scope))
 
     print("=" * 72)
     print("收工检查（check_all.py）—— ⓿ 交付预检 + 本项目「零 CI」的三道门")

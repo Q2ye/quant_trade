@@ -76,3 +76,6 @@ quant_web/stats.html
 
 # sync_release.ps1 写入的变更清单（部署脚本消费后删除）
 .release-sync-changes
+
+# One-off diagnostic scripts (underscore prefix, never committed; see scripts/README.md)
+_diag/

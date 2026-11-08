@@ -1151,4 +1151,5 @@
     <tree path="/quant_server/modules/strategy/strategies/rotation" title="右侧交易" extension="" presentableText=""
           tooltipTitle="" icon="" textColor="" backgroundColor=""/>
     <tree path="/quant_server/modules/strategy/strategies/etf" title="ETF轮动"/>
+    <tree path="/quant_server/scripts/quality" title="质量检查"/>
 </trees>

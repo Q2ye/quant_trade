@@ -14,6 +14,7 @@
 
 import asyncio
 import logging
+import re
 from typing import Dict, Any, List, Optional, cast, Callable
 from datetime import datetime
 
@@ -40,6 +41,22 @@ from ..utils.engine_factory import EngineFactory
 from ..utils.engine_monitor import EngineMonitor
 
 logger = logging.getLogger(__name__)
+
+_DAILY_SYNC_TIME_DEFAULT = "19:20"
+_DAILY_SYNC_TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def resolve_daily_sync_time(raw: Any) -> str:
+    """把 system.daily_sync_time 规整为 HH:MM；非法值回退 19:20。"""
+    value = str(raw or "").strip()
+    if _DAILY_SYNC_TIME_PATTERN.match(value):
+        return value
+    if value:
+        logger.warning(
+            "system.daily_sync_time=%r 非法（期望 HH:MM，00:00-23:59），回退 %s",
+            value, _DAILY_SYNC_TIME_DEFAULT,
+        )
+    return _DAILY_SYNC_TIME_DEFAULT
 
 
 class MainEngine(EngineBase):
@@ -374,8 +391,9 @@ class MainEngine(EngineBase):
         启动日终调度器。
 
         按架构设计，调度由 MainEngine 通过 ScheduleManager 集中管理。
-        交易日 16:00 触发数据同步（4 类核心数据），DataSyncService 内部
-        发布 DataSyncCompletedEvent → StrategyManager 自动驱动所有 LIVE 策略。
+        交易日 system.daily_sync_time（默认 19:20）触发日终流水线；
+        DataSyncService 内部发布 DataSyncCompletedEvent →
+        StrategyManager 自动驱动所有 LIVE 策略。
         """
         try:
             from utils.core_utils.time_utils.schedule_manager import (
@@ -385,7 +403,7 @@ class MainEngine(EngineBase):
             self._schedule_manager = ScheduleManager()
 
             async def _daily_sync_job():
-                """20:00 日终流水线（2026-08 C15 重构）：
+                """system.daily_sync_time（默认 19:20）日终流水线（2026-08 C15 重构）：
 
                 pre_gate 任务（同步→state→因子→结算）→ 数据完整性门 → post_gate 任务（rebalance→策略驱动）。
                 任务由各模块在 initialize 时通过 register_daily_task 注册（依赖反转）。
@@ -397,20 +415,29 @@ class MainEngine(EngineBase):
                 await self._run_daily_pipeline(today)
                 logger.info("日终流水线完成: %s", today)
 
-            # FIXME: 合入 master 前将 schedule_config 改回收盘后时间 (如 16:30)
+            # 时间由 config.yaml 的 system.daily_sync_time 控制（HH:MM，默认 19:20）
+            daily_sync_time = resolve_daily_sync_time(
+                self.config.config.get("system", {}).get("daily_sync_time")
+            )
             job = ScheduleJob(
                 job_id="daily_data_sync",
                 name="日终数据同步+策略驱动",
                 # 2026-08 修复：POST_MARKET 不校验交易日（周六也跑日终产生候选），改 TRADING_DAY 只在交易日执行
                 schedule_type=ScheduleType.TRADING_DAY,
-                schedule_config={"time": "19:20"},
+                schedule_config={"time": daily_sync_time},
                 func=_daily_sync_job,
                 description="盘后（交易日）：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,
             )
-            await self._schedule_manager.add_job(job)
+            added = await self._schedule_manager.add_job(job)
+            if not added:
+                logger.error(
+                    "日终调度任务注册失败（时间配置 %s 非法或触发器创建失败）",
+                    daily_sync_time,
+                )
+                return
             await self._schedule_manager.start()
-            logger.info("日终调度器已启动: 交易日 22:42 数据同步+策略驱动")
+            logger.info("日终调度器已启动: 交易日 %s 数据同步+策略驱动", daily_sync_time)
         except Exception as e:
             logger.warning("日终调度器启动失败（非致命）: %s", e)
 

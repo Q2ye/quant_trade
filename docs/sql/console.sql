@@ -12,6 +12,8 @@ ORDER BY pg_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablenam
 
 SELECT id, task_id, status, start_time FROM data_sync_tasks WHERE status = 'running';
 
+select * from sys_users
+
 ----------------------------------------------
 --需要同步的数据表--------
 -- 股票基础表

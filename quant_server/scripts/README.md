@@ -10,7 +10,7 @@
 |:---|--:|:---|:---|
 | `quality/` | 5 | **质量门与巡检**（收工必跑） | `check_all.py` · `check_delivery.py` · `audit_strategy.py` · `sync_strategy_code.py` · `permutation_test.py` |
 | `backtest/` | 6 | 回测与冒烟 | `backtest_high_vol_momentum.py` · `backtest_cross_market_momentum.py` · `rolling_start_analysis.py` |
-| `data/` | 21 | 数据回填与播种 | `backfill_*.py`（11）· `seed_*.py`（3）· `sync_margin_hsgt.py` |
+| `data/` | 21 | 数据回填与播种 | `backfill_*.py`（15）· `seed_*.py`（3）· `cleanup_stale_quality_checks.py` · `sync_margin_hsgt.py` · `sync_numeric_precision_to_ddl.py` |
 | `ops/` | 8 | 运维杂项 | `archive_logs.py`（已挂日终）· `merge_accounts.py` · `password_utils.py` |
 
 > ⚠️ `backtest/backtest_etf_bottom.py` 与 `backtest_small_cap.py` **不加载策略类**（独立重实现）。
@@ -21,7 +21,8 @@
 | 规则 | 说明 |
 |:---|:---|
 | `_` 前缀 | 一次性诊断脚本（`_diag/` `_probe_*` `_verify_*` 等），**不提交** |
-| `_bak/` | 同步前的自动备份（已在 `.gitignore:30`），可随时删 |
+| `_bak/` | 同步前的自动备份（已忽略），可随时删；保留最新快照即可 |
+| `_diag/` | 一次性诊断脚本目录（已忽略、不提交）；保留/归档规则见 §5 |
 | `quality/` 下的入口脚本 | **受保护，勿删**：被 hook / 文档 / `check_all` 调用（见 §3） |
 | `__init__.py` | 仅让 `scripts` 可被 `-c` 导入做测试，不承载逻辑 |
 
@@ -50,7 +51,14 @@
 .venv/Scripts/python.exe -m pytest -q
 ```
 
-## 5. 待办
+## 5. 一次性脚本清理记录（2026-11-08）
 
-- `scripts/_diag/` 现有 **177 个未跟踪 `.py`**（既未提交也未 ignore）→ 会让 `git status` 长期变脏；
-  建议把 `_diag/` 加入 `.gitignore`（与 `_bak/` 同处理），或按 `17cc54f` 的方式清理后再删。
+| 对象 | 处理 | 取回方式 |
+|:---|:---|:---|
+| `_diag/` 98 个临时探针（`_probe_*` / `_diag_*` / `_check_*` / `_verify_*` / `_live_*` / `_sop_*` / `_replay_*` 等） | 打包后删除 | 解压 `_diag/_archive_20261108.zip` |
+| `_diag/` 保留 79 个 | 45 个被 `docs/**/*.md` 或其他 `_diag` 脚本引用 + 34 个研究复现脚本（`_ir_*` / `_ne_*` / `_r0~r4_*` 等） | — |
+| `_bak/` 23 个旧快照 | 打包后删除 | 解压 `_bak/_archive_20261108.zip` |
+| `_bak/` 保留 | 最新一次同步快照 `*_20261028_225617_db_before.py` | — |
+
+> `scripts/_diag/` 已加入 `.gitignore`（与 `_bak/` 同处理），`git status` 不再变脏。
+> `_diag/` 里的研究脚本是该结论的可复现证据，**不要因为"没用"批量删除**；删除前先跑本文件 §2 的引用检查。

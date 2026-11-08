@@ -135,6 +135,9 @@ class StartupConfig:
 		# 前端托管配置（None = 自动：生产模式托管 quant_web/dist，开发模式不托管）
 		self.serve_frontend = config_data.get('system', {}).get('serve_frontend')
 		self.frontend_dir = config_data.get('system', {}).get('frontend_dir')
+		self.daily_sync_time = str(
+			config_data.get('system', {}).get('daily_sync_time', '19:20')
+		).strip() or '19:20'
 
 		# 模块配置
 		self.enabled_modules: List[str] = []
@@ -191,6 +194,7 @@ class StartupConfig:
 		# 前端托管配置
 		self.serve_frontend = None
 		self.frontend_dir = None
+		self.daily_sync_time = '19:20'
 
 		# 模块配置 - 默认启用所有模块
 		default_modules = [
@@ -222,7 +226,8 @@ class StartupConfig:
 				"debug": self.settings.DEBUG,
 				"host": self.host,
 				"port": self.port,
-				"workers": self.workers
+				"workers": self.workers,
+				"daily_sync_time": self.daily_sync_time,
 			},
 			"engines": {
 				"auto_start_main_engine": self.auto_start_main_engine,

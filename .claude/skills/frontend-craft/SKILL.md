@@ -8,7 +8,7 @@ description: 量化交易平台前端质感与动效开发技能。涉及页面�
 > **规范索引**：
 > - 页面设计方案生成 → 同目录 `page-design.md`
 > - 组件 Props/Emits 接口标准 → 同目录 `component-dev.md`
-> - 整体前端开发流程（三阶段）→ `.claude/rules/frontend.md`
+> - 前端方案怎么写（S2《页面设计方案》要素）→ `.claude/rules/frontend.md`
 
 ## 核心原则
 - 所有页面强制使用 `design-tokens.ts` 定义的 Token，禁止硬编码样式。

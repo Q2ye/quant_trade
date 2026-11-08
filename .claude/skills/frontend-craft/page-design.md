@@ -11,7 +11,7 @@ alwaysApply: false
 > - 本技能细化 `.claude/rules/frontend.md` 的阶段0（页面设计方案），提供完整的自动推断与输出流程。
 > - 页面视觉质感实现见 `.claude/skills/frontend-craft/SKILL.md`（四层分层规范）。
 > - 组件开发标准见同目录 `component-dev.md`（Props/Emits 接口契约）。
-> - 本技能输出的方案确认后，进入 `.claude/rules/frontend.md` 的阶段1（开发路径说明）。
+> - 本技能输出的方案确认后，进入 S3 任务拆分与实施（流程见 `docs/06-标准规范/00_交付流程总纲.md`）。
 
 ## 核心原则
 - 每次生成新页面时，必须先输出完整的《页面设计方案》，作为后续代码生成的唯一依据。
