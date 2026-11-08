@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""收工检查 —— 一条命令跑完三道门（本项目「零 CI」的替代品）。
+"""收工检查 —— ⓿ 交付预检 + 三道门（本项目「零 CI」的替代品）。
 
-## 三道门
+## ⓿ + 三道门
 
 | # | 门 | 命令 | 拦什么 |
 |:--|:---|:---|:---|
+| 0 | **交付预检** | `scripts/quality/check_delivery.py check --quiet` | 当前 REQ 的 S1–S5 产物没补齐（无 REQ 则 SKIP） |
 | 1 | **质量门** | `scripts/quality/audit_strategy.py` | 策略代码：未来函数 / 硬编码凭证 / 除零 / 参数越界 |
 | 2 | **回归门** | `pytest -q` | 任何新增失败（2026-09-15 已清至 0 failed / 0 errors，基线 276 passed） |
 | 3 | **范围门** | `git diff --name-only`（含未跟踪） | 改动是否超出本次声明的范围 |
@@ -75,6 +76,20 @@ def gate_regression() -> Tuple[str, str]:
                    QUANT_SERVER, timeout=600)
     last = [ln for ln in out.strip().splitlines() if ln.strip()][-1:] or [""]
     return ("PASS" if rc == 0 else "FAIL"), last[0].strip()
+
+
+def gate_delivery() -> Tuple[str, str]:
+    """⓿ 交付预检：当前 REQ 的五份产物是否补齐（无进行中 REQ 则 SKIP）。
+
+    只判「结构」（文件 / 章节 / AC 是否存在），不判内容质量 —— 内容质量归 S4/S5 人看。
+    与三道门的关系：它是**前置**，不改三道门的判据；未建 REQ 的旧用法（SKIP）不受影响。
+    """
+    rc, out = _run([PYTHON, "scripts/quality/check_delivery.py", "check", "--quiet"],
+                   QUANT_SERVER, timeout=60)
+    status = {0: "PASS", 2: "SKIP"}.get(rc, "FAIL")
+    if status == "SKIP":
+        return "SKIP", "无进行中 REQ（docs/09-交付记录/.active 为空）—— 本预检跳过"
+    return status, out.strip() or f"exit={rc}"
 
 
 def _changed_files() -> List[str]:
@@ -161,10 +176,11 @@ def main() -> int:
         return declare_scope(args.declare)
 
     print("=" * 72)
-    print("收工检查（check_all.py）—— 本项目「零 CI」的三道门")
+    print("收工检查（check_all.py）—— ⓿ 交付预检 + 本项目「零 CI」的三道门")
     print("=" * 72)
 
     results = [
+        ("⓿ 交付预检  check_delivery", *gate_delivery()),
         ("① 质量门  audit_strategy", *gate_audit()),
         ("② 回归门  pytest", *gate_regression()),
         ("③ 范围门  git diff", *gate_scope(Path(args.scope))),
@@ -182,9 +198,9 @@ def main() -> int:
 
     print("\n" + "-" * 72)
     if failed:
-        print(f"结论：⛔ {failed} 道门未过 —— 修复后再提交")
+        print(f"结论：⛔ {failed} 项未过（交付预检或某道门）—— 修复后再提交")
         return 1
-    print("结论：✅ 全过（范围门若为 SKIP，说明本次未声明范围）")
+    print("结论：✅ 全过（SKIP 项：无 REQ 则交付预检跳过，未声明范围则范围门跳过）")
     return 0
 
 

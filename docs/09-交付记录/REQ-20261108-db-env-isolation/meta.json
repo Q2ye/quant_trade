@@ -1,0 +1,27 @@
+{
+  "req": "REQ-20261108-db-env-isolation",
+  "title": "开发/生产数据隔离（单库多 schema）",
+  "tier": "T2",
+  "status": "DONE",
+  "created": "2026-11-08",
+  "updated": "2026-11-08",
+  "commits": [],
+  "scope": [
+    "quant_server/shared/config/config_manager.py",
+    "quant_server/shared/database/session/session_manager.py",
+    "quant_server/modules/data/__init__.py",
+    "quant_server/modules/data/services/market_state_classifier.py",
+    "quant_server/modules/strategy/services/training_service.py",
+    "quant_server/scripts/ops/merge_accounts.py",
+    "quant_server/scripts/ops/setup_composite.py",
+    "quant_server/scripts/ops/add_strategy_to_composite.py",
+    "quant_server/scripts/ops/grant_roles.py",
+    "quant_server/scripts/ops/init_dev_schema.py",
+    "quant_server/scripts/ops/sync_dev_schema.py",
+    "quant_server/scripts/ops/verify_env_isolation.py",
+    "quant_server/tests/test_env_config.py",
+    "quant_server/tests/test_session_assert.py",
+    "quant_server/tests/test_daily_gate.py",
+    "docs/09-交付记录/REQ-20261108-db-env-isolation/04-验证.md"
+  ]
+}

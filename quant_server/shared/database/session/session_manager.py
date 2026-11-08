@@ -5,9 +5,11 @@
 """
 
 import logging
+import os
 from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from typing import Annotated
@@ -18,6 +20,50 @@ from ...config.config_manager import config
 logger = logging.getLogger(__name__)
 
 
+def evaluate_environment_safety (
+	environment: str,
+	current_user: str,
+	search_path: str,
+	can_write_accounts: bool,
+	current_database: Optional[str] = None,
+	expected_database: Optional[str] = None,
+) -> list[str]:
+	"""评估环境隔离是否生效（纯函数，便于单测）。
+
+	- development: search_path 以 dev 开头，且不能写 public.accounts
+	- production/staging: search_path 为 public，且能写 public.accounts
+	- testing: 跳过
+	- 任何环境: 应用角色不得是 superuser postgres；库名必须与配置一致
+	"""
+	env = (environment or "").lower()
+	if env == "testing":
+		return []
+
+	path = (search_path or "").replace(" ", "")
+	problems: list[str] = []
+
+	if current_user == "postgres":
+		problems.append("current_user=postgres：应用禁止使用 superuser")
+
+	if current_database and expected_database and current_database != expected_database:
+		problems.append(
+			f"current_database={current_database!r} != 期望 {expected_database!r}"
+		)
+
+	if env == "development":
+		if not path.startswith("dev"):
+			problems.append(f"search_path={search_path!r}：开发环境必须以 dev 开头")
+		if can_write_accounts:
+			problems.append("开发角色可写 public.accounts：隔离失效")
+	else:
+		if not path.startswith("public"):
+			problems.append(f"search_path={search_path!r}：生产环境必须为 public")
+		if not can_write_accounts:
+			problems.append("生产角色不可写 public.accounts：账户写入会失败")
+
+	return problems
+
+
 class SessionManager:
 	"""会话管理器"""
 
@@ -26,12 +72,20 @@ class SessionManager:
 		self._is_initialized = False
 
 	async def initialize (self) -> bool:
-		"""初始化会话管理器"""
+		"""初始化会话管理器（含环境隔离断言）。"""
 		try:
 			self._connection_pool = get_connection_pool()
 			success = await self._connection_pool.initialize()
 
 			if success:
+				# 环境安全断言必须在标记初始化成功之前执行：
+				# 失败 → 返回 False → main.py 启动流程抛 RuntimeError
+				try:
+					await self._assert_environment_safety()
+				except Exception as safety_err:
+					logger.error("环境安全断言失败，拒绝启动: %s", safety_err, exc_info=True)
+					return False
+
 				self._is_initialized = True
 				logger.info("数据库会话管理器初始化成功")
 			else:
@@ -42,6 +96,37 @@ class SessionManager:
 		except Exception as e:
 			logger.error(f"数据库会话管理器初始化异常: {str(e)}", exc_info=True)
 			return False
+
+	async def _assert_environment_safety (self) -> None:
+		"""校验当前连接角色、search_path、库名与账户写权限。"""
+		# 不能读模块导入期的 config 单例：StartupConfig 会在运行时 reload/rebind，
+		# 且 --mode 通过 os.environ["ENVIRONMENT"] 生效（main.py:1230-1231）。
+		environment = (os.getenv("ENVIRONMENT") or "development").lower()
+		if environment == "testing":
+			return
+
+		session_factory = self._connection_pool.get_session_factory()
+		async with session_factory() as session:
+			result = await session.execute(text(
+				"SELECT current_user, current_setting('search_path'), current_database(), "
+				"has_table_privilege(current_user, 'public.accounts', 'INSERT')"
+			))
+			current_user, search_path, current_db, can_write_accounts = result.one()
+
+		expected_db = os.getenv(
+			"PROD_DB_NAME" if environment != "development" else "DB_DEV_NAME"
+		) or "quant_signals"
+		problems = evaluate_environment_safety(
+			environment, current_user, search_path, bool(can_write_accounts),
+			current_database=current_db, expected_database=expected_db,
+		)
+		if problems:
+			raise RuntimeError("; ".join(problems))
+
+		logger.info(
+			"环境安全断言通过: user=%s search_path=%s environment=%s",
+			current_user, search_path, environment,
+		)
 
 	@asynccontextmanager
 	async def get_session (self) -> AsyncGenerator[AsyncSession, None]:

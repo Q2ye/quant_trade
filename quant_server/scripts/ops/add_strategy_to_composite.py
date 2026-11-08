@@ -20,10 +20,33 @@ from datetime import datetime
 
 import psycopg2
 
-DB = dict(
-    host="localhost", port=5432, user="postgres",
-    password="123456", database="quant_signals_dev",
-)
+
+def _db_config(env: str) -> dict:
+    from shared.config.config_manager import DatabaseSettings, resolve_database_env
+    base = DatabaseSettings().model_dump()
+    values, missing = resolve_database_env(
+        "development" if env == "dev" else "production", base
+    )
+    if env == "prod" and missing:
+        raise SystemExit(f"拒绝：生产 DB 配置缺失 {missing}")
+    return {
+        "host": values["HOST"], "port": values["PORT"],
+        "user": values["USER"], "password": values["PASSWORD"],
+        "database": values["NAME"],
+    }
+
+
+def _assert_role(cur, env: str) -> None:
+    expected = "quant_dev" if env == "dev" else "quant_prod"
+    cur.execute("SELECT current_user, current_setting('search_path')")
+    user, path = cur.fetchone()
+    if user != expected:
+        raise SystemExit(f"拒绝：{env} 环境应以 {expected} 连接，实际 {user}")
+    compact = (path or "").replace(" ", "")
+    if env == "dev" and not compact.startswith("dev"):
+        raise SystemExit(f"拒绝：dev 的 search_path 为 {path!r}")
+    if env == "prod" and not compact.startswith("public"):
+        raise SystemExit(f"拒绝：prod 的 search_path 为 {path!r}")
 
 
 def main() -> None:
@@ -34,11 +57,18 @@ def main() -> None:
     ap.add_argument("--w0", type=float, required=True, help="熊市(0)权重")
     ap.add_argument("--w1", type=float, required=True, help="震荡(1)权重")
     ap.add_argument("--w2", type=float, required=True, help="牛市(2)权重")
+    ap.add_argument("--env", choices=("dev", "prod"), default="dev",
+                    help="目标环境（默认 dev；prod 需 --yes-i-mean-prod）")
+    ap.add_argument("--yes-i-mean-prod", action="store_true",
+                    help="确认对生产环境执行组合/账户变更")
     args = ap.parse_args()
+    if args.env == "prod" and not args.yes_i_mean_prod:
+        raise SystemExit("拒绝：--env prod 需同时传 --yes-i-mean-prod")
 
-    conn = psycopg2.connect(**DB)
+    conn = psycopg2.connect(**_db_config(args.env))
     conn.autocommit = True
     cur = conn.cursor()
+    _assert_role(cur, args.env)
 
     # 1. 读组合
     cur.execute("SELECT strategy_ids, allocator_config FROM composite_groups WHERE id = %s", (args.group,))

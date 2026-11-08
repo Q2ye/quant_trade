@@ -10,16 +10,52 @@
   2. 创建 composite_groups 记录（REGIME_BASE_ALLOCATION + 组合名称）
   3. 初始化各策略 allocated_capital = 账户余额 × 权重
 """
+import argparse
 import json
 import uuid
 from datetime import datetime
 
 import psycopg2
 
-DB = dict(
-    host="localhost", port=5432, user="postgres",
-    password="123456", database="quant_signals_dev",
-)
+
+def _parse_env_args() -> str:
+    ap = argparse.ArgumentParser(description="实盘组合初始化")
+    ap.add_argument("--env", choices=("dev", "prod"), default="dev",
+                    help="目标环境（默认 dev；prod 需 --yes-i-mean-prod）")
+    ap.add_argument("--yes-i-mean-prod", action="store_true",
+                    help="确认对生产环境执行组合/账户变更")
+    args = ap.parse_args()
+    if args.env == "prod" and not args.yes_i_mean_prod:
+        raise SystemExit("拒绝：--env prod 需同时传 --yes-i-mean-prod")
+    return args.env
+
+
+def _db_config(env: str) -> dict:
+    from shared.config.config_manager import DatabaseSettings, resolve_database_env
+    base = DatabaseSettings().model_dump()
+    values, missing = resolve_database_env(
+        "development" if env == "dev" else "production", base
+    )
+    if env == "prod" and missing:
+        raise SystemExit(f"拒绝：生产 DB 配置缺失 {missing}")
+    return {
+        "host": values["HOST"], "port": values["PORT"],
+        "user": values["USER"], "password": values["PASSWORD"],
+        "database": values["NAME"],
+    }
+
+
+def _assert_role(cur, env: str) -> None:
+    expected = "quant_dev" if env == "dev" else "quant_prod"
+    cur.execute("SELECT current_user, current_setting('search_path')")
+    user, path = cur.fetchone()
+    if user != expected:
+        raise SystemExit(f"拒绝：{env} 环境应以 {expected} 连接，实际 {user}")
+    compact = (path or "").replace(" ", "")
+    if env == "dev" and not compact.startswith("dev"):
+        raise SystemExit(f"拒绝：dev 的 search_path 为 {path!r}")
+    if env == "prod" and not compact.startswith("public"):
+        raise SystemExit(f"拒绝：prod 的 search_path 为 {path!r}")
 
 # 组合配置
 COMPOSITE_NAME = "进攻防御组合"
@@ -39,9 +75,11 @@ REGIME_BASE_ALLOCATION = {
 
 
 def main() -> None:
-    conn = psycopg2.connect(**DB)
+    env = _parse_env_args()
+    conn = psycopg2.connect(**_db_config(env))
     conn.autocommit = True
     cur = conn.cursor()
+    _assert_role(cur, env)
 
     # 1. 获取共享账户余额
     cur.execute("SELECT total_balance FROM accounts WHERE id = %s", (SHARED_ACCOUNT_ID,))

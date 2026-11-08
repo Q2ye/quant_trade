@@ -19,6 +19,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def should_register_daily_tasks (environment: str) -> bool:
+	"""日终同步/派生任务只在生产环境注册。
+
+	dev 与 prod 共用一份行情；dev 再注册同步会重复调用 Tushare，且写不到 public。
+	"""
+	return (environment or "").lower() == "production"
+
+
 from typing import Dict
 
 # 导出常量
@@ -251,7 +260,12 @@ async def initialize (
 				_sync_engine = None
 
 		# ===== 2026-08 C15：注册日终任务（依赖反转，替代 main_engine 内联）=====
-		if main_engine and hasattr(main_engine, "register_daily_task"):
+		from shared.config.config_manager import config as _app_config
+		if (
+			main_engine
+			and hasattr(main_engine, "register_daily_task")
+			and should_register_daily_tasks(_app_config.settings.ENVIRONMENT.value)
+		):
 			async def _task_sync_daily(today):
 				from shared.database.session import get_session_manager
 				from modules.data.services.sync_service import DataSyncService
