@@ -419,6 +419,9 @@ class SystemSettings(BaseSettings):
 	frontend_dir: Optional[str] = None
 	# 日终流水线触发时间（交易日，HH:MM）
 	daily_sync_time: str = "19:20"
+	# 夜间补充同步时间（每天 HH:MM，任务内再判前一交易日）与开关
+	night_sync_time: str = "00:00"
+	night_sync_enabled: bool = True
 
 
 class ServerSettings(BaseSettings):
@@ -842,6 +845,8 @@ class ConfigManager:
 					'serve_frontend': self.get('SYSTEM.serve_frontend'),
 					'frontend_dir': self.get('SYSTEM.frontend_dir'),
 					'daily_sync_time': self.get('SYSTEM.daily_sync_time'),
+					'night_sync_time': self.get('SYSTEM.night_sync_time'),
+					'night_sync_enabled': self.get('SYSTEM.night_sync_enabled'),
 				},
 				'modules': {
 					k: v for k, v in self.get('MODULES').model_dump().items()

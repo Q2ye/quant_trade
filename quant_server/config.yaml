@@ -12,6 +12,10 @@ defaults: &defaults
     serve_frontend: null
     # 日终流水线触发时间（交易日，HH:MM）；默认 19:20
     daily_sync_time: "19:20"
+    # 夜间补充同步：每天 HH:MM 触发，任务内再判断「前一天是否交易日」。
+    # 默认 00:00；night_sync_enabled=false 可在不重启代码的情况下停夜班。
+    night_sync_time: "00:00"
+    night_sync_enabled: true
     # frontend_dir: "quant_web/dist"   # 留空则用 <repo>/quant_web/dist
 
   # API 安全配置（JWT 令牌等）

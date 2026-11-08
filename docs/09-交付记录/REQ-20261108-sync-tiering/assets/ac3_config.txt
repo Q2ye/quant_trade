@@ -1,0 +1,7 @@
+pytdx 未安装，XTP数据源功能受限
+数据工具包 1.0.0 加载完成
+包含 37 个导出项
+日志工具包 1.0.0 加载完成
+包含 58 个导出项
+默认配置: {'level': <LogLevel.INFO: 'INFO'>, 'format': <LogFormat.JSON: 'json'>, 'color_mode': <ColorMode.AUTO: 'auto'>, 'async_enabled': False, 'handlers': [], 'filters': []}
+00:00 True

@@ -138,6 +138,14 @@ class StartupConfig:
 		self.daily_sync_time = str(
 			config_data.get('system', {}).get('daily_sync_time', '19:20')
 		).strip() or '19:20'
+		self.night_sync_time = str(
+			config_data.get('system', {}).get('night_sync_time', '00:00')
+		).strip() or '00:00'
+		_nse = config_data.get('system', {}).get('night_sync_enabled', True)
+		self.night_sync_enabled = (
+			_nse if isinstance(_nse, bool)
+			else str(_nse).strip().lower() in ('1', 'true', 'yes', 'on')
+		)
 
 		# 模块配置
 		self.enabled_modules: List[str] = []
@@ -195,6 +203,8 @@ class StartupConfig:
 		self.serve_frontend = None
 		self.frontend_dir = None
 		self.daily_sync_time = '19:20'
+		self.night_sync_time = '00:00'
+		self.night_sync_enabled = True
 
 		# 模块配置 - 默认启用所有模块
 		default_modules = [
@@ -228,6 +238,8 @@ class StartupConfig:
 				"port": self.port,
 				"workers": self.workers,
 				"daily_sync_time": self.daily_sync_time,
+				"night_sync_time": self.night_sync_time,
+				"night_sync_enabled": self.night_sync_enabled,
 			},
 			"engines": {
 				"auto_start_main_engine": self.auto_start_main_engine,

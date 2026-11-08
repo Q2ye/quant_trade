@@ -46,17 +46,29 @@ _DAILY_SYNC_TIME_DEFAULT = "19:20"
 _DAILY_SYNC_TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
-def resolve_daily_sync_time(raw: Any) -> str:
-    """把 system.daily_sync_time 规整为 HH:MM；非法值回退 19:20。"""
+def resolve_daily_sync_time(
+    raw: Any, default: str = _DAILY_SYNC_TIME_DEFAULT
+) -> str:
+    """把 HH:MM 配置规整为合法值；非法/空回退 default（日终 19:20 / 夜间 00:00）。"""
     value = str(raw or "").strip()
     if _DAILY_SYNC_TIME_PATTERN.match(value):
         return value
     if value:
         logger.warning(
-            "system.daily_sync_time=%r 非法（期望 HH:MM，00:00-23:59），回退 %s",
-            value, _DAILY_SYNC_TIME_DEFAULT,
+            "system 同步时间=%r 非法（期望 HH:MM，00:00-23:59），回退 %s",
+            value, default,
         )
-    return _DAILY_SYNC_TIME_DEFAULT
+    return default
+
+
+def hhmm_to_cron(hhmm: Any, default: str = "00:00") -> str:
+    """把 HH:MM 转成 APScheduler 的 crontab（分 时 * * *）。
+
+    ``hhmm_to_cron("00:00") -> "0 0 * * *"``。
+    """
+    value = resolve_daily_sync_time(hhmm, default=default)
+    hour, minute = map(int, value.split(":"))
+    return f"{minute} {hour} * * *"
 
 
 class MainEngine(EngineBase):
@@ -153,6 +165,8 @@ class MainEngine(EngineBase):
         # 每项 (order, name, fn)；pre_gate=门之前（数据准备），post_gate=门之后（驱动）
         self._pre_gate_tasks: List[tuple] = []
         self._post_gate_tasks: List[tuple] = []
+        # 夜间补充同步任务（00:00，独立于日终流水线）
+        self._night_tasks: List[tuple] = []
         # 数据门附加校验（模块注入，2026-09-19）：(name, async fn(today) -> (ok, reason))
         self._gate_checks: List[tuple] = []
 
@@ -235,6 +249,20 @@ class MainEngine(EngineBase):
         target.sort(key=lambda x: x[0])
         logger.info("日终任务已注册: [%s] %s (order=%s)", phase, name, order)
 
+    async def register_night_task(
+        self, name: str, fn: Callable, order: int = 0,
+    ) -> None:
+        """模块注册夜间补充同步任务（00:00，独立于日终流水线）。
+
+        ``fn(prev_day) -> None``：prev_day 为「前一交易日」，由 MainEngine
+        在触发时计算并校验；任务内部自行获取 session/engine。
+        """
+        # 按 name 去重：模块重复 initialize 时不重复跑同一任务
+        self._night_tasks = [t for t in self._night_tasks if t[1] != name]
+        self._night_tasks.append((order, name, fn))
+        self._night_tasks.sort(key=lambda x: x[0])
+        logger.info("夜间任务已注册: %s (order=%s)", name, order)
+
     def register_gate_check(self, name: str, fn: Callable) -> None:
         """模块注册「数据门附加校验」（2026-09-19 新增）。
 
@@ -284,6 +312,37 @@ class MainEngine(EngineBase):
                 await fn(today)
             except Exception as e:
                 logger.warning("日终任务 %s 失败（非致命）: %s", name, e)
+
+    async def _run_night_pipeline(self, prev_day) -> None:
+        """夜间补充同步：只同步、不驱动策略；每任务独立 try/except。"""
+        if not self._night_tasks:
+            logger.warning("夜间任务注册表为空（data 模块可能被禁用），夜班空转")
+            return
+        for _order, name, fn in self._night_tasks:
+            try:
+                await fn(prev_day)
+            except Exception as e:
+                logger.warning("夜间任务 %s 失败（非致命）: %s", name, e)
+
+    async def _is_trading_day(self, day) -> bool:
+        """判断指定日期是否交易日；日历不可用时退化为工作日。"""
+        try:
+            from shared.database.session import get_session_manager
+            from sqlalchemy import text as _text
+
+            sm = get_session_manager()
+            async with sm.get_session() as s:
+                r = await s.execute(_text(
+                    "SELECT is_open FROM trade_calendar "
+                    "WHERE exchange='SSE' AND cal_date=:d LIMIT 1"), {"d": day})
+                row = r.first()
+            if row is None:
+                logger.warning("交易日历无 %s 记录，退化为工作日判断", day)
+                return day.weekday() < 5
+            return bool(row[0])
+        except Exception as e:
+            logger.warning("夜班交易日判断失败，退化为工作日: %s", e)
+            return day.weekday() < 5
 
     async def _data_integrity_gate(self, today) -> bool:
         """数据完整性校验门（2026-08 C15 抽取；2026-09-19 订正判据 + 附加校验）。
@@ -408,12 +467,39 @@ class MainEngine(EngineBase):
                 pre_gate 任务（同步→state→因子→结算）→ 数据完整性门 → post_gate 任务（rebalance→策略驱动）。
                 任务由各模块在 initialize 时通过 register_daily_task 注册（依赖反转）。
                 """
-                from datetime import date as _date
+                from datetime import datetime as _datetime
+                from zoneinfo import ZoneInfo
 
-                today = _date.today()
+                today = _datetime.now(ZoneInfo("Asia/Shanghai")).date()
                 logger.info("日终数据同步开始: %s", today)
                 await self._run_daily_pipeline(today)
                 logger.info("日终流水线完成: %s", today)
+
+            async def _night_sync_job():
+                """00:00 夜间补充同步：只同步非策略数据，不驱动策略。
+
+                用 CRON 每天触发，任务内判断「前一工作日 + A 股交易日」：
+                - 周六 00:00 跑周五数据；
+                - 周日/周一 00:00 跳过（前一日是周末）；
+                - A 股节假日但为工作日时仍跑 —— 港美股/全球指数当天可能开市，
+                  不能因为 A 股休市把跨市场数据永久跳过。
+                """
+                from datetime import datetime as _datetime, timedelta as _timedelta
+                from zoneinfo import ZoneInfo
+
+                today = _datetime.now(ZoneInfo("Asia/Shanghai")).date()
+                prev_day = today - _timedelta(days=1)
+                is_trade = await self._is_trading_day(prev_day)
+                if not is_trade and prev_day.weekday() >= 5:
+                    logger.info("夜间同步跳过: %s 周末", prev_day)
+                    return
+                if not is_trade:
+                    logger.info(
+                        "夜间同步: %s A股休市但为工作日，继续跑（跨市场数据）",
+                        prev_day)
+                logger.info("夜间数据同步开始: prev_day=%s", prev_day)
+                await self._run_night_pipeline(prev_day)
+                logger.info("夜间数据同步完成: prev_day=%s", prev_day)
 
             # 时间由 config.yaml 的 system.daily_sync_time 控制（HH:MM，默认 19:20）
             daily_sync_time = resolve_daily_sync_time(
@@ -426,7 +512,7 @@ class MainEngine(EngineBase):
                 schedule_type=ScheduleType.TRADING_DAY,
                 schedule_config={"time": daily_sync_time},
                 func=_daily_sync_job,
-                description="盘后（交易日）：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
+                description="盘后（交易日）：同步7类策略必需数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,
             )
             added = await self._schedule_manager.add_job(job)
@@ -435,9 +521,39 @@ class MainEngine(EngineBase):
                     "日终调度任务注册失败（时间配置 %s 非法或触发器创建失败）",
                     daily_sync_time,
                 )
-                return
+            else:
+                logger.info("日终调度器已注册: 交易日 %s 数据同步+策略驱动", daily_sync_time)
+
+            # ---- 00:00 夜间补充同步（非策略数据；独立于日终流水线）----
+            sys_cfg = self.config.config.get("system", {})
+            _nse = sys_cfg.get("night_sync_enabled", True)
+            night_enabled = (
+                _nse if isinstance(_nse, bool)
+                else str(_nse).strip().lower() in ("1", "true", "yes", "on")
+            )
+            night_time = "disabled"
+            if night_enabled:
+                night_time = resolve_daily_sync_time(
+                    sys_cfg.get("night_sync_time"), default="00:00"
+                )
+                night_job = ScheduleJob(
+                    job_id="night_data_sync",
+                    name="夜间补充数据同步",
+                    schedule_type=ScheduleType.CRON,
+                    schedule_config={"cron": hhmm_to_cron(night_time)},
+                    func=_night_sync_job,
+                    description="每天 00:00（默认）同步非策略数据；任务内判断前一交易日",
+                    max_retries=0,
+                )
+                if await self._schedule_manager.add_job(night_job):
+                    logger.info("夜间调度器已注册: %s（前一交易日守卫）", night_time)
+                else:
+                    logger.error("夜间调度任务注册失败: %s", night_time)
+            else:
+                logger.info("夜间同步已禁用（system.night_sync_enabled=false）")
+
             await self._schedule_manager.start()
-            logger.info("日终调度器已启动: 交易日 %s 数据同步+策略驱动", daily_sync_time)
+            logger.info("调度器已启动: 日终 %s / 夜间 %s", daily_sync_time, night_time)
         except Exception as e:
             logger.warning("日终调度器启动失败（非致命）: %s", e)
 

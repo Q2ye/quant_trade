@@ -30,6 +30,9 @@ def should_register_daily_tasks (environment: str) -> bool:
 
 from typing import Dict
 
+# 日终/夜间同步清单（19:20 七类 / 00:00 六十二类）
+from modules.data.sync_schedule import DAILY_STRATEGY_TYPES, NIGHT_SYNC_TYPES
+
 # 导出常量
 from modules.data.constants import (
 	ModuleConfig,
@@ -266,69 +269,89 @@ async def initialize (
 			and hasattr(main_engine, "register_daily_task")
 			and should_register_daily_tasks(_app_config.settings.ENVIRONMENT.value)
 		):
-			async def _task_sync_daily(today):
+			async def _run_sync_batch(types, end_date, label, start_for=None):
+				"""并发（≤3）同步一组 DataType；每类型独立 session/异常。
+
+				``start_for(dt)`` 可选：返回该类型的起始日（None = 与 end_date 同一天）。
+				月/季/事件类型用它做滚动窗口，避免「只查前一天」漏掉迟发布数据。
+				"""
 				from shared.database.session import get_session_manager
 				from modules.data.services.sync_service import DataSyncService
-				from modules.data.constants import DataType
+				import asyncio as _asyncio
+
 				sm = get_session_manager()
-				sync_ok = True
-				async with sm.get_session() as session:
-					svc = DataSyncService(session=session)
-					_daily_types = (
-						DataType.DAILY_QUOTES, DataType.DAILY_BASIC, DataType.ADJ_FACTOR,
-						DataType.ETF_DAILY, DataType.FUND_ADJ_FACTOR,
-						DataType.INDEX_DAILY, DataType.INDEX_DAILYBASIC,
-						DataType.DAILY_LIMIT, DataType.SUSPEND,
-						# 2026-08 修复（Fix3）：补齐此前未纳入日终的类型。
-						# moneyflow 曾停更 08-17、stock_hsgt 停更 06-25（不在日终列表 → 无自愈）。
-						# moneyflow 逐股约 11min/日；hsgt/hsgt_flow/sw_daily 均为轻量全量。
-						DataType.MONEYFLOW, DataType.STOCK_HSGT,
-						DataType.MONEYFLOW_HSGT, DataType.INDEX_SW_DAILY,
-						# 2026-11-08 日频数据底座：日频表（26 张）。
-						# 月度（index_monthly/macro_sf/macro_money/macro_pmi）与快照
-						# （index_ths_member）不进日终，由回填脚本按周/月执行。
-						DataType.FX_DAILY, DataType.FUND_NAV,
-						DataType.MARGIN_DETAIL, DataType.MARGIN_SECS,
-						# 龙虎榜 2026-11-08 补齐：设计 §5.3 为日频，前端 group 1 预设
-						# 已包含，但此前漏出 _daily_types → 自动日终不会同步。
-						DataType.TOP_LIST, DataType.TOP_INST,
-						DataType.CYQ_PERF, DataType.THS_DAILY,
-						DataType.MONEYFLOW_EXT, DataType.MONEYFLOW_IND,
-						DataType.MARKET_DAILY_INFO, DataType.BLOCK_TRADE,
-						DataType.INDEX_GLOBAL, DataType.FUT_DAILY,
-						# FUT_HOLDING / FUT_WSR 按品种×交易所循环，单日约 140 次、
-						# 实测 25 分钟未完成 → 不进日终，按主力品种另行回填。
-						DataType.FUT_SETTLE,
-						DataType.FUT_MAPPING, DataType.FUT_INDEX_DAILY,
-						DataType.OPT_DAILY, DataType.CB_DAILY,
-						DataType.HSGT_TOP10, DataType.KPL_LIST,
-						DataType.HK_DAILY, DataType.US_DAILY, DataType.GGT_DAILY,
-						DataType.FUND_SHARE, DataType.FUND_DAILY_EX,
-					)
-					import asyncio as _asyncio
-					_sem = _asyncio.Semaphore(3)
-					async def _sync_one(dt):
-						async with _sem:
-							try:
-								# 2026-08 修复：每个同步用独立 session（gather 并发共享 session
-								# 报 "concurrent operations not permitted" → etf_daily 同步失败）
-								async with sm.get_session() as _sess:
-									_svc = DataSyncService(session=_sess)
-									result = await _svc.sync_market_data(dt, start_date=None, end_date=today)
-								logger.info("日终同步 %s 完成: records=%s",
-									dt.value,
-									result.get("records_processed", 0) if isinstance(result, dict) else "?",
-								)
-								return True
-							except Exception as sync_err:
-								logger.error("日终同步 %s 失败: %s", dt.value, sync_err)
-								return False
-					_sync_results = await _asyncio.gather(
-						*[_sync_one(dt) for dt in _daily_types], return_exceptions=True,
-					)
-					sync_ok = all(r is True for r in _sync_results)
+				_sem = _asyncio.Semaphore(3)
+
+				async def _sync_one(dt):
+					async with _sem:
+						try:
+							start_date = start_for(dt) if start_for else None
+							# 每个同步用独立 session（gather 共享 session 会报
+							# "concurrent operations not permitted"）
+							async with sm.get_session() as _sess:
+								_svc = DataSyncService(session=_sess)
+								result = await _svc.sync_market_data(
+									dt, start_date=start_date, end_date=end_date)
+							ok = bool(result.get("success")) if isinstance(result, dict) else False
+							detail = result.get("result", {}) if isinstance(result, dict) else {}
+							n = detail.get("records_added", 0) if isinstance(detail, dict) else 0
+							if ok:
+								logger.info("%s同步 %s 完成: records=%s",
+									label, dt.value, n)
+							else:
+								msg = (result.get("message") or result.get("error") or "") \
+									if isinstance(result, dict) else ""
+								logger.warning("%s同步 %s 业务失败: %s",
+									label, dt.value, str(msg)[:200])
+							return ok
+						except Exception as sync_err:
+							logger.error("%s同步 %s 失败: %s", label, dt.value, sync_err)
+							return False
+
+				results = await _asyncio.gather(
+					*[_sync_one(dt) for dt in types], return_exceptions=True)
+				return all(r is True for r in results)
+
+			async def _task_sync_daily(today):
+				"""19:20 日终：只同步策略执行/门禁/派生任务所需的 7 类。"""
+				sync_ok = await _run_sync_batch(
+					DAILY_STRATEGY_TYPES, today, "日终")
 				if not sync_ok:
 					logger.warning("日终数据同步部分失败，仍尝试驱动策略")
+
+			async def _task_sync_night(prev_day):
+				"""00:00 夜班：同步其余全部非分钟/tick 类型；不参与策略驱动。
+
+				月/季/事件类型用滚动窗口，避免「只查前一天」漏掉迟发布数据：
+				- by_month / frequency=monthly：回看 62 天（2–3 个月）
+				- by_quarter：回看 200 天（2–3 个季度末）
+				- by_range / by_range_daily：回看 7 天（公告可能迟发布）
+				- 旧宏观（CPI/PPI/GDP）：回看 62 天
+				- 其余（日频/快照/财务/因子/目录）：交给各自同步方法的默认范围
+				"""
+				from datetime import timedelta as _timedelta
+				from modules.data.data_contracts import DATA_CONTRACTS
+
+				def _start_for(dt):
+					c = DATA_CONTRACTS.get(dt.value)
+					if c is None:
+						if dt in (DataType.CPI, DataType.PPI, DataType.GDP):
+							return prev_day - _timedelta(days=62)
+						return None
+					if c.backfill_mode == "by_month" or c.frequency == "monthly":
+						return prev_day - _timedelta(days=62)
+					if c.backfill_mode == "by_quarter":
+						return prev_day - _timedelta(days=200)
+					if c.backfill_mode in ("by_range", "by_range_daily"):
+						return prev_day - _timedelta(days=7)
+					return None
+
+				logger.info("夜间补充同步开始: %s 类, 目标日 %s",
+					len(NIGHT_SYNC_TYPES), prev_day)
+				sync_ok = await _run_sync_batch(
+					NIGHT_SYNC_TYPES, prev_day, "夜间", start_for=_start_for)
+				if not sync_ok:
+					logger.warning("夜间补充同步部分失败（非致命）")
 
 			async def _task_coverage_validate(today):
 				"""覆盖度校验（2026-08 Fix7 / 2026-10-12 加固）：以 stock_daily 为日期基准，
@@ -441,6 +464,8 @@ async def initialize (
 					logger.warning("日终 ETF 因子计算失败（非致命）: %s", factor_err)
 
 			await main_engine.register_daily_task("sync_daily", _task_sync_daily, phase="pre_gate", order=10)
+			if hasattr(main_engine, "register_night_task"):
+				await main_engine.register_night_task("sync_night", _task_sync_night, order=10)
 			await main_engine.register_daily_task("coverage_validate", _task_coverage_validate, phase="pre_gate", order=15)
 			await main_engine.register_daily_task("market_state_update", _task_market_state, phase="pre_gate", order=20)
 			await main_engine.register_daily_task("etf_factor", _task_etf_factor, phase="pre_gate", order=30)
@@ -544,6 +569,10 @@ __all__ = [
 	"create_cancel_token",
 	"signal_cancel",
 	"cleanup_cancel_token",
+
+	# 日终/夜间同步清单
+	"DAILY_STRATEGY_TYPES",
+	"NIGHT_SYNC_TYPES",
 
 	# 模块初始化函数
 	"initialize",

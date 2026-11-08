@@ -1,0 +1,10 @@
+{
+  "req": "REQ-20261108-sync-tiering",
+  "title": "日终/夜间同步分层",
+  "tier": "T2",
+  "status": "S1",
+  "created": "2026-11-08",
+  "updated": "2026-11-08",
+  "commits": [],
+  "scope": []
+}

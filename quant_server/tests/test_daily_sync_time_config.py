@@ -25,3 +25,33 @@ def test_empty_and_none_fall_back():
 
 def test_non_zero_padded_falls_back():
     assert resolve_daily_sync_time("9:20") == "19:20"
+
+
+def test_night_time_default():
+    assert resolve_daily_sync_time(None, default="00:00") == "00:00"
+
+
+def test_hhmm_to_cron_zero():
+    from core.engines.system.main_engine import hhmm_to_cron
+
+    assert hhmm_to_cron("00:00") == "0 0 * * *"
+
+
+def test_hhmm_to_cron_non_zero():
+    from core.engines.system.main_engine import hhmm_to_cron
+
+    assert hhmm_to_cron("23:45") == "45 23 * * *"
+
+
+def test_hhmm_to_cron_invalid_falls_back_to_night():
+    from core.engines.system.main_engine import hhmm_to_cron
+
+    assert hhmm_to_cron("25:00") == "0 0 * * *"
+
+
+def test_system_config_has_night_defaults():
+    from shared.config.config_manager import SystemSettings
+
+    cfg = SystemSettings()
+    assert cfg.night_sync_time == "00:00"
+    assert cfg.night_sync_enabled is True
