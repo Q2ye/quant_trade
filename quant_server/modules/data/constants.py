@@ -611,6 +611,68 @@ class DataType(str, Enum):
 	STK_FACTOR_PRO = "stk_factor_pro"  # 股票技术因子（专业版）
 	IDX_FACTOR_PRO = "idx_factor_pro"  # 指数技术因子专业版
 
+	# ===== 2026-11-08 日频数据底座（REQ-20261108-daily-data-base）=====
+	# P0b
+	FX_BASIC = "fx_basic"  # 外汇基础信息
+	FX_DAILY = "fx_daily"  # 外汇日线
+	FUND_NAV = "fund_nav"  # 基金净值
+	MARGIN_DETAIL = "stock_margin_detail"  # 个股两融明细
+	MARGIN_SECS = "stock_margin_secs"  # 两融标的名单
+	NAMECHANGE = "stock_namechange"  # 股票曾用名全量
+	NEW_SHARE = "stock_new_share"  # IPO 新股
+	INDEX_MONTHLY = "index_monthly"  # 指数月线
+	MACRO_RATE = "macro_rate"  # 利率长表
+	MACRO_SF = "macro_sf"  # 社融
+	MACRO_MONEY = "macro_money"  # 货币供应
+	MACRO_PMI = "macro_pmi"  # PMI
+	# P0c
+	TOP_LIST = "stock_top_list"  # 龙虎榜每日统计
+	TOP_INST = "stock_top_inst"  # 龙虎榜机构交易
+	CYQ_PERF = "stock_cyq_perf"  # 每日筹码及胜率
+	THS_INDEX = "index_ths"  # THS 概念分类
+	THS_DAILY = "index_ths_daily"  # THS 概念日线
+	THS_MEMBER = "index_ths_member"  # THS 概念成分快照
+	MONEYFLOW_EXT = "stock_moneyflow_ext"  # 个股资金流 DC/THS
+	MONEYFLOW_IND = "stock_moneyflow_ind"  # 板块/行业/概念资金流
+	MARKET_DAILY_INFO = "market_daily_info"  # 沪深每日交易统计
+	# P1
+	BLOCK_TRADE = "stock_block_trade"  # 大宗交易
+	INDEX_GLOBAL = "index_global_daily"  # 国际指数
+	FUT_BASIC = "fut_basic"  # 期货合约信息
+	FUT_DAILY = "fut_daily"  # 期货日线
+	FUT_HOLDING = "fut_holding"  # 期货持仓排名
+	FUT_WSR = "fut_wsr"  # 期货仓单日报
+	FUT_SETTLE = "fut_settle"  # 期货结算参数
+	FUT_MAPPING = "fut_mapping"  # 主力/连续合约映射
+	FUT_INDEX_DAILY = "fut_index_daily"  # 南华期货指数
+	OPT_BASIC = "opt_basic"  # 期权合约信息
+	OPT_DAILY = "opt_daily"  # 期权日线
+	CB_BASIC = "cb_basic"  # 可转债基础信息
+	CB_ISSUE = "cb_issue"  # 可转债发行
+	CB_CALL = "cb_call"  # 可转债赎回
+	CB_DAILY = "cb_daily"  # 可转债行情
+	CB_SHARE = "cb_share"  # 可转债转股结果
+	CB_RATING = "cb_rating"  # 可转债评级
+	HSGT_TOP10 = "stock_hsgt_top10"  # 沪深股通十大成交股
+	# P2
+	PLEDGE_DETAIL = "stock_pledge_detail"  # 股权质押明细
+	REPURCHASE = "stock_repurchase"  # 股票回购
+	STK_SURV = "stock_surv"  # 机构调研
+	KPL_LIST = "stock_kpl_list"  # 开盘啦榜单
+	HM_LIST = "stock_hm_list"  # 游资名录
+	ECO_CAL = "macro_eco_cal"  # 财经日历
+	HK_BASIC = "hk_basic"  # 港股基础信息
+	HK_DAILY = "hk_daily"  # 港股日线
+	US_BASIC = "us_basic"  # 美股基础信息
+	US_DAILY = "us_daily"  # 美股日线
+	GGT_DAILY = "ggt_daily"  # 港股通每日成交
+	FUND_BASIC = "fund_basic"  # 基金基础信息
+	FUND_COMPANY = "fund_company"  # 基金公司
+	FUND_MANAGER = "fund_manager"  # 基金经理
+	FUND_DIV = "fund_div"  # 基金分红
+	FUND_SHARE = "fund_share"  # 基金份额
+	FUND_DAILY_EX = "fund_daily_ex"  # 非 ETF 基金日线
+
 	@classmethod
 	def get_display_name (cls, data_type):
 		"""获取数据类型显示名称"""
@@ -654,6 +716,39 @@ class DataType(str, Enum):
 			# 因子
 			cls.STK_FACTOR: "技术因子(基础)", cls.STK_FACTOR_PRO: "技术因子(专业)",
 			cls.IDX_FACTOR_PRO: "指数技术因子(专业)",
+			# 日频数据底座 P0b
+			cls.FX_BASIC: "外汇基础信息", cls.FX_DAILY: "外汇日线",
+			cls.FUND_NAV: "基金净值", cls.MARGIN_DETAIL: "个股两融明细",
+			cls.MARGIN_SECS: "两融标的名单", cls.NAMECHANGE: "股票曾用名",
+			cls.NEW_SHARE: "IPO新股", cls.INDEX_MONTHLY: "指数月线",
+			cls.MACRO_RATE: "利率长表", cls.MACRO_SF: "社融",
+			cls.MACRO_MONEY: "货币供应", cls.MACRO_PMI: "PMI",
+			# 日频数据底座 P0c
+			cls.TOP_LIST: "龙虎榜统计", cls.TOP_INST: "龙虎榜机构",
+			cls.CYQ_PERF: "筹码胜率", cls.THS_INDEX: "THS概念分类",
+			cls.THS_DAILY: "THS概念日线", cls.THS_MEMBER: "THS概念成分",
+			cls.MONEYFLOW_EXT: "个股资金流DC/THS", cls.MONEYFLOW_IND: "板块资金流",
+			cls.MARKET_DAILY_INFO: "沪深每日统计",
+			# 日频数据底座 P1
+			cls.BLOCK_TRADE: "大宗交易", cls.INDEX_GLOBAL: "国际指数",
+			cls.FUT_BASIC: "期货合约信息", cls.FUT_DAILY: "期货日线",
+			cls.FUT_HOLDING: "期货持仓排名", cls.FUT_WSR: "期货仓单日报",
+			cls.FUT_SETTLE: "期货结算参数", cls.FUT_MAPPING: "主力合约映射",
+			cls.FUT_INDEX_DAILY: "南华期货指数", cls.OPT_BASIC: "期权合约信息",
+			cls.OPT_DAILY: "期权日线", cls.CB_BASIC: "可转债基础信息",
+			cls.CB_ISSUE: "可转债发行", cls.CB_CALL: "可转债赎回",
+			cls.CB_DAILY: "可转债行情", cls.CB_SHARE: "可转债转股",
+			cls.CB_RATING: "可转债评级", cls.HSGT_TOP10: "北向十大成交股",
+			# 日频数据底座 P2
+			cls.PLEDGE_DETAIL: "股权质押明细", cls.REPURCHASE: "股票回购",
+			cls.STK_SURV: "机构调研", cls.KPL_LIST: "开盘啦榜单",
+			cls.HM_LIST: "游资名录", cls.ECO_CAL: "财经日历",
+			cls.HK_BASIC: "港股基础信息", cls.HK_DAILY: "港股日线",
+			cls.US_BASIC: "美股基础信息", cls.US_DAILY: "美股日线",
+			cls.GGT_DAILY: "港股通每日成交", cls.FUND_BASIC: "基金基础信息",
+			cls.FUND_COMPANY: "基金公司", cls.FUND_MANAGER: "基金经理",
+			cls.FUND_DIV: "基金分红", cls.FUND_SHARE: "基金份额",
+			cls.FUND_DAILY_EX: "非ETF基金日线",
 		}
 		return display_names.get(data_type, data_type)
 
