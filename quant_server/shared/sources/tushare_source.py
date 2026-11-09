@@ -137,9 +137,11 @@ class TushareSource(BaseDataSource):
 		super().__init__()
 		config = config or {}
 		token = config.get('token') or os.getenv('TUSHARE_TOKEN')
-		if token:
-			ts.set_token(token)
-		self.pro = ts.pro_api()
+		# ⚠️ 2026-11-08：不再调用 ts.set_token(token)。
+		#    set_token 会把 token 写入 ~/tk.csv，在无写权限的环境（如本机
+		#    Administrator 目录被占用/只读）会直接 Permission denied。
+		#    ts.pro_api(token) 直接使用内存 token，效果相同且无副作用。
+		self.pro = ts.pro_api(token) if token else ts.pro_api()
 		self._connected = True
 
 	def __del__ (self):
