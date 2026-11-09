@@ -105,8 +105,14 @@ class PerformanceService:
             logger.warning("查询策略初始分配资金失败: %s", str(e))
             return Decimal("0")
 
-    async def _get_previous_performance(self, strategy_id: str):
-        """获取该策略最近一条绩效记录"""
+    async def _get_previous_performance(self, strategy_id: str, trade_date: Optional[date] = None):
+        """获取该策略最近一条绩效记录（严格早于 trade_date 的那条）。
+
+        ⚠️ 2026-11-09：必须排除当日记录，否则同一交易日重算/重跑时
+        `prev.cash` 已是「含当日现金流」的余额，再加一次当日现金流就是**双记**，
+        净值被凭空扣掉一整天的买卖金额（线上实测 11-09 重算一次从
+        18931.86 掉到 15917.63、cash 变负 -1119.57）。
+        """
         from shared.database.repositories.account.asset.strategy_daily_performance_repo import (
             StrategyDailyPerformanceRepository,
         )
@@ -115,6 +121,8 @@ class PerformanceService:
         # 避免 prev=None 退化回 run_initial 导致 daily_return 与 total_return 恒相等；
         # 现金台账依赖前一条的 cash，回看窗口过短会破坏台账连续性。
         records = await repo.get_latest_performance(strategy_id, days=30)
+        if trade_date is not None:
+            records = [r for r in records if r.trade_date < trade_date]
         return records[0] if records else None
 
     async def _get_run_daily_returns(self, strategy_id: str, run_id: Optional[str]) -> List[float]:
@@ -266,7 +274,7 @@ class PerformanceService:
             position_mv = await self._get_strategy_position_mv(strategy_id, trade_date)
 
             # 2. 前一条绩效记录 + 当前 run
-            prev = await self._get_previous_performance(strategy_id)
+            prev = await self._get_previous_performance(strategy_id, trade_date)
             active_run = await self._get_active_run(strategy_id)
             run_initial = Decimal(str(getattr(active_run, "allocated_capital", 0) or 0))
             if run_initial <= 0:

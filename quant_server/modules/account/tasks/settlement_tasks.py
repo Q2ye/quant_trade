@@ -882,60 +882,67 @@ def _run_async_in_celery(coro):
     raise RuntimeError("Celery task should not run inside an existing event loop")
 
 
-# 定义Celery任务（如果使用Celery）
+# 定义Celery任务（Celery 为可选依赖）
+# ⚠️ 2026-11-09：Celery 未安装时这些**模块级函数仍必须存在**——`modules/account/tasks/__init__.py`
+#    在包导入期即 `from .settlement_tasks import daily_settlement_task`，名字缺失会让整个包
+#    导入失败，进而拖垮日终流水线 pre_gate 的 daily_settlement 与 21:00 结算调度
+#    （线上症状：`cannot import name 'daily_settlement_task' from 'modules.account.tasks.settlement_tasks'`）。
 try:
     from celery import shared_task
+except ImportError:  # pragma: no cover - 生产 venv 未安装 celery
+    def shared_task(func=None, **_kwargs):
+        """占位装饰器：无 Celery 时直接返回原函数（调用即同步执行）。"""
+        if func is None:
+            return lambda fn: fn
+        return func
 
 
-    @shared_task
-    def daily_settlement_task(trading_day: Optional[str] = None):
-        """Celery日终结算任务"""
-        if trading_day:
-            from datetime import datetime
-            trading_date = datetime.strptime(trading_day, "%Y-%m-%d").date()
-        else:
-            trading_date = None
+@shared_task
+def daily_settlement_task(trading_day: Optional[str] = None):
+    """日终结算任务（Celery 环境下为 shared_task，否则为同步函数）"""
+    if trading_day:
+        from datetime import datetime
+        trading_date = datetime.strptime(trading_day, "%Y-%m-%d").date()
+    else:
+        trading_date = None
 
-        session = _create_session_for_celery()
-        try:
-            tasks = create_settlement_tasks(session)
-            return _run_async_in_celery(tasks.daily_settlement_task(trading_date))
-        finally:
-            _run_async_in_celery(session.close())
-
-
-    @shared_task
-    def weekly_settlement_task(week_end_date: Optional[str] = None):
-        """Celery周末结算任务"""
-        if week_end_date:
-            from datetime import datetime
-            week_end = datetime.strptime(week_end_date, "%Y-%m-%d").date()
-        else:
-            week_end = None
-
-        session = _create_session_for_celery()
-        try:
-            tasks = create_settlement_tasks(session)
-            return _run_async_in_celery(tasks.weekly_settlement_task(week_end))
-        finally:
-            _run_async_in_celery(session.close())
+    session = _create_session_for_celery()
+    try:
+        tasks = create_settlement_tasks(session)
+        return _run_async_in_celery(tasks.daily_settlement_task(trading_date))
+    finally:
+        _run_async_in_celery(session.close())
 
 
-    @shared_task
-    def monthly_settlement_task(month_end_date: Optional[str] = None):
-        """Celery月末结算任务"""
-        if month_end_date:
-            from datetime import datetime
-            month_end = datetime.strptime(month_end_date, "%Y-%m-%d").date()
-        else:
-            month_end = None
+@shared_task
+def weekly_settlement_task(week_end_date: Optional[str] = None):
+    """周末结算任务（Celery 环境下为 shared_task，否则为同步函数）"""
+    if week_end_date:
+        from datetime import datetime
+        week_end = datetime.strptime(week_end_date, "%Y-%m-%d").date()
+    else:
+        week_end = None
 
-        session = _create_session_for_celery()
-        try:
-            tasks = create_settlement_tasks(session)
-            return _run_async_in_celery(tasks.monthly_settlement_task(month_end))
-        finally:
-            _run_async_in_celery(session.close())
+    session = _create_session_for_celery()
+    try:
+        tasks = create_settlement_tasks(session)
+        return _run_async_in_celery(tasks.weekly_settlement_task(week_end))
+    finally:
+        _run_async_in_celery(session.close())
 
-except ImportError:
-    pass  # Celery 未安装，不注册 shared_task
+
+@shared_task
+def monthly_settlement_task(month_end_date: Optional[str] = None):
+    """月末结算任务（Celery 环境下为 shared_task，否则为同步函数）"""
+    if month_end_date:
+        from datetime import datetime
+        month_end = datetime.strptime(month_end_date, "%Y-%m-%d").date()
+    else:
+        month_end = None
+
+    session = _create_session_for_celery()
+    try:
+        tasks = create_settlement_tasks(session)
+        return _run_async_in_celery(tasks.monthly_settlement_task(month_end))
+    finally:
+        _run_async_in_celery(session.close())
