@@ -11,7 +11,7 @@ defaults: &defaults
     # 前端托管：null=自动（生产模式托管 quant_web/dist，开发模式不托管），true/false 强制
     serve_frontend: null
     # 日终流水线触发时间（交易日，HH:MM）；默认 19:20
-    daily_sync_time: "19:20"
+    daily_sync_time: "20:01"
     # frontend_dir: "quant_web/dist"   # 留空则用 <repo>/quant_web/dist
 
   # API 安全配置（JWT 令牌等）
