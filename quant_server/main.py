@@ -1003,7 +1003,10 @@ class QuantServer:
 					access_log=False,  # 关闭 uvicorn HTTP 访问日志，避免轮询日志刷屏
 					timeout_keep_alive=30,
 					limit_concurrency=1000,
-					limit_max_requests=10000,
+					# ⚠️ 2026-11-10：limit_max_requests 是 gunicorn 式「父进程重新拉起 worker」的回收开关。
+					# 本项目是 uvicorn.Server 单进程直跑，没有 supervisor：达到请求上限后 uvicorn 会优雅自杀
+					# （2026-11-10 06:00:27 生产进程即因此退出，停摆 13.5 小时）。故仅开发模式保留，生产不限制。
+					limit_max_requests=10000 if self.config.mode == "development" else None,
 					proxy_headers=True,
 					forwarded_allow_ips="*" if self.config.mode == "development" else None
 				)
