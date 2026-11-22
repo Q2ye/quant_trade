@@ -65,7 +65,7 @@ _EXT_SPECS: Dict[str, Tuple[str, Callable]] = {
     "fund_nav": ("by_date", lambda s, d: s.get_fund_nav(nav_date=d)),
     "stock_margin_detail": ("by_date", lambda s, d: s.get_margin_detail(trade_date=d)),
     "stock_margin_secs": ("by_date", lambda s, d: s.get_margin_secs(trade_date=d)),
-    "stock_namechange": ("by_range", lambda s, a, b: s.get_namechange(start_date=a, end_date=b)),
+    "stock_namechange": ("by_range", lambda s, a, b: s.get_namechange_ext(start_date=a, end_date=b)),
     "stock_new_share": ("by_range", lambda s, a, b: s.get_new_share(start_date=a, end_date=b)),
     "index_monthly": ("by_date", lambda s, d: s.get_index_monthly(trade_date=d)),
     "macro_sf": ("by_month", lambda s, a, b: s.get_sf_month(start_m=a, end_m=b)),
@@ -352,6 +352,13 @@ class DailyBaseSyncProvider:
         normalized: List[Dict[str, Any]] = []
         for r in records:
             rec = self._coerce_types({k: r.get(k) for k in model_cols}, repo.model)
+            # 源字段可能超过 VARCHAR 列宽（实测 stock_surv.rece_place >120）
+            # → 按列宽截断；否则 asyncpg 抛 StringDataRightTruncation，整批 1000 行回滚。
+            for col in repo.model.__table__.columns:
+                val = rec.get(col.name)
+                limit = getattr(col.type, "length", None)
+                if isinstance(val, str) and isinstance(limit, int) and len(val) > limit:
+                    rec[col.name] = val[:limit]
             rec["fetched_at"] = now
             rec["updated_at"] = now
             for col in repo.model.__table__.columns:
@@ -736,60 +743,74 @@ class DailyBaseSyncProvider:
         written = await self._upsert_ext(repo, records, "opt_basic")
         return self._result("opt_basic", written, len(records))
 
-    async def _fut_symbol_pairs(self) -> List[Tuple[str, str]]:
+    async def _fut_exchanges(self) -> List[str]:
+        """期货交易所列表。
+
+        ⚠️ 不要按 ``fut_basic.symbol`` 遍历：它是合约代码（10,485 个），
+        全历史会退化成 2,000 万次调用。实测 ``fut_holding``/``fut_wsr``
+        支持只传 ``exchange`` 一次返回该所当日全部品种（SHFE 单日
+        2,865 / 436 行）→ 每交易日只需 6 次调用。
+        """
         model = self._ext_repos["fut_basic"].model
         rows = (await self.session.execute(
-            select(model.symbol, model.exchange).distinct()
+            select(model.exchange).distinct()
         )).all()
-        pairs = [(r[0], r[1]) for r in rows if r[0] and r[1]]
-        if pairs:
-            return pairs
-        return [("IF", "CFFEX"), ("CU", "SHFE"), ("M", "DCE"),
-                ("SR", "CZCE"), ("SC", "INE")]
+        exchanges = sorted({r[0] for r in rows if r[0]})
+        return exchanges or list(_FUT_EXCHANGES)
 
     async def _sync_fut_holding(self, start_date=None, end_date=None, ts_codes=None,
                                 task_id=None, user_id=None, **kwargs) -> Dict[str, Any]:
         source = self._ext_source()
         start, end = self._resolve_ext_range(start_date, end_date)
         repo = self._ext_repos["fut_holding"]
-        pairs = await self._fut_symbol_pairs()
-        records: List[Dict[str, Any]] = []
+        exchanges = await self._fut_exchanges()
+        written = 0
+        total = 0
         for d in await self._ext_trade_dates(start, end):
             if self.cancel_token is not None and self.cancel_token.is_set():
                 break
             ds = d.strftime("%Y%m%d")
-            for symbol, exchange in pairs:
+            records: List[Dict[str, Any]] = []
+            for exchange in exchanges:
                 df = await self._cancellable_run_in_executor(
                     source.get_fut_holding, trade_date=ds,
-                    symbol=symbol, exchange=exchange,
+                    exchange=exchange,
                 )
                 records.extend(self._records_from_df(df, lambda r, ex=exchange: {
                     **r, "exchange": ex,
                 }))
-        written = await self._upsert_ext(repo, records, "fut_holding")
-        return self._result("fut_holding", written, len(records))
+            # 逐日落库：全区间累积会撑爆内存，且失败时整段回滚
+            if records:
+                total += len(records)
+                written += await self._upsert_ext(repo, records, "fut_holding")
+        return self._result("fut_holding", written, total)
 
     async def _sync_fut_wsr(self, start_date=None, end_date=None, ts_codes=None,
                             task_id=None, user_id=None, **kwargs) -> Dict[str, Any]:
         source = self._ext_source()
         start, end = self._resolve_ext_range(start_date, end_date)
         repo = self._ext_repos["fut_wsr"]
-        pairs = await self._fut_symbol_pairs()
-        records: List[Dict[str, Any]] = []
+        exchanges = await self._fut_exchanges()
+        written = 0
+        total = 0
         for d in await self._ext_trade_dates(start, end):
             if self.cancel_token is not None and self.cancel_token.is_set():
                 break
             ds = d.strftime("%Y%m%d")
-            for symbol, exchange in pairs:
+            records: List[Dict[str, Any]] = []
+            for exchange in exchanges:
                 df = await self._cancellable_run_in_executor(
                     source.get_fut_wsr, trade_date=ds,
-                    symbol=symbol, exchange=exchange,
+                    exchange=exchange,
                 )
                 records.extend(self._records_from_df(df, lambda r, ex=exchange: {
                     **r, "exchange": ex,
                 }))
-        written = await self._upsert_ext(repo, records, "fut_wsr")
-        return self._result("fut_wsr", written, len(records))
+            # 逐日落库：全区间累积会撑爆内存
+            if records:
+                total += len(records)
+                written += await self._upsert_ext(repo, records, "fut_wsr")
+        return self._result("fut_wsr", written, total)
 
     async def _sync_fut_index_daily(self, start_date=None, end_date=None,
                                     ts_codes=None, task_id=None, user_id=None,

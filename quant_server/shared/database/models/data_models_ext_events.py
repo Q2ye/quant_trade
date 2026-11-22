@@ -107,7 +107,8 @@ class StockKplList(ExtCommonMixin, Base):
     rt_pct_chg = Column(Numeric(10, 4))
     limit_order = Column(Numeric(20, 4))
     amount = Column(Numeric(20, 2))
-    turnover_rate = Column(Numeric(10, 4))
+    # 2026-11-09 由 (10,4) 放宽：kpl_list 源值实测达 4.16e8，原精度整批溢出
+    turnover_rate = Column(Numeric(20, 4))
     free_float = Column(Numeric(20, 4))
     lu_limit_order = Column(Numeric(20, 4))
 

@@ -77,6 +77,12 @@ def load_env(path: Path) -> Dict[str, str]:
             continue
         k, v = line.split("=", 1)
         env[k.strip()] = v.strip()
+    # 兼容迁移（2026-11-15）：.env 改用 DEV_DB_* / PROD_DB_* 并移除 DB_*；
+    # 缺失时按 ENVIRONMENT 回填，旧调用方无需改。旧键存在时不覆盖。
+    _name = (env.get("ENVIRONMENT") or "development").lower()
+    _pfx = "PROD_DB_" if _name == "production" else "DEV_DB_"
+    for _k in ("HOST", "PORT", "USER", "PASSWORD", "NAME"):
+        env.setdefault("DB_" + _k, env.get(_pfx + _k, ""))
     return env
 
 
@@ -230,6 +236,17 @@ def estimate(args) -> int:
     return 0
 
 
+def _is_data_gap(exc: Exception) -> bool:
+    """「源当天确实没有数据」不算系统性故障。
+
+    外汇/港股通/全球指数在 A 股交易日也可能休市（圣诞、复活节等），
+    dense 表当天返回 0 行是正常形态。若把它计入「连续失败 3 次」，
+    回填会在第一个节假日就中止整张表（实测 ggt_daily 停在 2014-12、
+    fund_share 停在 2005-01）。真正的写入/限流异常仍照常计数。
+    """
+    return "接口返回空" in str(exc)
+
+
 def _written_or_fail(contract, res: Dict) -> int:
     """dense 表：空返回、0 写入、写入低于 99% 都按失败处理，避免误记 done。"""
     written = int(res.get("records_added", 0) or 0)
@@ -343,10 +360,11 @@ async def _run(args) -> int:
                         await progress.mark(key, date(1900, 1, 1), pk, "failed", 0, str(exc)[:500])
                         await session.commit()
                         print(f"[{key}] {m} FAILED {str(exc)[:160]}")
-                        fails += 1
-                        if fails >= 3:
-                            print(f"[{key}] 连续失败 3 次，停止该类型")
-                            break
+                        if not _is_data_gap(exc):
+                            fails += 1
+                            if fails >= 3:
+                                print(f"[{key}] 连续失败 3 次，停止该类型")
+                                break
                 continue
 
             if c.backfill_mode in ("by_range_daily", "by_quarter"):
@@ -373,10 +391,11 @@ async def _run(args) -> int:
                         await progress.mark(key, d, "", "failed", 0, str(exc)[:500])
                         await session.commit()
                         print(f"[{key}] {d} FAILED {str(exc)[:160]}")
-                        fails += 1
-                        if fails >= 3:
-                            print(f"[{key}] 连续失败 3 次，停止该类型")
-                            break
+                        if not _is_data_gap(exc):
+                            fails += 1
+                            if fails >= 3:
+                                print(f"[{key}] 连续失败 3 次，停止该类型")
+                                break
                 continue
 
             # by_date / by_snapshot
@@ -410,10 +429,11 @@ async def _run(args) -> int:
                     await progress.mark(key, d, "", "failed", 0, str(exc)[:500])
                     await session.commit()
                     print(f"[{key}] {d} FAILED {str(exc)[:160]}")
-                    fails += 1
-                    if fails >= 3:
-                        print(f"[{key}] 连续失败 3 次，停止该类型")
-                        break
+                    if not _is_data_gap(exc):
+                        fails += 1
+                        if fails >= 3:
+                            print(f"[{key}] 连续失败 3 次，停止该类型")
+                            break
 
     conn.close()
     print(

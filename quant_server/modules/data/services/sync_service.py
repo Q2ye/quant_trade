@@ -5693,14 +5693,18 @@ class DataSyncService(DailyBaseSyncProvider):
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步限售股解禁（stock_share_float 表，按解禁日期拉取）。
+		"""同步限售股解禁（stock_share_float 表）。
 
-		默认拉取未来 90 天的解禁数据（start_date=今天, end_date=今天+90天）。
+		⚠️ 2026-11-10 修复：Tushare `share_float` **要求 ts_code 或 ann_date
+		至少填一个**，只传 start_date/end_date 会被源端拒绝（参数校验失败），
+		原实现因此长期返回 0 行、表停在 2026-08-28。
+		现改为按 **ann_date（公告日）逐日拉取**：公告通常早于解禁日，回看
+		365 天以覆盖 start_date~end_date 窗口内的解禁记录。
 
 		Args:
 			start_date: 解禁起始日期（None → 今天）
 			end_date: 解禁结束日期（None → 今天+90天）
-			ts_codes: 未使用（全市场拉取）
+			ts_codes: 未使用（全市场按公告日拉取）
 			task_id: 任务 ID
 			user_id: 用户标识
 
@@ -5713,8 +5717,20 @@ class DataSyncService(DailyBaseSyncProvider):
 		start_str = start_date.strftime('%Y%m%d')
 		end_str = end_date.strftime('%Y%m%d')
 		try:
-			df = await self._cancellable_run_in_executor(
-				source.get_share_float, start_date=start_str, end_date=end_str)
+			# 公告日回看 365 天；每交易日/自然日一次调用，500 次/分限流内。
+			frames = []
+			cur = start_date - timedelta(days=365)
+			while cur <= end_date:
+				_d = cur.strftime('%Y%m%d')
+				try:
+					_df = await self._cancellable_run_in_executor(
+						source.get_share_float, ann_date=_d)
+					if _df is not None and not _df.empty:
+						frames.append(_df)
+				except Exception as _e:  # noqa: BLE001 - 单日空/异常不阻断其余日期
+					logger.warning(f"share_float 公告日 {_d} 拉取失败: {str(_e)[:120]}")
+				cur += timedelta(days=1)
+			df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 			if df.empty:
 				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
 				        "total_items": 0, "message": f"限售股解禁同步完成（{start_str}~{end_str}无数据）"}

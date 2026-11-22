@@ -8,7 +8,7 @@ Tushare数据源实现
 import logging
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 
 import pandas as pd
@@ -447,12 +447,34 @@ class TushareSource(BaseDataSource):
 				kwargs['end_date'] = end_date
 			if ann_date:
 				kwargs['ann_date'] = ann_date
-			df = self.pro.share_float(**kwargs)
-			if df is not None and not df.empty:
+			# 按公告日逐日回填时调用密度高（6,500 次），必须显式限流：
+			# 该接口上限 500 次/分，取 450 留余量，避免 429 被逐日 except 吞掉 → 静默漏日。
+			# ⚠️ 单页上限 6000：实测 2025-11-14 共 6,657 行，不显式分页会静默丢 657 行。
+			frames = []
+			offset = 0
+			page_size = 6000
+			last_first = None
+			while True:
+				_check_rate_limit('share_float', 450)
+				df = self.pro.share_float(limit=page_size, offset=offset, **kwargs)
+				if df is None or df.empty:
+					break
+				first = df.iloc[0].to_dict()
+				if offset > 0 and last_first is not None and first == last_first:
+					raise RuntimeError("share_float 分页返回重复页（offset 可能不生效）")
+				last_first = first
+				frames.append(df)
+				if len(df) < page_size:
+					break
+				offset += page_size
+			if frames:
+				df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 				for col in ('ann_date', 'float_date'):
 					if col in df.columns:
 						df[col] = pd.to_datetime(df[col])
-			return df if df is not None else pd.DataFrame()
+			else:
+				df = pd.DataFrame()
+			return df
 		except Exception as e:
 			logger.error(f"获取限售股解禁失败: {e}")
 			return pd.DataFrame()
@@ -1543,17 +1565,31 @@ class TushareSource(BaseDataSource):
 		last_first = None
 		try:
 			while True:
-				try:
-					if hourly:
-						df = self.pro.query(api, **kwargs)
-					else:
-						df = self.pro.query(api, limit=page_size, offset=offset, **kwargs)
-				except Exception:
-					if offset == 0 and not hourly:
-						# 首页失败：无条件回退单次调用。接口可能不支持 limit/offset，
-						# 且错误文本未必含已知关键字 —— 不能靠猜文本决定是否回退。
-						df = self.pro.query(api, **kwargs)
-					else:
+				rate_retries = 0
+				while True:
+					try:
+						if hourly:
+							df = self.pro.query(api, **kwargs)
+						else:
+							df = self.pro.query(api, limit=page_size, offset=offset, **kwargs)
+						break
+					except Exception as exc:
+						# 429 是窗口边界抖动，不是数据缺失：等待一个窗口后重试，
+						# 避免回填把整天记成 failed 甚至连续失败 3 次中止整张表。
+						# ⚠️ hourly 接口（1 次/小时）不能短重试：60 秒后再调只会
+						#    继续被拒、甚至刷新服务端窗口，必须等满 1 小时。
+						if _is_rate_limit_error(exc) and rate_retries < 3 and not hourly:
+							rate_retries += 1
+							logger.warning(
+								"%s 触发频率限制，等待 60 秒后重试 (%d/3)",
+								api, rate_retries)
+							time.sleep(60)
+							continue
+						if offset == 0 and not hourly:
+							# 首页失败：无条件回退单次调用。接口可能不支持 limit/offset，
+							# 且错误文本未必含已知关键字 —— 不能靠猜文本决定是否回退。
+							df = self.pro.query(api, **kwargs)
+							break
 						raise
 				pages += 1
 				if pages > max_pages:
@@ -1586,6 +1622,53 @@ class TushareSource(BaseDataSource):
 			if col in df.columns:
 				df[col] = pd.to_datetime(df[col], errors="coerce")
 		return df
+
+	def _query_windows(self, api: str, start_date: str, end_date: str,
+	                   window_days: int, page_size: int = 5000,
+	                   **kwargs) -> pd.DataFrame:
+		"""按自然日窗口切分区间逐段取数。
+
+		用于**忽略 offset** 的接口（实测 pledge_detail / repurchase /
+		stk_surv / eco_cal）：单次调用只返回第一页，必须靠缩小日期窗口
+		让每个窗口的结果落在接口单页上限以内，否则会静默丢数据。
+		start_date / end_date 必须是 ``YYYYMMDD``。
+		"""
+		if not start_date or not end_date:
+			return self._query_ext(
+				api, page_size=page_size,
+				**self._ext_params(start_date=start_date, end_date=end_date,
+				                   **kwargs))
+		start = datetime.strptime(start_date, "%Y%m%d").date()
+		end = datetime.strptime(end_date, "%Y%m%d").date()
+		frames = []
+		cur = start
+		while cur <= end:
+			wend = min(cur + timedelta(days=window_days - 1), end)
+			df = self._query_ext(
+				api, page_size=page_size,
+				**self._ext_params(
+					start_date=cur.strftime("%Y%m%d"),
+					end_date=wend.strftime("%Y%m%d"), **kwargs))
+			if df is not None and not df.empty:
+				frames.append(df)
+			cur = wend + timedelta(days=1)
+		if not frames:
+			return pd.DataFrame()
+		return pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+
+	def _all_stock_codes(self) -> List[str]:
+		"""全部股票代码（上市 + 退市 + 暂停），用于不支持 offset 的接口逐只拉取。"""
+		codes: List[str] = []
+		for status in ("L", "D", "P"):
+			try:
+				df = self._query_ext("stock_basic", page_size=5000,
+				                     list_status=status, fields="ts_code")
+			except Exception as exc:  # noqa: BLE001 - 单状态失败不阻塞其余
+				logger.warning("stock_basic(%s) 拉取失败: %s", status, exc)
+				continue
+			if df is not None and not df.empty and "ts_code" in df.columns:
+				codes.extend(df["ts_code"].tolist())
+		return sorted(set(codes))
 
 	# ---------- 外汇 / 基金 ----------
 
@@ -1656,8 +1739,22 @@ class TushareSource(BaseDataSource):
 			trade_date=trade_date, ts_code=ts_code))
 
 	def get_new_share(self, start_date: str = "", end_date: str = "") -> pd.DataFrame:
-		"""IPO 新股（Tushare new_share）。"""
-		return self._query_ext("new_share", **self._ext_params(
+		"""IPO 新股（Tushare new_share）。
+
+		接口单页上限 2000（传 5000 仍只回 2000），page_size 必须对齐，
+		否则 `len(df) < page_size` 会在第一页提前退出、静默丢掉后半段。
+		"""
+		return self._query_ext("new_share", page_size=2000, **self._ext_params(
+			start_date=start_date, end_date=end_date))
+
+	def get_namechange_ext(self, start_date: str = "",
+	                       end_date: str = "") -> pd.DataFrame:
+		"""曾用名/ST 变更历史（Tushare namechange），走统一分页。
+
+		旧 ``get_namechange`` 单次调用默认只回 10,000 行（实测全量 14,259），
+		且异常被吞成空表；日频底座回填必须用本方法。
+		"""
+		return self._query_ext("namechange", **self._ext_params(
 			start_date=start_date, end_date=end_date))
 
 	def get_index_monthly(self, ts_code: str = "", trade_date: str = "",
@@ -1881,8 +1978,8 @@ class TushareSource(BaseDataSource):
 
 	def get_cb_call(self, ts_code: str = "", ann_date: str = "",
 	                start_date: str = "", end_date: str = "") -> pd.DataFrame:
-		"""可转债赎回（Tushare cb_call）。"""
-		return self._query_ext("cb_call", **self._ext_params(
+		"""可转债赎回（Tushare cb_call）；单页上限 2000，page_size 必须对齐。"""
+		return self._query_ext("cb_call", page_size=2000, **self._ext_params(
 			ts_code=ts_code, ann_date=ann_date,
 			start_date=start_date, end_date=end_date))
 
@@ -1913,24 +2010,72 @@ class TushareSource(BaseDataSource):
 
 	def get_pledge_detail(self, ts_code: str = "", ann_date: str = "",
 	                      start_date: str = "", end_date: str = "") -> pd.DataFrame:
-		"""股权质押明细（Tushare pledge_detail）。"""
-		return self._query_ext("pledge_detail", **self._ext_params(
-			ts_code=ts_code, ann_date=ann_date,
-			start_date=start_date, end_date=end_date))
+		"""股权质押明细（Tushare pledge_detail）。
+
+		⚠️ 该接口忽略 offset（不同 offset 返回同一页，上限 1500）→ 按 7 天窗口切分。
+		"""
+		return self._query_windows("pledge_detail", start_date, end_date,
+		                           window_days=7,
+		                           ts_code=ts_code, ann_date=ann_date)
 
 	def get_repurchase(self, ts_code: str = "", ann_date: str = "",
 	                   start_date: str = "", end_date: str = "") -> pd.DataFrame:
-		"""股票回购（Tushare repurchase）。"""
-		return self._query_ext("repurchase", **self._ext_params(
-			ts_code=ts_code, ann_date=ann_date,
-			start_date=start_date, end_date=end_date))
+		"""股票回购（Tushare repurchase）。
+
+		⚠️ 该接口忽略 offset（上限 2000）→ 按 14 天窗口切分。
+		"""
+		return self._query_windows("repurchase", start_date, end_date,
+		                           window_days=14,
+		                           ts_code=ts_code, ann_date=ann_date)
 
 	def get_stk_surv(self, ts_code: str = "", trade_date: str = "",
 	                 start_date: str = "", end_date: str = "") -> pd.DataFrame:
-		"""机构调研（Tushare stk_surv）。"""
-		return self._query_ext("stk_surv", **self._ext_params(
-			ts_code=ts_code, trade_date=trade_date,
-			start_date=start_date, end_date=end_date))
+		"""机构调研（Tushare stk_surv）。
+
+		⚠️ 该接口忽略 offset 且单次上限 400：实测 2024-01-08~14 一周只回
+		400 行，而按日拆开合计 1,983 行（其中 4 天仍顶到 400）。
+		→ 长区间（>60 天）按 ts_code 逐只拉取；短区间（夜班 7 天回看）
+		按 1 天窗口切分，仍可能在高热度日触顶，日志会告警。
+		"""
+		start = datetime.strptime(start_date, "%Y%m%d").date() if start_date else None
+		end = datetime.strptime(end_date, "%Y%m%d").date() if end_date else None
+		if start and end and (end - start).days > 60 and not ts_code:
+			frames = []
+			capped = []
+
+			def fetch(code: str, a, b) -> pd.DataFrame:
+				"""单只股票取数；触顶则按时间二分，直到单日仍触顶才告警。"""
+				df = self._query_ext(
+					"stk_surv",
+					**self._ext_params(ts_code=code,
+					                   start_date=a.strftime("%Y%m%d"),
+					                   end_date=b.strftime("%Y%m%d")))
+				if df is not None and not df.empty and len(df) >= 400:
+					if a < b:
+						mid = a + timedelta(days=(b - a).days // 2)
+						parts = [x for x in (
+							fetch(code, a, mid),
+							fetch(code, mid + timedelta(days=1), b))
+							if x is not None and not x.empty]
+						return (pd.concat(parts, ignore_index=True)
+						        if parts else pd.DataFrame())
+					capped.append(f"{code}@{a}")
+				return df
+
+			for code in self._all_stock_codes():
+				df = fetch(code, start, end)
+				if df is not None and not df.empty:
+					frames.append(df)
+			if capped:
+				logger.warning(
+					"stk_surv 单日仍达 400 行上限（已二分到日）: %s",
+					",".join(capped[:20]))
+			if not frames:
+				return pd.DataFrame()
+			return pd.concat(frames, ignore_index=True)
+		return self._query_windows("stk_surv", start_date, end_date,
+		                           window_days=1,
+		                           ts_code=ts_code, trade_date=trade_date)
 
 	def get_kpl_list(self, trade_date: str = "", tag: str = "涨停") -> pd.DataFrame:
 		"""开盘啦榜单（Tushare kpl_list）。"""
@@ -1943,10 +2088,14 @@ class TushareSource(BaseDataSource):
 
 	def get_eco_cal(self, date: str = "", currency: str = "",
 	                start_date: str = "", end_date: str = "") -> pd.DataFrame:
-		"""财经日历（Tushare eco_cal）。"""
-		return self._query_ext("eco_cal", **self._ext_params(
-			date=date, currency=currency,
-			start_date=start_date, end_date=end_date))
+		"""财经日历（Tushare eco_cal）。
+
+		⚠️ 该接口忽略 offset（上限 100）：实测一周只回 100 行、按日拆开
+		合计 286 行 → 必须按 1 天窗口切分（单日未触顶）。
+		"""
+		return self._query_windows("eco_cal", start_date, end_date,
+		                           window_days=1,
+		                           date=date, currency=currency)
 
 	def get_hk_basic(self, list_status: str = "L") -> pd.DataFrame:
 		"""港股基础信息（Tushare hk_basic）。"""

@@ -52,6 +52,12 @@ def load_env(path: Path) -> Dict[str, str]:
             continue
         k, v = line.split("=", 1)
         env[k.strip()] = v.strip()
+    # 兼容迁移（2026-11-15）：.env 改用 DEV_DB_* / PROD_DB_* 并移除 DB_*；
+    # 缺失时按 ENVIRONMENT 回填，旧调用方无需改。旧键存在时不覆盖。
+    _name = (env.get("ENVIRONMENT") or "development").lower()
+    _pfx = "PROD_DB_" if _name == "production" else "DEV_DB_"
+    for _k in ("HOST", "PORT", "USER", "PASSWORD", "NAME"):
+        env.setdefault("DB_" + _k, env.get(_pfx + _k, ""))
     return env
 
 

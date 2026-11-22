@@ -95,16 +95,18 @@ class IndexThsDaily(ExtCommonMixin, Base):
 
     ts_code = Column(String(20), primary_key=True)
     trade_date = Column(Date, primary_key=True)
-    open = Column(Numeric(14, 4))
-    high = Column(Numeric(14, 4))
-    low = Column(Numeric(14, 4))
-    close = Column(Numeric(14, 4))
-    pre_close = Column(Numeric(14, 4))
-    avg_price = Column(Numeric(14, 4))
-    change = Column(Numeric(14, 4))
-    pct_change = Column(Numeric(10, 4))
+    # 2026-11-09 放宽：ths_daily 源值 open/high/low/close 可达 1.02e10，
+    # pct_change 可达 2.5e7，原 (14,4)/(10,4) 会整批 NumericValueOutOfRange。
+    open = Column(Numeric(20, 4))
+    high = Column(Numeric(20, 4))
+    low = Column(Numeric(20, 4))
+    close = Column(Numeric(20, 4))
+    pre_close = Column(Numeric(20, 4))
+    avg_price = Column(Numeric(20, 4))
+    change = Column(Numeric(20, 4))
+    pct_change = Column(Numeric(20, 4))
     vol = Column(Numeric(20, 2))
-    turnover_rate = Column(Numeric(10, 4))
+    turnover_rate = Column(Numeric(20, 4))
 
 
 class IndexThsMember(ExtCommonMixin, Base):

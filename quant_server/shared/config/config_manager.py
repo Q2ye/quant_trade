@@ -129,14 +129,18 @@ def resolve_database_env (
 	"""
 	env = (env or "development").lower()
 	if env == "development":
+		# 命名统一为 <环境>_DB_<字段>（DEV_DB_*）；保留旧名 DB_DEV_* 作为兼容回退，
+		# 便于 .env 渐进迁移（两者同时存在时以 DEV_DB_* 为准）。
 		return {
-			"HOST": getenv("DB_DEV_HOST", base.get("HOST")),
-			"PORT": int(getenv("DB_DEV_PORT") or base.get("PORT", 5432)),
-			"USER": getenv("DB_DEV_USER", base.get("USER")),
-			"PASSWORD": getenv("DB_DEV_PASSWORD", base.get("PASSWORD")),
-			"NAME": getenv("DB_DEV_NAME", "quant_signals"),
-			"POOL_SIZE": int(getenv("DB_DEV_POOL_SIZE") or base.get("POOL_SIZE", 10)),
-			"MAX_OVERFLOW": int(getenv("DB_DEV_MAX_OVERFLOW") or base.get("MAX_OVERFLOW", 5)),
+			"HOST": getenv("DEV_DB_HOST") or getenv("DB_DEV_HOST") or base.get("HOST"),
+			"PORT": int(getenv("DEV_DB_PORT") or getenv("DB_DEV_PORT") or base.get("PORT", 5432)),
+			"USER": getenv("DEV_DB_USER") or getenv("DB_DEV_USER") or base.get("USER"),
+			"PASSWORD": getenv("DEV_DB_PASSWORD") or getenv("DB_DEV_PASSWORD") or base.get("PASSWORD"),
+			"NAME": getenv("DEV_DB_NAME") or getenv("DB_DEV_NAME") or "quant_signals",
+			"POOL_SIZE": int(getenv("DEV_DB_POOL_SIZE") or getenv("DB_DEV_POOL_SIZE")
+			                 or base.get("POOL_SIZE", 10)),
+			"MAX_OVERFLOW": int(getenv("DEV_DB_MAX_OVERFLOW") or getenv("DB_DEV_MAX_OVERFLOW")
+			                   or base.get("MAX_OVERFLOW", 5)),
 		}, []
 
 	missing = [

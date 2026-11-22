@@ -1741,6 +1741,8 @@ async def get_sync_status (
 
 			if not tasks:
 				aggregate_status = "idle"
+				failed_count = 0
+				completed_count = 0
 			else:
 				failed_count = sum(1 for t in tasks if t.status == "failed")
 				completed_count = sum(1 for t in tasks if t.status == "completed")

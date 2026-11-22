@@ -4550,7 +4550,7 @@ CREATE TABLE stock_share_float (
     ann_date DATE,
     float_date DATE NOT NULL,
     float_share NUMERIC(18, 2),
-    float_ratio NUMERIC(8, 4),
+    float_ratio NUMERIC(18, 6),  -- 2026-11-10 放宽：源值可超 10^4，原 (8,4) 整批溢出
     holder_name VARCHAR(200),
     share_type VARCHAR(50),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -6019,16 +6019,16 @@ COMMENT ON TABLE index_ths IS 'THS 概念/行业分类（Tushare ths_index）';
 CREATE TABLE IF NOT EXISTS index_ths_daily (
     ts_code       VARCHAR(20) NOT NULL,  -- 代码
     trade_date    DATE        NOT NULL,  -- 交易日期
-    open          NUMERIC(14,4),  -- 开盘价
-    high          NUMERIC(14,4),  -- 最高价
-    low           NUMERIC(14,4),  -- 最低价
-    close         NUMERIC(14,4),  -- 收盘价
-    pre_close     NUMERIC(14,4),  -- 前收盘价
-    avg_price     NUMERIC(14,4),  -- 平均价
-    change        NUMERIC(14,4),  -- 涨跌额
-    pct_change    NUMERIC(10,4),  -- 涨跌幅（%）
+    open          NUMERIC(20,4),  -- 开盘价；2026-11-09 由 (14,4) 放宽
+    high          NUMERIC(20,4),  -- 最高价；源值实测达 1.02e10
+    low           NUMERIC(20,4),  -- 最低价
+    close         NUMERIC(20,4),  -- 收盘价
+    pre_close     NUMERIC(20,4),  -- 前收盘价
+    avg_price     NUMERIC(20,4),  -- 平均价
+    change        NUMERIC(20,4),  -- 涨跌额
+    pct_change    NUMERIC(20,4),  -- 涨跌幅（%）；源值实测达 2.5e7
     vol           NUMERIC(20,2),  -- 成交量
-    turnover_rate NUMERIC(10,4),  -- 换手率（%）
+    turnover_rate NUMERIC(20,4),  -- 换手率（%）
     data_source   VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
     fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 抓取时间
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),  -- 创建时间
@@ -6617,7 +6617,7 @@ CREATE TABLE IF NOT EXISTS stock_kpl_list (
     rt_pct_chg     NUMERIC(10,4),  -- 实时涨跌幅（%）
     limit_order    NUMERIC(20,4),  -- 封单量
     amount         NUMERIC(20,2),  -- 成交额
-    turnover_rate  NUMERIC(10,4),  -- 换手率（%）
+    turnover_rate  NUMERIC(20,4),  -- 换手率（%）；2026-11-09 由 (10,4) 放宽，源值实测达 4.16e8
     free_float     NUMERIC(20,4),  -- 自由流通量
     lu_limit_order NUMERIC(20,4),  -- 涨停封单额
     data_source    VARCHAR(16) NOT NULL DEFAULT 'tushare',  -- 数据来源
