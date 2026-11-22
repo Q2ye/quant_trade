@@ -44,6 +44,11 @@ def _dev_readonly_guard(strategy) -> Optional[Dict[str, Any]]:
 	return None
 
 
+def _dev_force_backtest(run_mode: str) -> str:
+	"""F4：dev 环境把任何 run_mode 强制为 backtest（共享策略表，防误建 live）。"""
+	return "backtest" if (_is_dev_env() and run_mode != "backtest") else run_mode
+
+
 def _is_dev_env() -> bool:
 	"""当前进程是否 development 环境（REQ-20261122-share-strategy-config 写守卫用）。
 

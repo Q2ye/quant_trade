@@ -141,10 +141,11 @@ async def create_instance_from_template_api(
         user_id = current_user.get("id", "0")
         # F4（S5 评审）：dev 环境禁止通过模板建 live 实例（共享策略表，会直接落生产）
         _run_mode = body.get("run_mode", "backtest")
-        from modules.strategy.services.strategy_service import _is_dev_env
-        if _is_dev_env() and _run_mode != "backtest":
+        from modules.strategy.services.strategy_service import _dev_force_backtest
+        _forced = _dev_force_backtest(_run_mode)
+        if _forced != _run_mode:
             logger.warning(f"[dev 守卫] 模板建实例 run_mode={_run_mode} → 强制 backtest")
-            _run_mode = "backtest"
+        _run_mode = _forced
 
         result = await svc.create_instance_from_template(
             template_id=template_id,
