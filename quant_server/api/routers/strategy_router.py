@@ -139,13 +139,20 @@ async def create_instance_from_template_api(
         from modules.strategy.services.template_service import TemplateService
         svc = TemplateService(db_session)
         user_id = current_user.get("id", "0")
+        # F4（S5 评审）：dev 环境禁止通过模板建 live 实例（共享策略表，会直接落生产）
+        _run_mode = body.get("run_mode", "backtest")
+        from modules.strategy.services.strategy_service import _is_dev_env
+        if _is_dev_env() and _run_mode != "backtest":
+            logger.warning(f"[dev 守卫] 模板建实例 run_mode={_run_mode} → 强制 backtest")
+            _run_mode = "backtest"
+
         result = await svc.create_instance_from_template(
             template_id=template_id,
             user_id=user_id,
             name=body.get("name", ""),
             account_id=body.get("account_id"),
             capital=body.get("capital", 1000000.0),
-            run_mode=body.get("run_mode", "backtest"),
+            run_mode=_run_mode,
         )
         if result.get("success"):
             return success_response(data=result.get("data", {}))

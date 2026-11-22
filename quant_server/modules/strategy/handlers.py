@@ -12,11 +12,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.strategy.constants import (
+	ErrorCode,
 	StrategyType,
 	StrategyLifecycleStatus,
 )
 from modules.strategy.services.execution_service import ExecutionService
-from modules.strategy.services.strategy_service import StrategyService
+from modules.strategy.services.strategy_service import StrategyService, _dev_readonly_guard
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,13 @@ class StrategyHandler:
 			)
 
 			if not result["success"]:
+				# F1（S5 评审）：保留 error_code 供 router 映射 409；
+				# 此前一律抛 400，导致 dev 删 running/live 时「409 映射」成死代码。
+				if result.get("error_code") == ErrorCode.DEV_PROD_READONLY:
+					raise HTTPException(
+						status_code=409,
+						detail=result.get("error", "生产在跑策略在开发环境为只读"),
+					)
 				raise HTTPException(
 					status_code=400,
 					detail=result.get("error", "删除失败")
@@ -254,6 +262,21 @@ class StrategyHandler:
 			logger.error(f"克隆策略失败: {e}")
 			raise HTTPException(status_code=500, detail=str(e))
 
+
+	async def _dev_lifecycle_guard(self, strategy_id: str) -> None:
+		"""F2（S5 评审）：dev 环境禁止对生产在跑实例做生命周期写操作。
+
+		start/stop/pause/resume 都会直接改共享 `strategies.status`，
+		若只守 update/delete，dev 可把生产 live 实例改成 stopped。
+		"""
+		try:
+			_strategy = await self.strategy_service.strategy_repo.get_by_id(strategy_id)
+		except Exception:
+			return
+		_guard = _dev_readonly_guard(_strategy) if _strategy else None
+		if _guard:
+			raise HTTPException(status_code=409, detail=_guard["error"])
+
 	async def start_strategy (
 			self,
 			strategy_id: str,
@@ -273,6 +296,7 @@ class StrategyHandler:
 		Returns:
 			启动结果
 		"""
+		await self._dev_lifecycle_guard(strategy_id)
 		try:
 			# 获取参数，优先使用传入的 capital，其次从 request 获取
 			if capital is None:
@@ -329,6 +353,7 @@ class StrategyHandler:
 		Returns:
 			停止结果
 		"""
+		await self._dev_lifecycle_guard(strategy_id)
 		try:
 			# 优先使用传入的 force 参数，其次从 request 获取
 			if force is None:
