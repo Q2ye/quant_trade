@@ -145,6 +145,7 @@ npx vue-tsc --noEmit  # TypeScript 类型检查
 > 流程唯一入口：`docs/06-标准规范/00_交付流程总纲.md`（S1–S5 + 四档 + 产物位置）。此处只留不可妥协项。
 
 - **编码前先读核心文档**（目标 → 白皮书 → 详细设计 → 相关功能设计，并浏览 `api/` `core/` `shared/` `modules/`）；非 T0 变更先出 REQ 的 S1/S2 并经确认再编码，只改 `03-任务.md` 规划内文件。
+- **每阶段须用户审批**：机检 PASS 后 `check_delivery.py review` 出复核包 → 用户 `approve Sx --yes` 才进下一段；未审批不得推进，也不得代用户审批。
 - **严禁三件事**：私自回退代码（git revert/reset/手动撤销）、依据猜测修改、跳过确认；遇到信息缺失 / 计划偏差 / 需求变更 → 暂停并提交结构化报告。
 - **处理后端任务时**，先加载 `.claude/skills/quantsys-architect/SKILL.md` 执行步骤 0-3。
 - **处理前端任务时**，遵循 `.claude/rules/frontend.md`，调用 `.claude/skills/frontend-craft/SKILL.md`。
@@ -260,4 +261,4 @@ cd quant_server && .venv/Scripts/python.exe scripts/backtest/backtest_small_cap.
 | 因子研究标准流程 | `docs/06-标准规范/03_因子研究标准流程.md` | 因子研究/注册/落库/消费（含 PIT 红线） |
 | 数据质量标准 | `docs/06-标准规范/01_数据质量标准.md` | 数据五道门（完整性/正确性/PIT/停牌/运行期） |
 | 交易·风控·账户专项规则 | `.claude/rules/trade-risk-account.md` | `quant_server/modules/{trade,risk,account}/**/*.py` |
-| 卫星策略分析 | `docs/00-核心策略体系/卫星策略分析.md` | 微盘/恐慌抄底卫星优化方向 |
+| 卫星策略分析 | `docs/00-核心策略体系/00-总览架构/卫星策略分析.md` | 微盘/恐慌抄底卫星优化方向 |

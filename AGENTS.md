@@ -97,6 +97,7 @@
 
 > **流程唯一入口**：`docs/06-标准规范/00_交付流程总纲.md` —— S1 需求澄清 → S2 设计 → S3 任务拆分 → S4 功能测试验证 → S5 代码评审；T0–T3 四档；产物统一在 `docs/09-交付记录/REQ-*/`。
 > **状态**：`python quant_server/scripts/quality/check_delivery.py next` ｜ **收工**：`python quant_server/scripts/quality/check_all.py`（含 ⓿ 交付预检）
+> **审批卡口**：每阶段机检 PASS 后必须 `review` → `approve Sx --yes`（用户审批）才能进下一段；缺审批不得推进，机检通过 ≠ 审批通过。
 
 1. 编码前先读 `docs/` 核心文档（系统目标 → 白皮书 → 详细设计 → 相关功能设计）
 2. 非 T0 变更：S1 需求卡 + S2 设计经确认后才编码；只改 `03-任务.md` 规划内文件
