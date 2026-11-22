@@ -66,6 +66,10 @@ class FakeSource:
              "end_date": None, "ann_date": None, "change_reason": None}
         ])
 
+    def get_namechange_ext(self, start_date="", end_date=""):
+        # 2026-11-22：生产代码改用 get_namechange_ext（by_range），桩补齐
+        return self.get_namechange(start_date=start_date, end_date=end_date)
+
     def get_fx_obasic(self):
         return pd.DataFrame([
             {"ts_code": "USDCNH.FXCM", "name": "USDCNH", "traget_spread": 0.0001}
@@ -203,9 +207,9 @@ def test_fut_holding_and_wsr_paths(make_svc):
     asyncio.run(svc._sync_fut_wsr(
         start_date=date(2026, 11, 6), end_date=date(2026, 11, 6)
     ))
-    # FakeSession 查不到 fut_basic → 回退 5 个主力品种
-    assert len(svc._ext_repos["fut_holding"].records) == 5
-    assert len(svc._ext_repos["fut_wsr"].records) == 5
+    # FakeSession 查不到 fut_basic → 回退 _FUT_EXCHANGES（6 个交易所，含 GFEX）
+    assert len(svc._ext_repos["fut_holding"].records) == 6
+    assert len(svc._ext_repos["fut_wsr"].records) == 6
     assert all(r.get("exchange") for r in svc._ext_repos["fut_holding"].records)
 
 

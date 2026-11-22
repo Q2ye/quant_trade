@@ -33,7 +33,8 @@ class StrategyHandler:
 	async def get_strategy_list (
 			self,
 			request,
-			user_id: str
+			user_id: str,
+			is_admin: bool = False
 	) -> Dict[str, Any]:
 		"""
 		获取策略列表
@@ -72,6 +73,7 @@ class StrategyHandler:
 				strategy_type=strategy_type,
 				page=page,
 				page_size=page_size,
+				is_admin=is_admin,
 			)
 
 			return result
@@ -631,9 +633,9 @@ async def create_strategy_from_template(session: AsyncSession, template_id: str,
 
 # ==================== 导出函数供router使用 ====================
 
-async def get_strategy_list (session: AsyncSession, request, user_id: str):
+async def get_strategy_list (session: AsyncSession, request, user_id: str, is_admin: bool = False):
 	handler = StrategyHandler(session)
-	return await handler.get_strategy_list(request, user_id)
+	return await handler.get_strategy_list(request, user_id, is_admin=is_admin)
 
 
 async def get_strategy_detail (session: AsyncSession, strategy_id: str, request, user_id: str):

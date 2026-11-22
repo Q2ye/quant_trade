@@ -1,0 +1,8 @@
+id,strategy_id,param_name,param_type,param_value,description,is_required,validation_rules,created_at,updated_at
+40580459-729a-4853-833b-f997c07c91af,9887940c-d33b-4071-982a-fa2f0d25ff7c,enable_moneyflow_factor,json,true,dev arm,f,,2026-11-15 12:24:13.030317+08,2026-11-15 12:24:13.030317+08
+08f6d30b-516f-491a-9395-d43b57b0cc61,9887940c-d33b-4071-982a-fa2f0d25ff7c,moneyflow_weight,json,1.0,dev arm,f,,2026-11-15 12:24:13.030317+08,2026-11-15 12:24:13.030317+08
+d628a055-352c-4ae2-be25-c00223bd457d,76b03e9e-044d-407c-8cb5-19def6eeed02,moneyflow_min,json,0,dev arm,f,,2026-11-15 12:24:13.030317+08,2026-11-15 12:24:13.030317+08
+2bafab2a-3665-443f-b8de-636b59041dc9,9b2bee6e-024d-4c2b-b95d-48f33c7b3991,bear_max_positions,json,0,bear flat,f,,2026-11-17 18:46:14.107365+08,2026-11-17 18:46:14.107365+08
+5e6295dc-498f-4a6a-99ab-b4c99f60399d,6b37c3c8-a40f-4dbf-bf18-9998ea1e7129,enable_confirm_retest,json,true,维度一第1步,f,,2026-11-22 14:03:00.80713+08,2026-11-22 14:03:00.80713+08
+dafb45ac-8053-408b-b5b2-a2c872363644,6b37c3c8-a40f-4dbf-bf18-9998ea1e7129,confirm_retest_days,json,2,维度一第1步,f,,2026-11-22 14:03:00.80713+08,2026-11-22 14:03:00.80713+08
+a9d81803-5092-4dbc-afcc-287e2b62fb54,6b37c3c8-a40f-4dbf-bf18-9998ea1e7129,confirm_retest_buffer,json,0.03,维度一第1步,f,,2026-11-22 14:03:00.80713+08,2026-11-22 14:03:00.80713+08

@@ -21,6 +21,43 @@ from shared.database.repositories.strategy.management import (
 )
 from shared.database.repositories.trading.position import PositionRepository
 
+
+def _dev_readonly_guard(strategy) -> Optional[Dict[str, Any]]:
+	"""W1：dev 环境禁止修改/删除生产在跑实例（`status=running` 或 `run_mode=live`）。
+
+	生产环境返回 None（不介入，行为不变）。
+	"""
+	if not _is_dev_env():
+		return None
+	_status = str(getattr(strategy, "status", "") or "")
+	_run_mode = str(getattr(strategy, "run_mode", "") or "")
+	if _status == "running" or _run_mode == "live":
+		logging.getLogger(__name__).warning(
+			f"[dev 守卫] 拒绝对生产在跑策略的写操作: {getattr(strategy, 'id', '?')} "
+			f"status={_status} run_mode={_run_mode}"
+		)
+		return {
+			"success": False,
+			"error": "生产在跑策略在开发环境为只读，不可修改或删除",
+			"error_code": ErrorCode.DEV_PROD_READONLY,
+		}
+	return None
+
+
+def _is_dev_env() -> bool:
+	"""当前进程是否 development 环境（REQ-20261122-share-strategy-config 写守卫用）。
+
+	生产环境恒返回 False → 守卫完全不介入，行为与现状一致。
+	"""
+	try:
+		from shared.config.config_manager import config
+		_env = getattr(config.settings, "ENVIRONMENT", None)
+		_env = getattr(_env, "value", _env)
+		return str(_env).lower() == "development"
+	except Exception as e:  # noqa: BLE001 — 环境判定失败按生产处理（fail-closed 到现状）
+		logging.getLogger(__name__).warning(f"环境判定失败，按生产处理: {e}")
+		return False
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,6 +103,7 @@ class StrategyService:
 			strategy_type: Optional[StrategyType] = None,
 			page: int = 1,
 			page_size: int = 20,
+			is_admin: bool = False,
 	) -> Dict[str, Any]:
 		"""
 		获取策略列表
@@ -86,7 +124,10 @@ class StrategyService:
 			page_size = page_size or 20
 
 			# 构建过滤条件
-			filters = {"user_id": user_id}
+			# REQ-20261122-share-strategy-config：admin 不过滤 user_id。
+			# 共享策略配置后，dev 的 current_user 是 dev 种子账号、而策略行归属 superAdmin，
+			# 按 user_id 过滤会让两边都"看不到别人的策略"。admin 视角应看全量。
+			filters = {} if is_admin else {"user_id": user_id}
 			if status:
 				filters["status"] = status.value # type: ignore
 			if strategy_type:
@@ -269,6 +310,10 @@ class StrategyService:
 				"created_at": datetime.now(),
 				"updated_at": datetime.now(),
 			}
+			# W2（REQ-20261122-share-strategy-config）：dev 环境新建策略强制为回测草稿，
+			# 防止在开发环境误建 live/running 实例污染共享的策略配置表。
+			if _is_dev_env():
+				strategy_data["run_mode"] = "backtest"
 
 			strategy = await self.strategy_repo.create(strategy_data)
 
@@ -365,6 +410,13 @@ class StrategyService:
 					"error": f"策略 {strategy_id} 不存在",
 					"error_code": ErrorCode.STRATEGY_NOT_FOUND
 				}
+
+			# W1（REQ-20261122-share-strategy-config）：dev 环境不得改生产在跑实例。
+			# 必须先于归属校验 —— 共享配置后 dev 当前用户与策略 owner 不同，
+			# 若先判归属会退化成 404，掩盖「生产在跑」这个真正原因。
+			_guard = _dev_readonly_guard(strategy)
+			if _guard:
+				return _guard
 
 			if strategy.user_id != user_id:
 				return {
@@ -473,6 +525,11 @@ class StrategyService:
 					"error": f"策略 {strategy_id} 不存在",
 					"error_code": ErrorCode.STRATEGY_NOT_FOUND
 				}
+
+			# W1：先于归属校验（原因同上）
+			_guard = _dev_readonly_guard(strategy)
+			if _guard:
+				return _guard
 
 			if strategy.user_id != user_id:
 				return {

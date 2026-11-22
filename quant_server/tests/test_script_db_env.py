@@ -17,11 +17,12 @@ def _set_prod(monkeypatch, user="quant_prod"):
 
 
 def _set_dev(monkeypatch):
-    monkeypatch.setenv("DB_DEV_HOST", "dev-host")
-    monkeypatch.setenv("DB_DEV_PORT", "5434")
-    monkeypatch.setenv("DB_DEV_USER", "quant_dev")
-    monkeypatch.setenv("DB_DEV_PASSWORD", "dev-pw")
-    monkeypatch.setenv("DB_DEV_NAME", "quant_signals")
+    # 2026-11-22：命名统一为 <环境>_DB_<字段>（方案 B 迁移），旧名 DB_DEV_* 仅作兼容回退
+    monkeypatch.setenv("DEV_DB_HOST", "dev-host")
+    monkeypatch.setenv("DEV_DB_PORT", "5434")
+    monkeypatch.setenv("DEV_DB_USER", "quant_dev")
+    monkeypatch.setenv("DEV_DB_PASSWORD", "dev-pw")
+    monkeypatch.setenv("DEV_DB_NAME", "quant_signals")
 
 
 def test_prod_kwargs(monkeypatch):

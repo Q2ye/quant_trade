@@ -247,7 +247,8 @@ async def get_strategies_api (
 		result = await get_strategy_list(
 			session=db_session,
 			request=request,
-			user_id=current_user.get("id")
+			user_id=current_user.get("id"),
+			is_admin=(current_user.get("role") == "admin"),
 		)
 
 		return result
@@ -471,6 +472,14 @@ async def update_strategy_api (
 			user_id=current_user.get("id")
 		)
 
+		# REQ-20261122-share-strategy-config：dev 改生产在跑策略 → 409
+		if _result_error_code(result) == ErrorCode.DEV_PROD_READONLY:
+			raise HTTPException(
+				status_code=status.HTTP_409_CONFLICT,
+				detail=(result.get("error") if isinstance(result, dict) else "")
+				or "生产在跑策略在开发环境为只读",
+			)
+
 		return result
 
 	except HTTPException:
@@ -530,11 +539,19 @@ async def delete_strategy_api (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 删除策略 {strategy_id}")
 
-		await delete_strategy(
+		_deleted = await delete_strategy(
 			session=db_session,
 			strategy_id=strategy_id,
 			user_id=current_user.get("id")
 		)
+
+		# REQ-20261122-share-strategy-config：dev 删生产在跑策略 → 409
+		if _result_error_code(_deleted) == ErrorCode.DEV_PROD_READONLY:
+			raise HTTPException(
+				status_code=status.HTTP_409_CONFLICT,
+				detail=(_deleted.get("error") if isinstance(_deleted, dict) else "")
+				or "生产在跑策略在开发环境为只读",
+			)
 
 		return success_response(
 			message="策略删除成功",

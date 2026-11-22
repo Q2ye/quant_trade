@@ -287,6 +287,8 @@ class ErrorCode:
     # 注意：全局 core/exceptions/error_codes.py 的 1009=TOO_MANY_REQUESTS、
     # 1010=REQUEST_TIMEOUT、1011=RESOURCE_NOT_FOUND，故用 1012 避免撞值。
     LIVE_PRODUCTION_ONLY = 1012
+    # dev 环境禁止修改/删除生产在跑实例（REQ-20261122-share-strategy-config W1）
+    DEV_PROD_READONLY = 1013
 
 
 # ==================== 事件类型 ====================
