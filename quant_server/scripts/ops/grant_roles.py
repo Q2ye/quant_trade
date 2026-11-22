@@ -42,10 +42,11 @@ def _env(name: str, default=None):
 
 
 def _password(role: str) -> str:
+    # 2026-11-15：新命名优先（DEV_DB_* / PROD_DB_*），旧名保留回退
     if role == PROD_ROLE:
         return _env("PROD_DB_PASSWORD") or _env("DB_PASSWORD", "")
     if role == DEV_ROLE:
-        return _env("DB_DEV_PASSWORD") or _env("DB_PASSWORD", "")
+        return _env("DEV_DB_PASSWORD") or _env("DB_DEV_PASSWORD") or _env("DB_PASSWORD", "")
     return _env("DB_RO_PASSWORD") or _env("DB_PASSWORD", "")
 
 
@@ -61,7 +62,8 @@ def _ddl_connect(database: str):
         host=_env("DB_DDL_HOST") or _env("DB_HOST", "localhost"),
         port=int(_env("DB_DDL_PORT") or _env("DB_PORT", "5432")),
         user=_ddl_user(),
-        password=_env("DB_DDL_PASSWORD") or _env("DB_PASSWORD", ""),
+        password=(_env("DB_DDL_PASSWORD") or _env("DB_PASSWORD", "")
+                  or _env("PROD_DB_PASSWORD", "") or _env("DEV_DB_PASSWORD", "")),
         database=database,
     )
 

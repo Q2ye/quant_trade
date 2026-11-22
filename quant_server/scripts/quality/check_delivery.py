@@ -14,8 +14,13 @@
     .venv/Scripts/python.exe scripts/quality/check_delivery.py next
     .venv/Scripts/python.exe scripts/quality/check_delivery.py status
     .venv/Scripts/python.exe scripts/quality/check_delivery.py check [REQ] [--quiet]
+    .venv/Scripts/python.exe scripts/quality/check_delivery.py review [S1-S5]
+    .venv/Scripts/python.exe scripts/quality/check_delivery.py approve S1 --yes --note "看过"
     .venv/Scripts/python.exe scripts/quality/check_delivery.py scope [--apply]
     .venv/Scripts/python.exe scripts/quality/check_delivery.py use <REQ>
+
+阶段推进是「人工卡口」：内容机检通过 ≠ 可以进下一阶段。必须 review（复核包）
+→ approve（用户审批，记入 meta.json.approvals）→ 才进入下一阶段。
 
 退出码：0 = PASS，1 = FAIL，2 = 无进行中 REQ（SKIP），64 = 参数错误。
 
@@ -30,7 +35,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -389,6 +394,71 @@ def extract_paths(lines: list) -> list:
     return seen
 
 
+REVIEW_FOCUS = {
+    "S1": "AC 每条都能执行（命令/操作 → 可观测输出）？非目标写了没？档位够不够（碰 core/shared/DDL/交易·风控·账户 → ≥T2，策略 → T3）？",
+    "S2": "契约字段/错误码齐吗？依赖方向是否 modules→shared→core？备选写了「否掉的代价」吗？T2 有回滚方案吗？",
+    "S3": "每任务 ≤3 文件？验收命令能直接复制执行吗？依赖无环吗？范围前缀覆盖了表里全部文件吗？",
+    "S4": "每条 AC 都贴了原始输出（不是「通过」）？失败按三分法归位了吗？未覆盖区写清了吗？",
+    "S5": "是独立评审（作者不自审）吗？发现项带 文件:行 吗？裁定明确吗？",
+}
+
+# 阶段审批顺序：S1 → S2 → S3 → S4 → S5
+CODES = [s[0] for s in STAGES]
+
+
+def stage_entry(code: str):
+    for s in STAGES:
+        if s[0] == code:
+            return s
+    return None
+
+
+def next_code(code: str) -> str:
+    i = CODES.index(code)
+    return CODES[i + 1] if i + 1 < len(CODES) else "DONE"
+
+
+def approvals(meta: dict) -> dict:
+    return meta.get("approvals") or {}
+
+
+def is_legacy(meta: dict) -> bool:
+    """流程上线前建的 REQ：meta 里没有 approvals 键，按旧 status 字段判断阶段。"""
+    return bool(meta) and "approvals" not in meta
+
+
+def stage_problems(d: Path, code: str, repo: Path = None) -> list:
+    """单阶段内容机检；check_req / approve / review 共用这一处判据。"""
+    entry = stage_entry(code)
+    if entry is None:
+        return ["未知阶段：" + code]
+    _c, _n, fname, headings, _crit = entry
+    base = repo or REPO_ROOT
+    f = d / fname
+    if not f.is_file():
+        return ["缺文件"]
+    text = f.read_text(encoding="utf-8", errors="replace")
+    secs = split_sections(text)
+    msgs: list = []
+    missing = [h for h in headings if h not in secs]
+    if missing:
+        msgs.append("缺章节 " + " / ".join(missing))
+    empty = [h for h in headings if h in secs and not section_filled(secs[h])]
+    if empty:
+        msgs.append("未填写 " + " / ".join(empty))
+    if code == "S1":
+        msgs.extend(check_s1_extra(text))
+        msgs.extend(check_s1_paths(text, base))
+    if code == "S3":
+        msgs.extend(check_s3_extra(secs))
+        msgs.extend(check_s3_paths(secs, base))
+    if code == "S4":
+        msgs.extend(check_s4_extra(secs))
+    if code == "S5":
+        msgs.extend(check_s5_extra(secs))
+    return msgs
+
+
 def check_req(d: Path, quiet: bool = False, repo: Path = None) -> int:
     """校验五份产物的结构；返回 0=PASS / 1=FAIL。"""
     rid = d.name
@@ -398,32 +468,8 @@ def check_req(d: Path, quiet: bool = False, repo: Path = None) -> int:
         problems.append("缺 meta.json 或无法解析")
 
     results = []
-    for code, name, fname, headings, _crit in STAGES:
-        f = d / fname
-        msgs: list = []
-        if not f.is_file():
-            msgs.append("缺文件")
-        else:
-            text = f.read_text(encoding="utf-8", errors="replace")
-            secs = split_sections(text)
-            missing = [h for h in headings if h not in secs]
-            if missing:
-                msgs.append("缺章节 " + " / ".join(missing))
-            empty = [h for h in headings if h in secs and not section_filled(secs[h])]
-            if empty:
-                msgs.append("未填写 " + " / ".join(empty))
-            base = repo or REPO_ROOT
-            if code == "S1":
-                msgs.extend(check_s1_extra(text))
-                msgs.extend(check_s1_paths(text, base))
-            if code == "S3":
-                msgs.extend(check_s3_extra(secs))
-                msgs.extend(check_s3_paths(secs, base))
-            if code == "S4":
-                msgs.extend(check_s4_extra(secs))
-            if code == "S5":
-                msgs.extend(check_s5_extra(secs))
-        results.append((code, name, fname, msgs))
+    for code, name, fname, _headings, _crit in STAGES:
+        results.append((code, name, fname, stage_problems(d, code, repo)))
 
     if not quiet:
         tier = meta.get("tier", "?")
@@ -432,6 +478,11 @@ def check_req(d: Path, quiet: bool = False, repo: Path = None) -> int:
         for code, name, fname, msgs in results:
             mark = "✅" if not msgs else "⛔"
             print("  %s %s %s → %s%s" % (mark, code, name, fname, "" if not msgs else "  ｜ " + "；".join(msgs)))
+        if is_legacy(meta):
+            print("  审批：旧单无记录（流程上线前创建；首次 approve 会自动补 approvals）")
+        else:
+            ap = approvals(meta)
+            print("  审批：" + "  ".join("%s%s" % (c, "✅" if ap.get(c) else "·") for c in CODES))
 
     failed_stages = [r for r in results if r[3]]
     ok = not problems and not failed_stages
@@ -441,6 +492,8 @@ def check_req(d: Path, quiet: bool = False, repo: Path = None) -> int:
                 print("  ⛔ meta: " + p)
         if ok:
             print("  → PASS（结构完整；内容质量仍需人看 04/05）")
+            if not is_legacy(meta) and any(not approvals(meta).get(c) for c in CODES):
+                print("  提示：机检通过 ≠ 审批通过，进入下一阶段需 review + approve")
         else:
             cur = failed_stages[0][0]
             print("  → FAIL：先补 " + failed_stages[0][2] + " ／ " + STAGE_HINT.get(cur, ""))
@@ -457,14 +510,24 @@ def check_req(d: Path, quiet: bool = False, repo: Path = None) -> int:
 
 
 def current_stage(d: Path) -> str:
-    for code, _name, fname, headings, _crit in STAGES:
-        f = d / fname
-        if not f.is_file():
-            return code
-        secs = split_sections(f.read_text(encoding="utf-8", errors="replace"))
-        if any(h not in secs or not section_filled(secs[h]) for h in headings):
+    """第一个未审批的阶段；全审批完 → DONE。阶段推进只由 approve 触发。
+
+    旧单（meta 无 approvals 键）退回读 status，避免把已交付的 REQ 显示成 S1。
+    """
+    meta = load_meta(d)
+    if is_legacy(meta):
+        st = meta.get("status")
+        return st if (st in CODES or st == "DONE") else CODES[0]
+    ap = approvals(meta)
+    for code in CODES:
+        if not ap.get(code):
             return code
     return "DONE"
+
+
+def stage_ready(d: Path, code: str, repo: Path = None) -> bool:
+    """该阶段内容机检是否已过（过了才允许 approve）。"""
+    return not stage_problems(d, code, repo)
 
 
 class _Parser(argparse.ArgumentParser):
@@ -474,6 +537,10 @@ class _Parser(argparse.ArgumentParser):
         self.print_usage(sys.stderr)
         print(f"{self.prog}: 参数错误：{message}", file=sys.stderr)
         raise SystemExit(64)
+
+
+def repo_of(args) -> Path:
+    return Path(args.repo).resolve() if getattr(args, "repo", None) else REPO_ROOT
 
 
 def resolve(args, root: Path) -> Path:
@@ -510,11 +577,13 @@ def cmd_new(args, root: Path) -> int:
         "updated": date.today().isoformat(),
         "commits": [],
         "scope": [],
+        "approvals": {},
     }
     save_meta(d, meta)
     write_active(root, rid)
     print("已创建 " + str(d))
     print("当前阶段 S1（需求澄清）。下一步：填 01-需求.md，然后跑 next")
+    print("S1 机检通过后：review → approve S1（用户审批），才会进入 S2")
     return 0
 
 
@@ -538,19 +607,108 @@ def cmd_next(args, root: Path) -> int:
     st = current_stage(d)
     print("=== %s (%s) ===" % (d.name, meta.get("tier", "?")))
     if st == "DONE":
-        print("五阶段结构已齐。收尾：")
+        print("五阶段已全部机检通过并审批。收尾：")
         print("  1) check_all.py 全绿   2) 把结论回填 docs/02-功能设计/   3) 在 INDEX.md 标已交付")
         return 0
-    for code, name, fname, _h, crit in STAGES:
-        if code != st:
-            continue
-        print("当前阶段：%s %s  →  %s" % (code, name, fname))
-        print("出口判据：" + crit)
-    print("怎么做：" + STAGE_HINT.get(st, ""))
-    if st == "S3":
-        print("声明范围：.venv/Scripts/python.exe scripts/quality/check_delivery.py scope --apply")
-    if st == "S5":
-        print("评审必须由独立只读 agent / 新会话执行，作者不自审")
+    _code, name, fname, _h, crit = stage_entry(st)
+    repo = repo_of(args)
+    msgs = stage_problems(d, st, repo)
+    print("当前阶段：%s %s  →  %s" % (st, name, fname))
+    print("出口判据：" + crit)
+    if msgs:
+        print("状态：未完成 —— " + msgs[0])
+        print("怎么做：" + STAGE_HINT.get(st, ""))
+        if st == "S3":
+            print("声明范围：.venv/Scripts/python.exe scripts/quality/check_delivery.py scope --apply")
+        if st == "S5":
+            print("评审必须由独立只读 agent / 新会话执行，作者不自审")
+    else:
+        print("状态：⏸ 机检已通过，等待你审批（未审批不能进下一阶段）")
+        print("复核：.venv/Scripts/python.exe scripts/quality/check_delivery.py review " + st)
+        print("审批：.venv/Scripts/python.exe scripts/quality/check_delivery.py approve " + st + ' --note "看过，OK"')
+    return 0
+
+
+def cmd_review(args, root: Path) -> int:
+    """打印待审批阶段的复核包：机检结论 + 复核要点 + 文件全文。"""
+    d = resolve(args, root)
+    if d is None or not d.is_dir():
+        print("不存在：" + str(d) if getattr(args, "req", None) else "无进行中 REQ。")
+        return 1 if getattr(args, "req", None) else 2
+    code = args.stage or current_stage(d)
+    if code == "DONE":
+        print("五阶段已全部审批完毕，无需复核。")
+        return 0
+    entry = stage_entry(code)
+    if entry is None:
+        print("未知阶段：%s（可选 %s）" % (code, " / ".join(CODES)))
+        return 1
+    _c, name, fname, _h, crit = entry
+    msgs = stage_problems(d, code, repo_of(args))
+    lines = (d / fname).read_text(encoding="utf-8", errors="replace").splitlines() \
+        if (d / fname).is_file() else []
+    print("=== 待审批：%s %s（%s）===" % (code, name, d.name))
+    print("文件：" + str(d / fname))
+    print("机检：" + ("✅ 通过" if not msgs else "⛔ " + "；".join(msgs)))
+    print("出口判据：" + crit)
+    print("你要看：" + REVIEW_FOCUS.get(code, ""))
+    print("")
+    print("---- 文件内容（%d 行）----" % len(lines))
+    cap = 200
+    for i, ln in enumerate(lines[:cap], 1):
+        print("%4d | %s" % (i, ln))
+    if len(lines) > cap:
+        print("……（余下 %d 行省略，直接打开文件看）" % (len(lines) - cap))
+    print("----")
+    print("确认无误：.venv/Scripts/python.exe scripts/quality/check_delivery.py approve %s --note \"看过，OK\"" % code)
+    print("有问题：改 %s 后重跑 review；审批不会自动通过" % fname)
+    return 0
+
+
+def cmd_approve(args, root: Path) -> int:
+    """记录用户审批；审批是阶段推进的唯一触发点。"""
+    d = resolve(args, root)
+    if d is None or not d.is_dir():
+        print("不存在：" + str(d) if getattr(args, "req", None) else "无进行中 REQ。")
+        return 1 if getattr(args, "req", None) else 2
+    meta = load_meta(d)
+    if not meta:
+        print("缺 meta.json，无法记录审批")
+        return 1
+    cur = current_stage(d)
+    code = args.stage or cur
+    if code not in CODES:
+        print("未知阶段：%s（可选 %s；省略则审批当前阶段 %s）" % (code, " / ".join(CODES), cur))
+        return 1
+    if cur == "DONE":
+        print("五阶段已全部审批完毕。")
+        return 0
+    if code != cur:
+        if CODES.index(code) < CODES.index(cur):
+            print("%s 已审批过（%s）。" % (code, approvals(meta).get(code, {}).get("at", "")))
+            return 0
+        print("不能跳阶段：当前待审批是 %s，先 review + approve %s" % (cur, cur))
+        return 1
+    msgs = stage_problems(d, code, repo_of(args))
+    if msgs:
+        print("⛔ %s 机检未通过，不能审批：%s" % (code, "；".join(msgs)))
+        print("先补 " + stage_entry(code)[2] + "，再：" + STAGE_HINT.get(code, ""))
+        return 1
+    if not args.yes:
+        print("未加 --yes：请先用 review %s 复核全文。" % code)
+        print("确认无误：approve %s --yes --note \"看过，OK\"" % code)
+        return 1
+    _c, name, _fname, _h, _crit = stage_entry(code)
+    at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    meta.setdefault("approvals", {})[code] = {"at": at, "note": args.note or ""}
+    meta["status"] = next_code(code)
+    meta["updated"] = date.today().isoformat()
+    save_meta(d, meta)
+    print("✅ 已记录审批：%s %s（%s）%s" % (code, name, at, ("｜" + args.note) if args.note else ""))
+    if meta["status"] == "DONE":
+        print("五阶段全部审批完成 → 收尾：check_all 全绿 / 结论回填 docs/02-功能设计/ / INDEX.md 标已交付")
+    else:
+        print("当前阶段：%s → 继续：.venv/Scripts/python.exe scripts/quality/check_delivery.py next" % meta["status"])
     return 0
 
 
@@ -563,12 +721,14 @@ def cmd_status(args, root: Path) -> int:
         print("尚无 REQ。")
         return 2
     active = read_active(root)
-    print("%-40s %-4s %-5s %s" % ("REQ", "档", "阶段", "标题"))
+    print("%-40s %-4s %-5s %-12s %s" % ("REQ", "档", "阶段", "已审批", "标题"))
     for d in dirs:
         meta = load_meta(d)
+        ap = approvals(meta)
         mark = "*" if d.name == active else " "
-        print("%s%-39s %-4s %-5s %s" % (
-            mark, d.name, meta.get("tier", "?"), current_stage(d), meta.get("title", "")))
+        done = "旧单" if is_legacy(meta) else (",".join(c for c in CODES if ap.get(c)) or "-")
+        print("%s%-39s %-4s %-5s %-12s %s" % (
+            mark, d.name, meta.get("tier", "?"), current_stage(d), done, meta.get("title", "")))
     print("")
     return 0
 
@@ -645,6 +805,16 @@ def main() -> int:
                     help="指定 REQ（等价于 --req，位置写法）")
     sp.add_argument("--quiet", action="store_true", help="只打一行结论（供 check_all 调用）")
 
+    sp = sub.add_parser("review", parents=[global_opts], help="打印待审批阶段的复核包")
+    sp.add_argument("stage", nargs="?", default=None, choices=CODES, metavar="S1-S5",
+                    help="默认当前待审批阶段")
+
+    sp = sub.add_parser("approve", parents=[global_opts], help="记录用户审批（推进阶段）")
+    sp.add_argument("stage", nargs="?", default=None, choices=CODES, metavar="S1-S5",
+                    help="默认当前待审批阶段")
+    sp.add_argument("--note", default="", help="审批备注（写进 meta.json）")
+    sp.add_argument("--yes", action="store_true", help="确认已 review 并同意")
+
     sp = sub.add_parser("scope", parents=[global_opts], help="由 03-任务.md 推范围")
     sp.add_argument("req_arg", nargs="?", default=None, metavar="REQ",
                     help="指定 REQ（等价于 --req，位置写法）")
@@ -664,7 +834,8 @@ def main() -> int:
         return 1
     root = req_root(args)
     handlers = {"new": cmd_new, "next": cmd_next, "status": cmd_status,
-                "check": cmd_check, "scope": cmd_scope, "use": cmd_use}
+                "check": cmd_check, "scope": cmd_scope, "use": cmd_use,
+                "review": cmd_review, "approve": cmd_approve}
     return handlers[args.cmd](args, root)
 
 

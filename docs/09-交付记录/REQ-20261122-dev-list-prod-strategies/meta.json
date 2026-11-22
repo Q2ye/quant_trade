@@ -1,0 +1,16 @@
+{
+  "req": "REQ-20261122-dev-list-prod-strategies",
+  "title": "dev 环境只读展示生产策略",
+  "tier": "T1",
+  "status": "S1",
+  "created": "2026-11-22",
+  "updated": "2026-11-22",
+  "commits": [],
+  "scope": [],
+  "approvals": {},
+  "closed": {
+    "at": "2026-11-22",
+    "reason": "前提不成立：dev 可正常查询自己的策略（total=5），空列表源于手抄生产 user_id；合并生产策略是错误方向",
+    "code_changed": false
+  }
+}

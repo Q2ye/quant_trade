@@ -1,0 +1,16 @@
+{
+  "req": "REQ-20261114-etf-premium-gate",
+  "title": "ETF折溢价门（跨市场避险）",
+  "tier": "T3",
+  "status": "S1",
+  "created": "2026-11-14",
+  "updated": "2026-11-14",
+  "commits": [],
+  "scope": [],
+  "approvals": {},
+  "closed": {
+    "at": "2026-11-14",
+    "reason": "前提被证伪：价格分与净值分秩相关0.986，2026-09-30 两种口径均选 513100；溢价未改变选股结果。研究记录见 docs/00-核心策略体系/跨市场-打分证伪与收益归因-2026-11-14.md",
+    "code_changed": false
+  }
+}

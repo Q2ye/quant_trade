@@ -107,6 +107,23 @@ class HighVolMomentumStrategy(BaseStrategy):
         "breakout_near_pct": 0.02,       # 距 20 日新高 ≤2% 视为右侧确认
         "volume_surge_ratio": 1.2,       # 近5日均量 ≥ 近20日均量 × 此值
 
+        # —— 资金流因子（REQ-20261114-highvol-moneyflow-select） ——
+        # 数据来源：stock_moneyflow.net_mf_amount / daily_basic.circ_mv（当日，无未来函数）。
+        # 由运行环境预置到 `_mf_ratio_cache`（回测脚本 / 实盘 manager）；缺失一律 fail-open。
+        # 实证：全市场 20 日 IC +0.0248（6/6 年为正），高动量组 +0.0318。
+        "enable_moneyflow_factor": False,   # A 接法：score × (0.5 + w×当日分位)
+        "moneyflow_weight": 0.0,            # 乘子强度；0 = 不调整
+        "moneyflow_min": None,              # B 接法：mf_ratio ≤ 此值 → 剔除；None = 关闭
+
+        # —— 突破确认（REQ-维度一第1步，替换「追涨确认」） ——
+        # 现状：候选 T 收盘 > 信号价 才通过（追涨确认，抬高买入价）。
+        # 改为可选：候选需连续 confirm_retest_days 日「收盘 ≥ 信号价×(1−buffer)」才通过
+        #   （站稳确认）。默认 False = 与现状逐位一致。
+        # 探针实证：站稳 N=2 成交溢价中位 1.97%→0.74%，20日收益中位 −2.09%→−1.74%。
+        "enable_confirm_retest": False,
+        "confirm_retest_days": 2,
+        "confirm_retest_buffer": 0.03,
+
         # —— 持仓（集中 2×50%） ——
         "max_positions": 2,              # 最大持仓数
         "max_single_weight": 0.5,        # 单票权重上限
@@ -194,10 +211,23 @@ class HighVolMomentumStrategy(BaseStrategy):
         # v7.1 熊市独立宽止损
         self.bear_atr_trailing_mult = float(merged.get("bear_atr_trailing_mult", 3.5))
         self.bear_atr_stop_mult = float(merged.get("bear_atr_stop_mult", 2.5))
+        # 资金流因子（REQ-20261114-highvol-moneyflow-select）
+        self.enable_moneyflow_factor = bool(merged.get("enable_moneyflow_factor", False))
+        self.moneyflow_weight = float(merged.get("moneyflow_weight", 0.0))
+        _mf_min = merged.get("moneyflow_min", None)
+        self.moneyflow_min = float(_mf_min) if _mf_min is not None else None
+        # 突破确认（REQ-维度一第1步）
+        self.enable_confirm_retest = bool(merged.get("enable_confirm_retest", False))
+        self.confirm_retest_days = max(1, int(merged.get("confirm_retest_days", 2)))
+        self.confirm_retest_buffer = float(merged.get("confirm_retest_buffer", 0.03))
         # 运行
         self.verbose_logging = bool(merged.get("verbose_logging", True))
 
         # ---- 状态 ----
+        # 资金流缓存：{(code, "YYYY-MM-DD"): ratio}，由运行环境预置（回测脚本 / 实盘 manager）。
+        # 缺失 → 因子 fail-open，不影响原打分。
+        self._mf_ratio_cache: Dict[Tuple[str, str], float] = {}
+        self._mf_pct_by_date: Dict[str, Dict[str, float]] = {}
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._bar_dates: Dict[str, str] = {}
         self._st_stocks: Set[str] = set()
@@ -288,6 +318,8 @@ class HighVolMomentumStrategy(BaseStrategy):
         # _data_cache 在 start_strategy 预热后被填充，首个交易日即可选股。
 
     def on_stop(self) -> None:
+        self._mf_ratio_cache.clear()
+        self._mf_pct_by_date.clear()
         self._data_cache.clear()
         self._bar_dates.clear()
         self._holdings.clear()
@@ -380,6 +412,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                 "weight": eff_weight,
                 "signal_date": str(self._last_trade_date)[:10],
                 "signal_id": _cand_sid,
+                "retest_streak": 0,
             }
             # 候选落库（与低吸/ETF 一致，跨重启保留 + 信号追溯）
             if not getattr(self, "_replaying", False):
@@ -576,9 +609,37 @@ class HighVolMomentumStrategy(BaseStrategy):
             rs = mom60 - self._market_mom60
             # 综合分：动量为主 + 加速 + 相对强度
             score = mom60 + 0.5 * mom20 + 0.5 * rs
+
+            # —— 资金流因子（REQ-20261114-highvol-moneyflow-select，默认关闭）——
+            if self.moneyflow_min is not None or (
+                self.enable_moneyflow_factor and self.moneyflow_weight > 0
+            ):
+                _td = str(self._last_trade_date)[:10]
+                _mf = self._mf_ratio_cache.get((code, _td))
+                if _mf is not None:
+                    if self.moneyflow_min is not None and _mf <= self.moneyflow_min:
+                        return None            # B 接法：资金流出 → 剔除
+                    if self.enable_moneyflow_factor and self.moneyflow_weight > 0:
+                        _pct = self._mf_pct_for(code, _td)
+                        if _pct is not None:
+                            score = score * (0.5 + self.moneyflow_weight * _pct)  # A 接法
             return float(score) if np.isfinite(score) else None
         except Exception:
             return None
+
+    def _mf_pct_for(self, code: str, td: str) -> Optional[float]:
+        """当日全市场资金流的百分位（0~1），按日惰性计算并缓存；无数据返回 None。"""
+        pct_map = self._mf_pct_by_date.get(td)
+        if pct_map is None:
+            vals = {c: v for (c, d), v in self._mf_ratio_cache.items() if d == td}
+            if not vals:
+                self._mf_pct_by_date[td] = {}
+                return None
+            pct_map = pd.Series(vals, dtype="float64").rank(pct=True).to_dict()
+            if len(self._mf_pct_by_date) > 40:      # 只保留最近若干日，防内存膨胀
+                self._mf_pct_by_date.clear()
+            self._mf_pct_by_date[td] = pct_map
+        return pct_map.get(code)
 
     def _recheck_buy_list(self, candidates: List[str]) -> List[str]:
         """复检：今日量>0 / 未涨停 / 跳空<5%"""
@@ -618,6 +679,14 @@ class HighVolMomentumStrategy(BaseStrategy):
             return signals
         today = str(self._last_trade_date)[:10]
         capital = self._resolve_capital()
+        # 资金约束（2026-11-15 修复）：两笔 50% 仓位 + 佣金/滑点会超出可用现金 →
+        # broker 以「资金不足」拒单，而策略仍按已买入记账 → 后续卖出全部「持仓不足」。
+        # 按可用现金封顶并预留 0.5% 费用缓冲；现金未知（<=0）时保持原行为不变。
+        try:
+            _cash_left = float(self.resolve_available_cash() or 0.0)
+        except Exception:
+            _cash_left = 0.0
+        _cash_known = _cash_left > 0
         pending = dict(self._buy_pending)
         # F1 修复：不再先 clear() 再处理 —— 处理中途异常会让全部候选永久丢失
         # （且 signals 行停在"待确认"）。改为处理期间写入 keep，阶段一结束后整体替换。
@@ -657,7 +726,26 @@ class HighVolMomentumStrategy(BaseStrategy):
                     f"{SignalRejectReason.CONFIRM_FAILED.value}: 信号价无效({pinfo.get('signal_price')})",
                 )
                 continue
-            if price <= signal_price:
+            if self.enable_confirm_retest:
+                # 站稳确认（维度一第1步）：连续 confirm_retest_days 日收盘 ≥ 信号价×(1−buffer)
+                # 才通过；跌破 buffer 则 streak 归零重计（候选保留，不立即拒绝）。
+                _streak = int(pinfo.get("retest_streak", 0) or 0)
+                if price >= signal_price * (1.0 - self.confirm_retest_buffer):
+                    _streak += 1
+                else:
+                    _streak = 0
+                pinfo["retest_streak"] = _streak
+                if _streak < self.confirm_retest_days:
+                    keep[code] = pinfo
+                    if self.verbose_logging:
+                        logger.info(
+                            f"站稳确认中: {code} 收盘{price:.2f} vs 门槛"
+                            f"{signal_price * (1.0 - self.confirm_retest_buffer):.2f}, "
+                            f"连续 {_streak}/{self.confirm_retest_days} 日"
+                        )
+                    continue
+                passed.append((code, pinfo, price))
+            elif price <= signal_price:
                 if self.verbose_logging:
                     logger.info(f"买入确认失败: {code} 收盘{price:.2f} ≤ 信号价{signal_price:.2f}")
                 # v7.2 修复：确认失败须回写信号状态，否则前端信号列表一直停留在"待确认"
@@ -667,8 +755,9 @@ class HighVolMomentumStrategy(BaseStrategy):
                     f"收盘{price:.2f} ≤ 信号价{signal_price:.2f}，确认失败",
                 )
                 continue
-            # 确认通过（收盘 > 信号价）
-            passed.append((code, pinfo, price))
+            else:
+                # 确认通过（收盘 > 信号价，追涨确认默认路径）
+                passed.append((code, pinfo, price))
 
         self._buy_pending = keep  # 阶段一结束才替换（中途异常不再丢候选）
         if not passed:
@@ -694,7 +783,15 @@ class HighVolMomentumStrategy(BaseStrategy):
             _weight_cap = self.bear_single_weight if is_bear else self.max_single_weight
             weight = min(float(pinfo.get("weight", _weight_cap)), _weight_cap)
             amount = capital * weight
+            if _cash_known:
+                amount = min(amount, _cash_left * 0.995)
+                if amount < price * self.min_lot_size:
+                    # 现金连一手都不够 → 不入池，避免必然被拒的订单
+                    keep[code] = pinfo
+                    continue
             shares = max(int(amount / price / self.min_lot_size) * self.min_lot_size, self.min_lot_size)
+            if _cash_known:
+                _cash_left = max(_cash_left - shares * price, 0.0)
             # [阶段3 单行流转] 候选行直接流转到 pending_manual（待人工审核），
             # 不再单独 promoted 中间态 + 另起买入行；买入信号 parent_id 复用候选行。
             _cand_sid = pinfo.get("signal_id")

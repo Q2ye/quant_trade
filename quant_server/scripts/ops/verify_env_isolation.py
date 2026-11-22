@@ -41,9 +41,10 @@ def _connect(user: str, password: str, database: str):
 
 
 def _password(role: str) -> str:
+    # 2026-11-15：新命名优先（DEV_DB_* / PROD_DB_*），旧名保留回退
     if role == "quant_prod":
         return _env("PROD_DB_PASSWORD") or _env("DB_PASSWORD", "")
-    return _env("DB_DEV_PASSWORD") or _env("DB_PASSWORD", "")
+    return _env("DEV_DB_PASSWORD") or _env("DB_DEV_PASSWORD") or _env("DB_PASSWORD", "")
 
 
 def ac1(conn) -> tuple[bool, str]:

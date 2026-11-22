@@ -82,7 +82,8 @@ def _connect(database: str):
         host=_env("DB_DDL_HOST") or _env("DB_HOST", "localhost"),
         port=int(_env("DB_DDL_PORT") or _env("DB_PORT", "5432")),
         user=_ddl_user(),
-        password=_env("DB_DDL_PASSWORD") or _env("DB_PASSWORD", ""),
+        password=(_env("DB_DDL_PASSWORD") or _env("DB_PASSWORD", "")
+                  or _env("PROD_DB_PASSWORD", "") or _env("DEV_DB_PASSWORD", "")),
         database=database,
     )
 

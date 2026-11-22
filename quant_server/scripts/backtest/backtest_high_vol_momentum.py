@@ -140,6 +140,25 @@ async def _load_main_board_codes(sf) -> List[str]:
         return [row[0] for row in r.fetchall()]
 
 
+async def _load_mf_day(sf, td: str, symbols: List[str]) -> Dict[Tuple[str, str], float]:
+    """加载单日全市场资金流强度 {(code, td): net_mf_amount/circ_mv}。
+
+    REQ-20261114-highvol-moneyflow-select。失败返回空 dict（策略 fail-open）。
+    """
+    from shared.database.repositories.market.quote.stock_moneyflow_repo import (
+        StockMoneyflowRepository,
+    )
+    _d = date.fromisoformat(td)
+    try:
+        async with sf() as session:
+            return await StockMoneyflowRepository(session).get_mf_ratio_batch(
+                symbols=symbols, start_date=_d, end_date=_d
+            )
+    except Exception as e:  # noqa: BLE001 — 可选因子，失败不阻断回测
+        logger.warning("资金流单日加载失败 %s: %s", td, e)
+        return {}
+
+
 async def _load_bars(sf, codes: List[str], start_d: date, end_d: date) -> Dict[str, pd.DataFrame]:
     """批量加载 [start_d, end_d] 的 qfq 复权日线 → {code: DataFrame(按 trade_date 升序)}。"""
     from shared.database.repositories.market.quote.stock_adj_factor_repo import (
@@ -273,6 +292,13 @@ async def run_smoke(start: str = START, end: str = END) -> None:
             bar = bars_today.get(code)
             if bar is not None:
                 strategy.on_bar(bar)
+
+        # 2.5 资金流因子：按日注入（REQ-20261114-highvol-moneyflow-select，默认关闭时不查询）
+        if getattr(strategy, "enable_moneyflow_factor", False) or (
+            getattr(strategy, "moneyflow_min", None) is not None
+        ):
+            strategy._mf_ratio_cache = await _load_mf_day(sf, td, symbols)
+            strategy._mf_pct_by_date.clear()
 
         # 3. 批次结束 → 信号
         signals = strategy.on_bar_batch_end(td)

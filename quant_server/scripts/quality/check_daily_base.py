@@ -45,6 +45,12 @@ def load_env(path: Path) -> Dict[str, str]:
             continue
         k, v = line.split("=", 1)
         env[k.strip()] = v.strip()
+    # 兼容迁移（2026-11-15）：.env 改用 DEV_DB_* / PROD_DB_* 并移除 DB_*；
+    # 缺失时按 ENVIRONMENT 回填，旧脚本无需改调用方。旧键存在时不覆盖。
+    _name = (env.get("ENVIRONMENT") or "development").lower()
+    _pfx = "PROD_DB_" if _name == "production" else "DEV_DB_"
+    for _k in ("HOST", "PORT", "USER", "PASSWORD", "NAME"):
+        env.setdefault("DB_" + _k, env.get(_pfx + _k, ""))
     return env
 
 
@@ -139,8 +145,23 @@ def _max_date(conn, table: str, col: str) -> Optional[date]:
         return cur.fetchone()[0]
 
 
+# 源日期 → 入库业务日的偏移（与 backfill_daily_base._DATE_SHIFT_DAYS 保持一致）
+DATE_SHIFT_DAYS = {"fx_daily": 1}
+
+
 def check_one(conn, contract, today: date, expected_latest: date) -> Tuple[str, str]:
     from modules.data.data_contracts import date_column
+
+    # fx_daily 存的是「源 GMT 日 +1」，且源数据 T+1 发布：
+    # 周一盘中/盘后只能拿到上周五的数据（存为周六），不能按 A 股当日基准判失败。
+    if contract.data_type == "fx_daily":
+        d = today - timedelta(days=1)
+        while d.weekday() >= 5:  # 回退到上一个工作日
+            d -= timedelta(days=1)
+        expected_latest = d + timedelta(days=1)
+    else:
+        expected_latest = expected_latest + timedelta(
+            days=DATE_SHIFT_DAYS.get(contract.data_type, 0))
 
     if contract.gate_mode == "periodic":
         if contract.frequency == "catalog":

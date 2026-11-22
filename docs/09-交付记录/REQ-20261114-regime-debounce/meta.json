@@ -1,0 +1,16 @@
+{
+  "req": "REQ-20261114-regime-debounce",
+  "title": "走弱期regime去抖（跨市场避险）",
+  "tier": "T3",
+  "status": "S2",
+  "created": "2026-11-14",
+  "updated": "2026-11-14",
+  "commits": [],
+  "scope": [],
+  "approvals": {
+    "S1": {
+      "at": "2026-11-14 13:17",
+      "note": "看过：定位已从救鞭打降为长期降翻转，判据按实测写死"
+    }
+  }
+}

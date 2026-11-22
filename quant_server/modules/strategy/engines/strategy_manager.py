@@ -643,6 +643,42 @@ class StrategyManager(EngineBase):
 
     # ---- 数据驱动（v1.1 新增） ----
 
+    async def _inject_moneyflow_cache(self, strategy, trade_date) -> None:
+        """为启用资金流因子的策略注入当日 {(code, "YYYY-MM-DD"): ratio}。
+
+        REQ-20261114-highvol-moneyflow-select。约定：
+          - 策略未开启该因子（无属性或开关关闭）→ 直接返回，零查询；
+          - 任何异常只告警，不阻断当日策略运行（fail-open）。
+        """
+        if strategy is None:
+            return
+        if not (
+            getattr(strategy, "enable_moneyflow_factor", False)
+            or getattr(strategy, "moneyflow_min", None) is not None
+        ):
+            return
+        universe = getattr(strategy, "_universe", None)
+        sf = getattr(strategy, "_db_session_factory", None)
+        if not universe or sf is None:
+            return
+        try:
+            from datetime import date as _date
+
+            from shared.database.repositories.market.quote.stock_moneyflow_repo import (
+                StockMoneyflowRepository,
+            )
+
+            d = _date.fromisoformat(str(trade_date)[:10])
+            async with sf() as db:
+                mf = await StockMoneyflowRepository(db).get_mf_ratio_batch(
+                    symbols=list(universe), start_date=d, end_date=d
+                )
+            strategy._mf_ratio_cache = mf
+            strategy._mf_pct_by_date.clear()
+            logger.info("[资金流] 注入 %s 只 @ %s", len(mf), d)
+        except Exception as e:  # noqa: BLE001 — 可选因子，失败不得阻断策略运行
+            logger.warning("[资金流] 注入失败（fail-open）%s: %s", trade_date, e)
+
     async def handle_bar_batch(
         self,
         trade_date: date,
@@ -756,6 +792,9 @@ class StrategyManager(EngineBase):
             # 供需要"全市场当日数据就绪后统一决策"的策略（如低吸轮动全市场选股）
             # 使用：on_bar 仅缓存数据，调仓在此 hook 中执行，确保各股票缓存
             # 均已包含当日数据（信号仍走 T+1 撮合，无前视）。
+            # 资金流因子注入（REQ-20261114-highvol-moneyflow-select，默认关闭时不查询）
+            await self._inject_moneyflow_cache(strategy, trade_date)
+
             batch_end = getattr(strategy, "on_bar_batch_end", None)
             if callable(batch_end):
                 try:
