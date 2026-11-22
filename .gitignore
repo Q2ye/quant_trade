@@ -79,3 +79,8 @@ quant_web/stats.html
 
 # One-off diagnostic scripts (underscore prefix, never committed; see scripts/README.md)
 _diag/
+
+# 生成物/临时目录（2026-11-22）
+quant_server/pytest-of-Administrator/
+.claude/current_scope.txt
+.claude/scope_baseline.txt
